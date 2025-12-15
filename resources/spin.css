@@ -1,0 +1,35 @@
+
+    .myspin{
+        position:relative;
+        width:120px;
+        height:120px;
+        border-radius:50%;
+    }
+    .myspin::before,
+    .myspin:after{
+        content:"";
+        position:absolute;
+        border-radius:inherit;
+    }
+    .myspin:before{
+        width:100%;
+        height:100%;
+        background-image:linear-gradient(
+            0deg,#ff00cc 0%,
+            #333399 100%
+        );
+        animation:spin .5s infinite linear;
+    }
+    .myspin:after{
+        width:70%;
+        height:70%;
+        background-color:#151515;
+        top:57%;
+        left:58%;
+         transform:translate(-50%, -50%);
+    }
+    @keyframes spin{
+        to{
+            transform:rotate(360deg);
+        }
+    } 
