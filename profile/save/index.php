@@ -1,6 +1,6 @@
 <?php
     require_once(__dir__.'/../../assets/functions.php');
-    if(Verified())
+    if(isVerified())
     {
         if(isset($_REQUEST['action']) && !empty($_REQUEST['action']))
         {

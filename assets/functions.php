@@ -207,7 +207,12 @@
         $user = auth();
         $sql = "SELECT * FROM cashbook_business_profile WHERE user_id = ?";
         $res = prepared_statements($sql,'i',[$user->id]);
-        if($res->num_rows > 0)
+
+        // check if beongs to a business
+        $stmt = "SELECT business_id FROM cashbook_users WHERE id = ?";
+        $ress = prepared_statements($stmt,'i',[$user->id]);
+        $r = $ress->fetch_assoc();
+        if($res->num_rows > 0 || !empty($r['business_id']) > 0)
         {
             $_SESSION['hasbusiness'] = true;
             return true;

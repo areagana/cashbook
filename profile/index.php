@@ -3,12 +3,11 @@ require_once(__dir__.'/../assets/functions.php');
 if(isVerified())
 {
     // check if they have a business profile
-    checkBusinessProfile();
-    if(isset($_SESSION['hasbusiness']))
+    if(checkBusinessProfile())
     {
         redirect('../');
-    }
-    pageHeader('Home');
+    }else{
+        pageHeader('Home');
 ?>
     <div class="container">
         <div class="row mx-1">
@@ -106,7 +105,6 @@ if(isVerified())
             form.addEventListener("submit", function (e) {
                 e.preventDefault();
                 const formData = new FormData(form);
-                console.log(formData.keys());
                 fetch("save/index.php", {
                     method: "POST",
                     body: formData
@@ -114,7 +112,7 @@ if(isVerified())
                 .then(res => res.text())
                 .then(response => {
                     xdialog.alert("Business profile saved");
-                    wondow.location.href='../';
+                    window.location.href='../';
                 })
                 .catch(err => console.error(err));
             });
@@ -125,6 +123,7 @@ if(isVerified())
 </html>
 
 <?php
+    }// close busines sprofile check
 }else{
     redirect('../');
 }
