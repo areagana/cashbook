@@ -5,25 +5,29 @@
         pageHeader('Home');
         $business = (businessFind(auth())) ? businessFind(auth()) : businessFindId(auth()->business_id) ;
         ?>
-                    <div class="container-fluid">
+                    <div class="container">
                         <div class="row mx-1">
                             <div class="col p-2">
                                 <h1 class="p-1"><?=$business->name;?></h1>
                             </div>
-                            <div class="col p-4">
-                                <button class="btn btn-outline-primary new-profile" data-id="<?=$business->id;?>"><i class="fa fa-user"></i>Business Profile</button>
-                                <button class="btn btn-outline-secondary new-settings"></i> <i class="fa fa-cog"></i> Settings</button>
-                                <button class="btn btn-outline-info new-team"><i class="fa fa-plus-circle"></i> Add Team</button>
-                            </div>
+                            <?php if(hasRole(['owner'])):?>
+                                <div class="col p-4">
+                                    <button class="btn btn-outline-primary new-profile" data-id="<?=$business->id;?>"><i class="fa fa-user"></i>Business Profile</button>
+                                    <button class="btn btn-outline-secondary new-settings"></i> <i class="fa fa-cog"></i> Settings</button>
+                                    <button class="btn btn-outline-info new-team"><i class="fa fa-plus-circle"></i> Add Team</button>
+                                </div>
+                            <?php endif;?>
                         </div>
                         <hr>
                         <div class="row mx-1">
                             <div class="col p-2">
                                 <h2 class="p-2">BUSINESS BOOKS</h2>
                             </div>
-                            <div class="col-md-3 p-4">
-                                <button class="btn btn-outline-info new-book"><i class="fa fa-plus-circle"></i> Add Book</button>
-                            </div>
+                            <?php if(hasRole(['owner','partner'])):?>
+                                <div class="col-md-3 p-4">
+                                    <button class="btn btn-outline-info new-book"><i class="fa fa-plus-circle"></i> Add Book</button>
+                                </div>
+                            <?php endif;?>
                         </div>
                         <hr>
                         <div class="row mx-1">

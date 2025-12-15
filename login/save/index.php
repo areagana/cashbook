@@ -18,13 +18,14 @@
                 $email = request('email');
                 $password1 = request('password1');
                 $password2 = request('password2');
+                $role_id = request('role_id');
 
                     if($password1 == $password2)
                     {
                         $password = password_hash($password1,PASSWORD_DEFAULT);
                         // check if a file has been submitted and upload it
-                        $sql = "INSERT INTO cashbook_users SET name = ?, email=?, password = ?";
-                        prepared_statements($sql,'sss',[$name,$email,$password]);
+                        $sql = "INSERT INTO cashbook_users SET name = ?, email=?, password = ?,role_id =?";
+                        prepared_statements($sql,'sssi',[$name,$email,$password,$role_id]);
 
                         $response = [
                             'message'=>'Registration successful',
@@ -47,7 +48,7 @@
                 $password = request('password');
                 
                 // check details from the table and continue
-                $sql = "SELECT id,name,email,contact,business_id,password FROM cashbook_users WHERE email = ?";
+                $sql = "SELECT id,name,email,contact,business_id,password,role_id FROM cashbook_users WHERE email = ?";
                 $res = prepared_statements($sql,'s',[$email]);
                 $dat = $res->fetch_assoc();
                

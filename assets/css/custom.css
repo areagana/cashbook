@@ -475,6 +475,7 @@ body{
       transition:2s left !important;
       border-radius:6px !important;
       color:white;
+      background-color:green !important;
   }
   .success-ms-bg{
       background-color:green !important;

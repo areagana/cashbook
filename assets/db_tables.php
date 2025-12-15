@@ -100,6 +100,7 @@
         $columns =[
             'name'=>'varchar(255) null',
             'business_id'=>'int(11) null',
+            'role_id'=>'int(11) null',
             'email'=>'varchar(255) null',
             'contact'=>'varchar(255) null',
             'verified'=>'varchar(255) null',
@@ -194,7 +195,7 @@
             'customer_id'=>'int(11) null',
             'credit_amount'=>'float null',
             'debit_amount'=>'float null',
-            'Details'=>'varchar(255) null',
+            'details'=>'varchar(255) null',
             'balance'=>'float null',
             'user_id'=>'int(11) null'
         ];
@@ -253,6 +254,40 @@
         create_table($table,$columns);
     }
 
+    function cashbook_roles()
+    {
+        global $server;
+        $table ='cashbook_roles';
+        $columns =[
+            'name'=>'varchar(255) null',
+            'display_name'=>'varchar(255) null'
+        ];
+        create_table($table,$columns);
+
+        // enter roles
+        $roles =[
+            'owner'=>'OWNER',
+            'partner'=>'PARTNER',
+            'staff'=>'STAFF'
+        ];
+
+        $sql = "INSERT INTO cashbook_roles SET name =?, display_name =?";
+        // avoid duplicates
+        $query = mysqli_query($server,"SELECT * FROM cashbook_roles");
+        $dats =[];
+        while($r = $query->fetch_assoc())
+        {
+            $dats[] = $r['name'];
+        }
+        foreach($roles as $key => $role)
+        {
+            if(!in_array($key,$dats))
+            {
+                prepared_statements($sql,'ss',[$key,$role]);
+            }
+        }
+    }
+
     // functions to create
     cashbook_books();
     cashbook_users();
@@ -265,6 +300,7 @@
     cashbook_paymodes();
     cashbook_customers();
     cashbook_business_profile();
+    cashbook_roles();
 
 // redirect to the home page after checking table creation functions
 if(isVerified())

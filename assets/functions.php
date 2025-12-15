@@ -96,6 +96,7 @@
                     </form>
                 </nav>
                 <div class="container-fluid">
+                    <?php sessionMessage();?>
         <?php
     }
 
@@ -221,8 +222,53 @@
         }
      }
     // check roles
-    function hasRole()
+    function hasRole($array)
     {
+        global $server;
+        $auth = auth();
+        $roles = mysqli_query($server,"SELECT * FROM cashbook_roles");
+        $dat =[];
+        while($r = $roles->fetch_assoc())
+        {
+            if($r['id']== $auth->role_id)
+            {
+                $dat[] = $r['name'];
+            }
+        }
 
+        foreach($array as $role)
+        {
+            if(in_array($role,$dat))
+            {
+                return true;
+            }else{
+                return false;
+            }
+        }
+    }
+
+    // display session message
+    function sessionMessage()
+    {
+        if(isset($_SESSION['success']))
+        {
+            ?>
+                <div class="p-2 success-message" style='position:absolute;background: green !important;
+                            color: white !important;padding: 15px;z-index: 99999;'>
+                    <i class="fa fa-check-circle"></i> <?php echo $_SESSION['success'];?>
+                </div>
+            <?php
+            unset($_SESSION['success']);
+        }
+        if(isset($_SESSION['error']))
+        {
+            ?>
+                <div class="p-2 shadow success-message" style='position:absolute;background: red !important;
+                            color: white !important;padding: 15px;z-index: 99999;'>
+                    <i class="fa fa-times-circle text-dark"></i> <?php echo $_SESSION['error'];?>
+                </div>
+            <?php
+                unset($_SESSION['error']);
+        }
     }
 ?>

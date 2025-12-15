@@ -22,6 +22,7 @@
 
         if(isset($_REQUEST['action']) && !empty($_REQUEST['action']))
         {
+            $user_id = auth()->id;
             $action = request('action');
             switch($action)
             {
@@ -178,6 +179,22 @@
                                                 </div>
                                                 <div class="col p-2">
                                                     <input type="email" name="email" id="email" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="role_id">ROLE:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = mysqli_query($server,"SELECT * FROM cashbook_roles");
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="role_id" id="role_id" class="form-control">
+                                                        <option hidden>Select</option>
+                                                        <?php while($rw = $sql->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['display_name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
                                                 </div>
                                             </div>
                                             <div class="row mx-1">
@@ -431,10 +448,11 @@
                             $business_id = bookFind($book_id)->business_id;
                             $password = request('password');
                             $password = password_hash($password,PASSWORD_DEFAULT);
+                            $role = request('role_id');
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,password =?";
-                                prepared_statements($sql,'sssis',[$name,$email,$contact,$business_id,$password]);
+                                $sql = "INSERT INTO cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,password =?,role_id=?";
+                                prepared_statements($sql,'sssisi',[$name,$email,$contact,$business_id,$password,$role_id]);
                                 $user_id = $server->insert_id;
                                 // link user to books
                                 $stmt = "INSERT INTO cashbook_book_users SET user_id = ?, book_id = ?";
@@ -461,14 +479,15 @@
                                 $amount = request('inamount');
                                 $payment_mode = request('paymode_id');
                                 $date = request('created_at');
+                                $user_id = auth()->id;
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,book_id = ?, details = ?,category_id = ?,paymode_id=?,created_at=?";
-                                $res = prepared_statements($sql,'iisiis',[$amount,$book_id,$details,$category_id,$payment_mode,$date]);
+                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,book_id = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id=?";
+                                $res = prepared_statements($sql,'iisiisi',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id]);
                                 $trans_id = $server->insert_id;
 
-                                $stmt = "INSERT INTO  cashbook_cashins SET amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?";
-                                if(prepared_statements($stmt,'iisiiis',[$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date]))
+                                $stmt = "INSERT INTO  cashbook_cashins SET amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?";
+                                if(prepared_statements($stmt,'iisiiisi',[$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id]))
                                 {
                                     echo "Success";
                                 }
@@ -480,16 +499,15 @@
                                 $payment_mode = request('paymode_id');
                                 $transid = request('transaction_id');
                                 $date = request('created_at');
+                                $user_id = auth()->id;
 
                                 // ssave the content
-                                $sql = "UPDATE cashbook_transactions SET credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=? WHERE id = ?";
-                                $res = prepared_statements($sql,'iisisi',[$amount,$details,$category_id,$payment_mode,$date,$transid]);
+                                $sql = "UPDATE cashbook_transactions SET credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ? WHERE id = ?";
+                                $res = prepared_statements($sql,'isiisii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$transid]);
 
-                                $stmt = "UPDATE cashbook_cashins SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=? WHERE transaction_id = ?";
-                                if(prepared_statements($stmt,'iisisi',[$amount,$category_id,$details,$payment_mode,$date,$transid]))
-                                {
-                                    echo "Success";
-                                }
+                                $stmt = "UPDATE cashbook_cashins SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id = ? WHERE transaction_id = ?";
+                                prepared_statements($stmt,'iisisii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
+                                $_SESSION['success'] = "Data Saved";
                             break;
                         case 'newCashoutSave':
                                 $book_id = request('book_id');
@@ -498,17 +516,17 @@
                                 $amount = request('outamount');
                                 $payment_mode = request('paymode_id');
                                 $date = request('created_at');
+                                $user_id = auth()->id;
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_transactions SET debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?";
-                                $res = prepared_statements($sql,'iisiis',[$amount,$book_id,$details,$category_id,$payment_mode,$date]);
+                                $sql = "INSERT INTO cashbook_transactions SET debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?";
+                                $res = prepared_statements($sql,'iisiisi',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id]);
                                 $trans_id = $server->insert_id;
 
-                                $stmt = "INSERT INTO  cashbook_cashouts SET amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ? ";
-                                if(prepared_statements($stmt,'iisiiis',[$amount,$category_id,$details,$book_id,$trans_id,$payment_mode,$date]))
-                                {
-                                    echo "Success";
-                                }
+                                $stmt = "INSERT INTO  cashbook_cashouts SET amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ?,user_id=?";
+                                prepared_statements($stmt,'iisiiisi',[$amount,$category_id,$details,$book_id,$trans_id,$payment_mode,$date,$user_id]);
+                                $_SESSION['success'] = 'Transaction Saved';
+                                
                             break;
                         case 'editCashoutSave':
                                 $details = request('cashout_details');
@@ -519,15 +537,12 @@
                                 $date = request('created_at');
 
                                 // ssave the content
-                                $sql = "UPDATE cashbook_transactions SET debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=? WHERE id = ?";
-                                $res = prepared_statements($sql,'iisisi',[$amount,$details,$category_id,$payment_mode,$date,$transid]);
+                                $sql = "UPDATE cashbook_transactions SET debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=?,user_id = ? WHERE id = ?";
+                                $res = prepared_statements($sql,'isiisii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$transid]);
 
-                                $stmt = "UPDATE cashbook_cashouts SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=? WHERE transaction_id = ?";
-                                if(prepared_statements($stmt,'iisisi',[$amount,$category_id,$details,$payment_mode,$date,$transid]))
-                                {
-                                    echo "Success";
-                                }
-
+                                $stmt = "UPDATE cashbook_cashouts SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id =? WHERE transaction_id = ?";
+                                prepared_statements($stmt,'iisisii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
+                                $_SESSION['success'] = "Data Saved";
                             break;
                     }
                     break;
@@ -535,7 +550,6 @@
                     $type = request('type');
                     $id = request('id');
                     $transaction = transactionFind($id);
-
                         switch($type)
                         {
                             case 'credit':
@@ -608,7 +622,7 @@
                                                 <label for="cashin_details">DETAILS:</label>
                                             </div>
                                             <div class="col p-2">
-                                                <input type="text" name="cashin_details" id="cashin_details" value="<?=!empty($transaction->Details) ? $transaction->Details: '';?>" class="form-control">
+                                                <input type="text" name="cashin_details" id="cashin_details" value="<?=!empty($transaction->details) ? $transaction->details: '';?>" class="form-control">
                                             </div>
                                         </div>
                                         <div class="row mx-1">
@@ -697,7 +711,7 @@
                                                 <label for="cashout_details">DETAILS:</label>
                                             </div>
                                             <div class="col p-2">
-                                                <input type="text" name="cashout_details" value="<?=!empty($transaction->Details) ? $transaction->Details: '';?>" id="cashout_details" class="form-control">
+                                                <input type="text" name="cashout_details" value="<?=!empty($transaction->details) ? $transaction->details: '';?>" id="cashout_details" class="form-control">
                                             </div>
                                         </div>
                                         <div class="row mx-1">

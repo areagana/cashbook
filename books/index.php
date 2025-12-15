@@ -36,13 +36,15 @@
                 <div class="col-md-5 p-2">
                     <h2 class="p-0 text-left"><?=$book->name;?></h2>
                 </div>
-                <div class="col p-3">
-                    <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add category' data-section='category'><i class="fa fa-plus-circle"></i> Category</button>
-                    <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
-                    <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add member' data-section='member'><i class="fa fa-plus-circle"></i> Members</button>
-                    <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add item' data-section='item'><i class="fa fa-plus-circle"></i> Items</button>
-                    <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add payment mode' data-section='paymode'><i class="fa fa-plus-circle"></i> Payment Modes</button>
-                </div>
+                <?php if(hasRole(['owner','partner'])):?>
+                    <div class="col p-3">
+                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add category' data-section='category'><i class="fa fa-plus-circle"></i> Category</button>
+                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
+                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add member' data-section='member'><i class="fa fa-plus-circle"></i> Members</button>
+                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add item' data-section='item'><i class="fa fa-plus-circle"></i> Items</button>
+                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add payment mode' data-section='paymode'><i class="fa fa-plus-circle"></i> Payment Modes</button>
+                    </div>
+                <?php endif;?>
             </div>
             <hr>
 
@@ -95,7 +97,6 @@
                                 $stmt = "SELECT sum(amount) as cashin FROM cashbook_cashins WHERE book_id = ?";
                                 $res = prepared_statements($stmt,'i',[$id]);
                                 $rw = $res->fetch_assoc();
-                                echo mysqli_error($server);
                             ?>
                             <h3 class="p-2 text-muted">CASHIN: <span class="right"><?=number_format($rw['cashin'],0);?></span></h3>
                         </div>
@@ -104,7 +105,6 @@
                                 $stmtt = "SELECT sum(amount) as cashout FROM cashbook_cashouts WHERE book_id = ?";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
-                                echo mysqli_error($server);
                             ?>
                             <h3 class="p-2 text-muted">CASHOUT: <span class="right"><?=number_format($rws['cashout'],0);?></span></h3>
                         </div>
@@ -113,7 +113,6 @@
                                 $stmtt = "SELECT sum(amount) as cashout FROM cashbook_cashouts WHERE book_id = ?";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
-                                echo mysqli_error($server);
                             ?>
                             <h3 class="p-2"><strong>BALANCE:</strong> <span class="right"><?=number_format(($rw['cashin']-$rws['cashout']),0);?></span></h3>
                         </div>
@@ -149,8 +148,10 @@
                                         <td><?=number_format($r['credits'],0);?></td>
                                         <td><?=number_format($r['debits'],0);?></td>
                                         <td>
-                                            <button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
-                                            <button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button> 
+                                            <?php if(hasRole(['owner','partner'])):?>
+                                                <button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
+                                                <button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button> 
+                                            <?php endif;?>
                                         </td>
                                     </tr>
                                 <?php endwhile;?>
@@ -260,6 +261,7 @@
         function submitSingleForm(formId, backendUrl) 
         {
             const form = document.getElementById(formId);
+            xdialog.startSpin();
             if (!form) {
                 console.error("Form not found:", formId);
                 return;

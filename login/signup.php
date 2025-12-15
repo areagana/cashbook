@@ -21,6 +21,7 @@
       <div class="input_box">
         <label for="name">NAME</label>
         <input type="text" id="name" name='name' placeholder="Enter name here" required />
+        <input type="hidden" name="role_id" value='1'>
       </div>
       <div class="input_box">
         <label for="email">EMAIL</label>
