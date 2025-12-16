@@ -1,8 +1,15 @@
 <?php
-    session_start();
+    require_once(__dir__.'/assets/functions.php');
     if(isset($_GET['logout']))
     {
         session_destroy();
     }
-    header('Location:assets/db_tables.php');
+    // CHECK VERIFICATION
+    if(isVerified())
+    {
+        redirect('assets/db_tables.php');
+    }else{
+        redirect('login/');
+    }
+    
 ?>

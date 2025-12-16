@@ -28,6 +28,16 @@
                     background: #fff;
                     z-index: 2;
                 }
+                .hover-hide-content .hover-display {
+                    opacity: 0;
+                    visibility: hidden;
+                    transition: opacity 0.25s ease;
+                }
+
+                .hover-hide-content:hover .hover-display {
+                    opacity: 1;
+                    visibility: visible;
+                }
             </style>
             <div class="row mx-1">
                 <div class="col-md-1">
@@ -117,7 +127,46 @@
                             <h3 class="p-2"><strong>BALANCE:</strong> <span class="right"><?=number_format(($rw['cashin']-$rws['cashout']),0);?></span></h3>
                         </div>
                     </div>
-                    <h4 class="p-2 text-muted border-bottom">TRANSACTIONS</h4>
+                    <hr>
+                    <div class="row mx-1">
+                        <div class="col p-2">
+                            <h4 class="text-muted">TRANSACTIONS</h4>
+                        </div>
+                        <div class="col p-2 text-muted">
+                            <i class="fa fa-filter"></i>  FILTER TRANSACTIONS:
+                        </div>
+                        <div class="col p-2">
+                            <button class="btn btn-sm btn-outline-secondary right" id="resetFilters"> <i class="fa fa-undo"></i> <i class="fa fa-filter"></i> Reset</button>
+                        </div>
+                        <div class="p-2 input-group">
+                            <?php
+                                $sqld = "SELECT distinct DATE(created_at) as date FROM cashbook_transactions WHERE book_id =? order by DATE(created_at) desc";
+                                $dats = prepared_statements($sqld,'i',[$book->id]);
+                            ?>
+                            <select name="filter-date" id="filter-date" data-type='date' class="form-control filter-item">
+                                <option value=''><i class="fa fa-filter"></i> By Date</option>
+                                <?php while($rd = $dats->fetch_assoc()):?>
+                                    <option value="<?=$rd['date'];?>"><?=date('d-m-Y', strtotime($rd['date']));?></option>
+                                <?php endwhile;?>
+                            </select>
+                            <select name="filter-type" id="filter-type" data-type='type' class="form-control filter-item">
+                                <option value=''><i class="fa fa-filter"></i> By Type</option>
+                                <option value="credit">Cashin</option>
+                                <option value="debit">Cashout</option>
+                            </select>
+                            <?php
+                                $sql = "SELECT * FROM cashbook_categories WHERE book_id =? order by name asc";
+                                $cats = prepared_statements($sql,'i',[$book->id]);
+                            ?>
+                            <select name="filter-category" id="filter-category" data-type='category' class="form-control filter-item">
+                                <option value=''><i class="fa fa-filter"></i> By Category</option>
+                                <?php while($rc = $cats->fetch_assoc()):?>
+                                    <option value="<?=$rc['id'];?>"><?=$rc['name'];?></option>
+                                <?php endwhile;?>
+                            </select>
+                        </div>
+                    </div>
+                    <hr>
                     <div class="row mx-1">
                         <?php
                             $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.created_at,ct.details FROM cashbook_transactions ct 
@@ -138,9 +187,9 @@
                                         <th>Action</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody class='transactions-tbody'>
                                 <?php while($r = $res_->fetch_assoc()):?>
-                                    <tr class='transaction-details'>
+                                    <tr class='transaction-details hover hover-hide-content'>
                                         <td><?=++$t;?></td>
                                         <td><?=$r['created_at'];?></td>
                                         <td><?=$r['category'];?></td>
@@ -149,8 +198,10 @@
                                         <td><?=number_format($r['debits'],0);?></td>
                                         <td>
                                             <?php if(hasRole(['owner','partner'])):?>
-                                                <button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
-                                                <button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button> 
+                                                <span class="hover-display text-sms">
+                                                    <button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
+                                                    <button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button> 
+                                                </span>
                                             <?php endif;?>
                                         </td>
                                     </tr>
@@ -378,4 +429,46 @@
             }
         });
         
+        // filter transactions based on type
+        $(document).on('change', '.filter-item', function () {
+            var book_id ="<?=$book->id;?>";
+            let filters = {
+                action: 'transactionFilter',
+                book_id:book_id
+            };
+
+            $('.filter-item').each(function () {
+                let key = $(this).data('type');
+                let val = $(this).val();
+
+                if (val && val !== '') {
+                    filters[key] = val;
+                }
+            });
+            //send request to database
+
+            $.ajax({
+                url: 'save/index.php',
+                type: 'POST',
+                data: filters,
+                beforeSend:function(){
+                    $('.transactions-tbody').html(
+                        "<tr><td colspan='10' align='center'>Loading...</td></tr>"
+                    );
+                },
+                success: function (res) {
+                    $('.transactions-tbody').html(res);
+                },
+                error: function (err) {
+                    $('.transactions-tbody').html(
+                        "<tr><td colspan='10'><center>Failed to load data</center></td></tr>"
+                    );
+                }
+            });
+        });
+        // reset filter items
+        $('#resetFilters').on('click', function () {
+            $('.filter-item').val('');
+            $('.filter-item').trigger('change');
+        });
     </script>

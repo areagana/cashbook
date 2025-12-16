@@ -190,6 +190,7 @@
         $columns =[
             'category_id'=>'int(11) null',
             'book_id'=>'int(11) null',
+            'type'=>'varchar(255) null',
             'item_id'=>'int(11) null',
             'paymode_id'=>'int(11) null',
             'customer_id'=>'int(11) null',

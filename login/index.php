@@ -30,7 +30,7 @@
       <div class="input_box">
         <div class="password_title">
           <label for="password">Password</label>
-          <a href="#">Forgot Password?</a>
+          <!-- <a href="#">Forgot Password?</a> -->
         </div>
         <input type="password" id="password"  name='password' placeholder="Enter your password" required />
       </div>

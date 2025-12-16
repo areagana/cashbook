@@ -480,17 +480,16 @@
                                 $payment_mode = request('paymode_id');
                                 $date = request('created_at');
                                 $user_id = auth()->id;
+                                $type='credit';
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,book_id = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id=?";
-                                $res = prepared_statements($sql,'iisiisi',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id]);
+                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,book_id = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id=?,type=?";
+                                $res = prepared_statements($sql,'iisiisis',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type]);
                                 $trans_id = $server->insert_id;
 
                                 $stmt = "INSERT INTO  cashbook_cashins SET amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?";
-                                if(prepared_statements($stmt,'iisiiisi',[$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id]))
-                                {
-                                    echo "Success";
-                                }
+                                prepared_statements($stmt,'iisiiisi',[$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id]);
+                                $_SESSION['success'] ='Data Saved';
                             break;
                         case 'editCashinSave':
                                 $details = request('cashin_details');
@@ -517,10 +516,11 @@
                                 $payment_mode = request('paymode_id');
                                 $date = request('created_at');
                                 $user_id = auth()->id;
+                                $type='debit';
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_transactions SET debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?";
-                                $res = prepared_statements($sql,'iisiisi',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id]);
+                                $sql = "INSERT INTO cashbook_transactions SET debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?";
+                                $res = prepared_statements($sql,'iisiisis',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type]);
                                 $trans_id = $server->insert_id;
 
                                 $stmt = "INSERT INTO  cashbook_cashouts SET amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ?,user_id=?";
@@ -733,25 +733,106 @@
                         }
                     break;
                 case 'DeleteTransaction':
-                    $type = request('type');
-                    $id = request('id');
-                    $transaction = transactionFind($id);
+                        $type = request('type');
+                        $id = request('id');
+                        $transaction = transactionFind($id);
 
-                    // delete transaction
-                    $sql = "DELETE FROM cashbook_transactions WHERE id = ?";
-                    prepared_statements($sql,'i',[$id]);
-                    switch($type)
-                    {
-                        case 'credit':
-                            // delete
-                            $sql = "DELETE FROM cashbook_cashins WHERE transaction_id = ?";
-                            prepared_statements($sql,'i',[$id]);
-                            break;
-                        case 'debit':
-                            $sql = "DELETE FROM cashbook_cashouts WHERE transaction_id = ?";
-                            prepared_statements($sql,'i',[$id]);
-                            break;
-                    }
+                        // delete transaction
+                        $sql = "DELETE FROM cashbook_transactions WHERE id = ?";
+                        prepared_statements($sql,'i',[$id]);
+                        switch($type)
+                        {
+                            case 'credit':
+                                // delete
+                                $sql = "DELETE FROM cashbook_cashins WHERE transaction_id = ?";
+                                prepared_statements($sql,'i',[$id]);
+                                break;
+                            case 'debit':
+                                $sql = "DELETE FROM cashbook_cashouts WHERE transaction_id = ?";
+                                prepared_statements($sql,'i',[$id]);
+                                break;
+                        }
+                    break;
+                case 'transactionFilter':
+                        $conditions = [];
+                        $params     = [];
+                        $types      = "";
+
+                        /* Required */
+                        $conditions[] = "t.book_id = ?";
+                        $params[]     = request('book_id');
+                        $types       .= "i";
+
+                        /* Date filter (ignore time) */
+                        if (!empty($_POST['date'])) {
+                            $conditions[] = "DATE(t.created_at) = ?";
+                            $params[]     = $_POST['date'];
+                            $types       .= "s";
+                        }
+
+                        /* Type filter */
+                        if (!empty($_POST['type'])) {
+                            $conditions[] = "t.type = ?";
+                            $params[]     = $_POST['type'];
+                            $types       .= "s";
+                        }
+
+                        /* Category filter */
+                        if (!empty($_POST['category'])) {
+                            $conditions[] = "t.category_id = ?";
+                            $params[]     = $_POST['category'];
+                            $types       .= "i";
+                        }
+
+                        $sql = "
+                            SELECT 
+                                t.*,
+                                c.name AS category_name
+                            FROM cashbook_transactions t
+                            LEFT JOIN cashbook_categories c 
+                                ON c.id = t.category_id
+                        ";
+
+                        if ($conditions) {
+                            $sql .= " WHERE " . implode(" AND ", $conditions);
+                        }
+
+                        $sql .= " ORDER BY t.created_at DESC";
+
+                        $stmt = $server->prepare($sql);
+                        $stmt->bind_param($types, ...$params);
+                        $stmt->execute();
+                        $result = $stmt->get_result();
+
+                        /* Render rows */
+                        if($result->num_rows >0):
+                            while ($row = $result->fetch_assoc()) {
+                                ?>
+                                    <tr class='transaction-details hover hover-hide-content'>
+                                        <td></td>
+                                        <td><?=date('d-m-Y', strtotime($row['created_at']));?></td>
+                                        <td><?=$row['category_name'];?></td>
+                                        <td><?=$row['details'];?></td>
+                                        <td><?=number_format($row['credit_amount'],0);?></td>
+                                        <td><?=number_format($row['debit_amount'],0);?></td>
+                                        <td>
+                                            <?php if(hasRole(['owner','partner'])):?>
+                                                <span class="hover-display text-sms">
+                                                    <button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$row['id'];?>" data-type="<?=($row['credit_amount'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
+                                                    <button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$row['id'];?>" data-type="<?=($row['credit_amount'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button> 
+                                                </span>
+                                            <?php endif;?>
+                                        </td>
+                                    </tr>
+                                <?php
+                            }
+                        else:
+                            ?>
+                                <tr>
+                                    <td colspan='7'><center>No results found!</center></td>
+                                </tr>
+                            <?php
+                        endif;
                     break;
 
             }

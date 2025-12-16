@@ -1,9 +1,4 @@
 <?php
     require_once(__dir__.'/functions.php');
-    if(isVerified())
-    {   
-        redirect('../');
-    }else{
-        redirect('../');
-    }
+    redirect('../');
 ?>
