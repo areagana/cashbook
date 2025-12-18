@@ -28,16 +28,6 @@
                     background: #fff;
                     z-index: 2;
                 }
-                .hover-hide-content .hover-display {
-                    opacity: 0;
-                    visibility: hidden;
-                    transition: opacity 0.25s ease;
-                }
-
-                .hover-hide-content:hover .hover-display {
-                    opacity: 1;
-                    visibility: visible;
-                }
             </style>
             <div class="row mx-1">
                 <div class="col-md-1">
@@ -169,8 +159,10 @@
                     <hr>
                     <div class="row mx-1">
                         <?php
-                            $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.created_at,ct.details FROM cashbook_transactions ct 
-                                LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id WHERE ct.book_id = ? ORDER BY created_at desc";
+                            $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.created_at,ct.details,cu.name as customer FROM cashbook_transactions ct 
+                                    LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id
+                                    LEFT JOIn cashbook_customers cu ON cu.id = ct.customer_id
+                                WHERE ct.book_id = ? ORDER BY created_at desc";
                             $res_ = prepared_statements($stmt_,'i',[$id]);
                             $t = 0;
                         ?>
@@ -182,6 +174,7 @@
                                         <th>Date</th>
                                         <th>Category</th>
                                         <th>Details</th>
+                                        <!-- <th>Customer</th> -->
                                         <th>Credit</th>
                                         <th>Debit</th>
                                         <th>Action</th>
@@ -194,6 +187,7 @@
                                         <td><?=$r['created_at'];?></td>
                                         <td><?=$r['category'];?></td>
                                         <td><?=$r['details'];?></td>
+                                        <td><?//=$r['customer'];?></td>
                                         <td><?=number_format($r['credits'],0);?></td>
                                         <td><?=number_format($r['debits'],0);?></td>
                                         <td>
@@ -212,7 +206,7 @@
                     </div>
                 </div>
                 <div class="col p-2 side-displays">
-                    <div class="p-2 border rounded-3 m-1">
+                    <div class="p-2 border rounded-3 m-1 text-center">
                         <h3 class="border-bottom rounded-3 p-2">CATEGORIES</h3>
                         <div class="p-2 text-center">
                             <?php
@@ -221,8 +215,11 @@
                                 echo $rsc->num_rows;
                             ?>
                         </div>
+                        <hr>
+                        <a href="../category/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
                     </div>
-                    <div class="p-2 border rounded-3 m-1">
+
+                    <div class="p-2 border rounded-3 m-1 text-center">
                         <h3 class="border-bottom rounded-3 p-2">PAYMODES</h3>
                         <div class="p-2 text-center">
                             <?php
@@ -231,8 +228,10 @@
                                 echo $rsp->num_rows;
                             ?>
                         </div>
+                        <hr>
+                        <a href="../modes/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
                     </div>
-                    <div class="p-2 border rounded-3 m-1">
+                    <div class="p-2 border rounded-3 m-1 text-center">
                         <h3 class="border-bottom rounded-3 p-2">CUSTOMERS</h3>
                         <div class="p-2 text-center">
                             <?php
@@ -241,6 +240,8 @@
                                 echo $rspcu->num_rows;
                             ?>
                         </div>
+                        <hr>
+                        <a href="../customers/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
                     </div>
                 </div>
             </div>

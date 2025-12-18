@@ -928,7 +928,7 @@ body{
   transition: transform 0.5s ease-in-out !important;
   /* transition: width 0.5s !important; */
   background-color: #fff;
-  animation: popSideAnimation 0.5s ease-out;
+  animation: popSideAnimation 1s ease-out;
   /* overflow: auto; Enable scroll if needed */
   overflow: hidden;
   border:2px solid green !important;
@@ -1492,4 +1492,15 @@ body{
   background-color:yellow;
   border:1px solid;
   box-shadow:1px 2px 3px grey;
+}
+
+.hover-hide-content .hover-display {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s ease;
+}
+
+.hover-hide-content:hover .hover-display {
+    opacity: 1;
+    visibility: visible;
 }

@@ -2,15 +2,15 @@
     require_once(__dir__.'/../assets/functions.php');
     if(isVerified())
     {
-        pageHeader('Categories');
+        pageHeader('Customers');
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
-        ?>
+    ?>
             <div class="container">
                 <div class="row mx-1">
                     <div class="col p-2 inline-block">
                         <a href="../books/?bkid=<?=$bsid;?>" class="nav-link">Books</a><i class="fa fa-angle-right"></i>
-                        <a class="nav-link">Categories</a>
+                        <a class="nav-link">Customers</a>
                     </div>
                 </div>
                 <hr>
@@ -18,12 +18,12 @@
                     <div class="col p-2">
                         <div class="row mx-1">
                             <div class="col p-2">
-                                <h3 class="p-2">BOOK CATEGORY</h3>
+                                <h3 class="p-2"><?=strToUpper($book->name);?> - CUSTOMERS</h3>
                             </div>
                             <div class="col p-2">
                                 <?php if(hasRole(['owner','partner'])):?>
                                     <div class="col p-3">
-                                        <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add category' data-section='category'><i class="fa fa-plus-circle"></i> Category</button>
+                                        <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
                                     </div>
                                 <?php endif;?>
                             </div>
@@ -31,31 +31,40 @@
                         <hr>
                         <div class="p-2">
                             <?php
-                                $sql = "SELECT * FROM cashbook_categories WHERE book_id =?";
+                                $sql = "SELECT * FROM cashbook_customers WHERE book_id =?";
                                 $res =prepared_statements($sql,'i',[$book->id]);
+
+                                // fetch balance per customer
+                                $stmt = "SELECT COALESCE(sum(credit_amount),0) as credits, COALESCE(sum(debit_amount),0) as debits,(COALESCE(sum(credit_amount),0) - COALESCE(sum(debit_amount),0)) as balance FROM cashbook_transactions WHERE customer_id =?";
+                                $s =1;
                             ?>
                                 <table class="table table-sm table-striped">
                                     <thead>
                                         <tr>
                                             <th>#</th>
                                             <th>Name</th>
-                                            <th>Cashin</th>
-                                            <th>Cashout</th>
-                                            <th>Action</th>
+                                            <th class='text-right'>Account Status</th>
+                                            <th class='text-right'>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php  while($r = $res->fetch_assoc()):?>
+                                        <?php  while($r = $res->fetch_assoc()):
+                                            $cid = $r['id'];
+                                            $rc = prepared_statements($stmt,'i',[$cid]);
+                                            $rw = $rc->fetch_assoc();
+                                        ?>
                                             <tr class='hover hover-hide-content'>
-                                                <td></td>
+                                                <td><?=$s++;?></td>
                                                 <td><?=$r['name'];?></td>
-                                                <td></td>
-                                                <td></td>
-                                                <td>
+                                                <td class='text-right'><?=number_format($rw['balance'],0);?></td>
+                                                <td class='text-right'>
                                                     <?php if(hasRole(['owner','partner'])):?>
                                                         <span class="hover-display text-sms">
-                                                            <button class="btn btn-sm btn-outline-info edit-category text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
-                                                            <button class="btn btn-sm btn-outline-danger delete-category" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button> 
+                                                            <?php if(hasRole(['owner'])):?>
+                                                                <button class="btn btn-sm btn-outline-info edit-customer text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
+                                                                <button class="btn btn-sm btn-outline-danger delete-customer" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
+                                                            <?php endif;?>
+                                                            <button class="btn btn-sm btn-outline-info view-customer text-muted" data-id="<?=$r['id'];?>" data-title="<?=$r['name'];?>"><i class="fa fa-eye"></i></button> 
                                                         </span>
                                                     <?php endif;?>
                                                 </td>
@@ -77,8 +86,19 @@
                     
                 </div>
             </div>
+
+            <!-- central modal -->
+            <div class="p-0 bg-white central-modal absolute border shadow" id='central-modal'>
+                <div class="central-modal-header bg-success">
+                    <h3 class="central-modal-title"></h3>
+                    <button type='button' class='central-modal-close'>&times;</button>
+                </div>
+                <div class="central-modal-content">
+                    
+                </div>
+            </div>
         <?php
-        pageFooter();
+            pageFooter();
         ?>
             <script>
                 // click button to show the modal
@@ -118,8 +138,8 @@
                 }
 
                 // Call the function for your form
-                $(document).on('click','.saveCategory',function(){
-                    submitSingleForm("newCategoryForm", "../books/save/index.php");
+                $(document).on('click','.saveCustomer',function(){
+                    submitSingleForm("newCustomerForm", "../books/save/index.php");
                 });
 
                 function submitSingleForm(formId, backendUrl) 
@@ -155,6 +175,31 @@
                         });
                     });
                 }
+
+                // view customer details
+                $(document).on('click','.view-customer',function(){
+                    $('#central-modal').show();
+                    var title = $(this).data('title')+" Transactions";
+                    $('.central-modal-title').html(title);
+                    var id = $(this).data('id');
+
+                    $.ajax({
+                        url:'save/index.php',
+                        data:{
+                            customer_id:id,
+                            action:'Customer-details'
+                        },
+                        beforeSend:function(){
+                            $('.central-modal-content').html("<center><h3>Loading...</h3></center>");
+                        },
+                        success:function(res){
+                            $('.central-modal-content').html(res);
+                        },
+                        error:function(err){
+                            $('.central-modal-content').html("<center><h3>!!! Error Loading data</h3></center>");
+                        }
+                    });
+                });
             </script>
         <?php
     }else{

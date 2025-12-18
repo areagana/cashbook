@@ -481,10 +481,11 @@
                                 $date = request('created_at');
                                 $user_id = auth()->id;
                                 $type='credit';
+                                $customer_id = request('customer_id');
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,book_id = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id=?,type=?";
-                                $res = prepared_statements($sql,'iisiisis',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type]);
+                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,book_id = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id=?,type=?,customer_id=?";
+                                $res = prepared_statements($sql,'iisiisisi',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id]);
                                 $trans_id = $server->insert_id;
 
                                 $stmt = "INSERT INTO  cashbook_cashins SET amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?";
@@ -499,10 +500,11 @@
                                 $transid = request('transaction_id');
                                 $date = request('created_at');
                                 $user_id = auth()->id;
+                                $customer_id = request('customer_id');
 
                                 // ssave the content
-                                $sql = "UPDATE cashbook_transactions SET credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ? WHERE id = ?";
-                                $res = prepared_statements($sql,'isiisii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$transid]);
+                                $sql = "UPDATE cashbook_transactions SET credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ?,customer_id=? WHERE id = ?";
+                                $res = prepared_statements($sql,'isiisiii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$transid]);
 
                                 $stmt = "UPDATE cashbook_cashins SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id = ? WHERE transaction_id = ?";
                                 prepared_statements($stmt,'iisisii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
@@ -517,10 +519,11 @@
                                 $date = request('created_at');
                                 $user_id = auth()->id;
                                 $type='debit';
+                                $customer_id = request('customer_id');
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_transactions SET debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?";
-                                $res = prepared_statements($sql,'iisiisis',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type]);
+                                $sql = "INSERT INTO cashbook_transactions SET debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?,customer_id=?";
+                                $res = prepared_statements($sql,'iisiisisi',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id]);
                                 $trans_id = $server->insert_id;
 
                                 $stmt = "INSERT INTO  cashbook_cashouts SET amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ?,user_id=?";
@@ -535,10 +538,11 @@
                                 $payment_mode = request('paymode_id');
                                 $transid = request('transaction_id');
                                 $date = request('created_at');
+                                $customer_id = request('customer_id');
 
                                 // ssave the content
-                                $sql = "UPDATE cashbook_transactions SET debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=?,user_id = ? WHERE id = ?";
-                                $res = prepared_statements($sql,'isiisii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$transid]);
+                                $sql = "UPDATE cashbook_transactions SET debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=?,user_id = ?,customer_id=? WHERE id = ?";
+                                $res = prepared_statements($sql,'isiisiii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$transid]);
 
                                 $stmt = "UPDATE cashbook_cashouts SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id =? WHERE transaction_id = ?";
                                 prepared_statements($stmt,'iisisii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
