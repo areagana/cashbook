@@ -77,6 +77,14 @@
                                             </div>
                                             <div class="row mx-1">
                                                 <div class="col-md-3 p-2">
+                                                    <label for="item_units">Units:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="item_units" id="item_units" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
                                                     <label for="item_details">DETAILS:</label>
                                                 </div>
                                                 <div class="col p-2">
@@ -421,10 +429,12 @@
                                 $book_id = request('book_id');
                                 $details = request('item_details');
                                 $name = request('item_name');
+                                $units = request('item_units');
+                                $user_id = auth()->id;
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_items SET name = ?,book_id = ?, details = ?";
-                                prepared_statements($sql,'sis',[$name,$book_id,$details]);
+                                $sql = "INSERT INTO cashbook_items SET name = ?,book_id = ?, details = ?,units=?,user_id=?";
+                                prepared_statements($sql,'sissi',[$name,$book_id,$details,$units,$user_id]);
                                 $_SESSION['success'] = 'Item Saved';
                             break;
                         case 'newPaymodeSave':

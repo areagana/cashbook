@@ -271,4 +271,14 @@
                 unset($_SESSION['error']);
         }
     }
+
+    // find item
+    function itemFind($id)
+    {
+        global $server;
+        $sql = "SELECT * FROM cashbook_items WHERE id =?";
+        $res = prepared_statements($sql,'i',[$id]);
+        $rw = $res->fetch_assoc();
+        return myObject($rw);
+    }
 ?>

@@ -210,6 +210,7 @@
             'name'=>'varchar(255) null',
             'book_id'=>'int(11) null',
             'Details'=>'varchar(255) null',
+            'units'=>'varchar(255) null',
             'user_id'=>'int(11) null'
         ];
         create_table($table,$columns);
@@ -289,6 +290,24 @@
         }
     }
 
+    function cashbook_stocks()
+    {
+        $table ='cashbook_stocks';
+        $columns =[
+            'book_id'=>'int(11) null',
+            'item_id'=>'int(11) null',
+            'suplier_id'=>'int(11) null',
+            'transaction_type'=> "ENUM('stock_in','stock_out') NOT NULL",
+            'quantity'        => 'DECIMAL(10,2) NOT NULL',
+            'balance'         => 'DECIMAL(10,2) NOT NULL',
+            'unit_cost'       => 'DECIMAL(10,2) NULL',
+            'total_cost'      => 'DECIMAL(12,2) NULL',
+            'reference'       => 'varchar(100) NULL',
+            'user_id'         => 'int(11) NULL'
+        ];
+        create_table($table,$columns);
+    }
+
     // functions to create
     cashbook_books();
     cashbook_users();
@@ -302,6 +321,7 @@
     cashbook_customers();
     cashbook_business_profile();
     cashbook_roles();
+    cashbook_stocks();
 
 // redirect to the home page after checking table creation functions
 if(isVerified())

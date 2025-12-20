@@ -33,15 +33,18 @@
                 <div class="col-md-1">
                     <a href="../" class="nav-link"><i class="fa fa-arrow-left"></i> Back</a>
                 </div>
-                <div class="col-md-5 p-2">
+                <div class="col-md-3 p-2">
                     <h2 class="p-0 text-left"><?=$book->name;?></h2>
+                </div>
+                <div class="col-md-3 p-3">
+                    <a href='../stock/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-primary"><i class="fa fa-stock"></i> Book Stock</a>
                 </div>
                 <?php if(hasRole(['owner','partner'])):?>
                     <div class="col p-3">
                         <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add category' data-section='category'><i class="fa fa-plus-circle"></i> Category</button>
-                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
-                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add member' data-section='member'><i class="fa fa-plus-circle"></i> Members</button>
-                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add item' data-section='item'><i class="fa fa-plus-circle"></i> Items</button>
+                        <button class="btn btn-sm btn-flat btn-outline-primary btn-click" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
+                        <button class="btn btn-sm btn-flat btn-outline-info btn-click" data-title='add member' data-section='member'><i class="fa fa-plus-circle"></i> Members</button>
+                        <button class="btn btn-sm btn-flat btn-outline-secondary btn-click" data-title='add item' data-section='item'><i class="fa fa-plus-circle"></i> Items</button>
                         <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add payment mode' data-section='paymode'><i class="fa fa-plus-circle"></i> Payment Modes</button>
                     </div>
                 <?php endif;?>
@@ -133,12 +136,7 @@
                                 $sqld = "SELECT distinct DATE(created_at) as date FROM cashbook_transactions WHERE book_id =? order by DATE(created_at) desc";
                                 $dats = prepared_statements($sqld,'i',[$book->id]);
                             ?>
-                            <select name="filter-date" id="filter-date" data-type='date' class="form-control filter-item">
-                                <option value=''><i class="fa fa-filter"></i> By Date</option>
-                                <?php while($rd = $dats->fetch_assoc()):?>
-                                    <option value="<?=$rd['date'];?>"><?=date('d-m-Y', strtotime($rd['date']));?></option>
-                                <?php endwhile;?>
-                            </select>
+                            <input type="date" name="filter-date" id="filter-date" data-type='date' max='<?=date('Y-m-d');?>' class="form-control filter-item">
                             <select name="filter-type" id="filter-type" data-type='type' class="form-control filter-item">
                                 <option value=''><i class="fa fa-filter"></i> By Type</option>
                                 <option value="credit">Cashin</option>

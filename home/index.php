@@ -25,7 +25,7 @@
                             </div>
                             <?php if(hasRole(['owner','partner'])):?>
                                 <div class="col-md-3 p-4">
-                                    <button class="btn btn-outline-info new-book"><i class="fa fa-plus-circle"></i> Add Book</button>
+                                    <button class="btn btn-outline-info new-book right"><i class="fa fa-plus-circle"></i> Add Book</button>
                                 </div>
                             <?php endif;?>
                         </div>
