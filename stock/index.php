@@ -142,6 +142,7 @@
                     $('.side-modal-title').html(title);
                     // display data in the side modal
                     var category = $(this).data('section');
+                    // console.log(category);
                     fetchData(category);
                 });
 
@@ -273,17 +274,24 @@
                         });
                     });
                 }
-        function refreshStockSection(section) {
-            $('.stock-body').load(window.location.href + ' .stock-body > *');
-        }
-        // Call the function for your form
-        $(document).on('click','.saveIssueStock',function(){
-            submitSingleForm("IssueStockForm", "save/index.php");
-        });
+                function refreshStockSection(section) {
+                    $('.stock-body').load(window.location.href + ' .stock-body > *');
+                }
+                // Call the function for your form
+                $(document).on('click','.saveIssueStock',function(){
+                    submitSingleForm("IssueStockForm", "save/index.php");
+                });
 
-        $(document).on('click','.saveNewStock',function(){
-            submitSingleForm("AddStockForm", "save/index.php");
-        });
+                $(document).on('click','.saveNewStock',function(){
+                    submitSingleForm("AddStockForm", "save/index.php");
+                });
+
+                // saving item
+                $(document).on('click','.saveItem',function(){
+                    console.log("Item submitted");
+                    submitSingleForm("newItemForm", "save/index.php");
+                });
+                
                 
             </script>
         <?php

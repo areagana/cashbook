@@ -242,6 +242,18 @@
                                 $response = json_encode(insertStockTransaction($bkid,$itid,$type,$qty,$user_id));
                                 echo $response;
                             break;
+                        case 'newItemSave':
+                                $book_id = request('book_id');
+                                $details = request('item_details');
+                                $name = request('item_name');
+                                $units = request('item_units');
+                                $user_id = auth()->id;
+
+                                // ssave the content
+                                $sql = "INSERT INTO cashbook_items SET name = ?,book_id = ?, details = ?,units=?,user_id=?";
+                                prepared_statements($sql,'sissi',[$name,$book_id,$details,$units,$user_id]);
+                                echo json_encode(['message'=>'Item Saved']);
+                            break;
                      }
 
                     break;
