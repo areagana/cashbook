@@ -51,8 +51,9 @@
                                             <div class="col-md-3 p-4 text-muted text-right text-sm border-left">
                                                 Bal: <?=$bal;?>/=
                                             </div>
-                                            <div class="col-md-2 p-4 border-left">
-                                                <a href='../books/?bkid=<?=encryptor('encrypt',$rw['id']);?>' class="btn btn-sm btn-outline-success right"> View</a>
+                                            <div class="col-md-3 p-4 border-left inline-block">
+                                                <a href='../dashboard/?bkid=<?=encryptor('encrypt',$rw['id']);?>' class="btn btn-sm btn-outline-primary btn-flat right"> Dashboard</a>
+                                                <a href='../books/?bkid=<?=encryptor('encrypt',$rw['id']);?>' class="btn btn-sm btn-outline-success btn-flat right">Details</a>
                                             </div>
                                         </div>
                                         <?php

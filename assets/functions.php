@@ -40,10 +40,10 @@
 
     function e($var)
     {
-    global $server;
-    $t = mysqli_real_escape_string($server,$var);
-    $t = trim($var);
-    return $t;
+        global $server;
+        $t = mysqli_real_escape_string($server,$var);
+        $t = trim($var);
+        return $t;
     }
 
     //header and footer functions
@@ -58,7 +58,7 @@
                 <title><?=($header) ? $header : "Cashbook";?></title>
                 <!-- Bootstrap 4 -->
                 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css">
-
+                <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
                 <!-- Fontawesome -->
                 <link rel="stylesheet" href="../assets/fontawesome-free-5.14.0-web/css/all.css">
 
@@ -106,6 +106,7 @@
             </div>
                 <script src="../assets/js/jquery-3.5.1.min.js"></script>
                 <script src="../assets/js/bootstrap.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
                 <script src="../assets/js/xdialog.3.4.0.min.js"></script>
                 <script src="../assets/js/custom.js"></script>
             </body>
@@ -202,25 +203,26 @@
     }
 
     // check business profile on Login
-     function checkBusinessProfile()
-     {
-        global $server;
-        $user = auth();
-        $sql = "SELECT * FROM cashbook_business_profile WHERE user_id = ?";
-        $res = prepared_statements($sql,'i',[$user->id]);
+    function checkBusinessProfile()
+    {
+    global $server;
+    $user = auth();
+    $sql = "SELECT * FROM cashbook_business_profile WHERE user_id = ?";
+    $res = prepared_statements($sql,'i',[$user->id]);
 
-        // check if beongs to a business
-        $stmt = "SELECT business_id FROM cashbook_users WHERE id = ?";
-        $ress = prepared_statements($stmt,'i',[$user->id]);
-        $r = $ress->fetch_assoc();
-        if($res->num_rows > 0 || !empty($r['business_id']) > 0)
-        {
-            $_SESSION['hasbusiness'] = true;
-            return true;
-        }else{
-            return false;
-        }
-     }
+    // check if beongs to a business
+    $stmt = "SELECT business_id FROM cashbook_users WHERE id = ?";
+    $ress = prepared_statements($stmt,'i',[$user->id]);
+    $r = $ress->fetch_assoc();
+
+    if($res->num_rows > 0 || !empty($r['business_id']) > 0)
+    {
+        $_SESSION['hasbusiness'] = true;
+        return true;
+    }else{
+        return false;
+    }
+    }
     // check roles
     function hasRole($array)
     {
@@ -280,5 +282,11 @@
         $res = prepared_statements($sql,'i',[$id]);
         $rw = $res->fetch_assoc();
         return myObject($rw);
+    }
+
+    function fetchBusiness()
+    {
+        global $server;
+        // $business = 
     }
 ?>

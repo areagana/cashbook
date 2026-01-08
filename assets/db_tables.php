@@ -1,6 +1,7 @@
 <?php
     session_start();
     require(__dir__.'/functions.php');
+    
     function create_Table($table, array $columns)
     {
             global $server, $db_name,$foreignKeys;
@@ -328,6 +329,12 @@ if(isVerified())
 {
     if(checkBusinessProfile())
     {
+        // if(hasRole(['owner','partner']))
+        // {
+        //     redirect('../dashboard/');
+        // }else{
+        //     redirect('../home/');
+        // }
         redirect('../home/');
     }else{
         redirect('../profile/');
