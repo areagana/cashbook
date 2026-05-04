@@ -53,7 +53,7 @@
 
             <div class="row mx-1 mt-2">
                 <div class="col p-2 side-displays">
-                    <div class="p-2 border rounded-3 m-1">
+                    <div class="p-2 border rounded-3 m-1 text-center">
                         <h3 class="border-bottom rounded-3 p-2">MEMBERS</h3>
                         <div class="p-2 text-center">
                             <?php
@@ -62,6 +62,8 @@
                                 echo $rspu->num_rows;
                             ?>
                         </div>
+                        <hr>
+                        <a href="../members/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
                     </div>
                     <div class="p-2 border rounded-3 m-1">
                         <h3 class="border-bottom rounded-3 p-2">TRANSACTIONS</h3>
@@ -95,35 +97,35 @@
                         </div>
                     </div>
                     <div class="row m-1">
-                        <div class="col p-2 border m-1">
+                        <div class="col p-2 border m-1 book-dash">
                             <?php
-                                $stmt = "SELECT sum(amount) as cashin FROM cashbook_cashins WHERE book_id = ?";
+                                $stmt = "SELECT sum(amount) as cashin FROM cashbook_cashins WHERE book_id = ? AND month(created_at) = month(now())";
                                 $res = prepared_statements($stmt,'i',[$id]);
                                 $rw = $res->fetch_assoc();
                             ?>
-                            <h3 class="p-2 text-muted">CASHIN: <span class="right"><?=number_format($rw['cashin'],0);?></span></h3>
+                            <div class="p-2 text-muted">CASHIN: <span class="right"><?=number_format($rw['cashin'],0);?></span></div>
                         </div>
-                        <div class="col p-2 border m-1">
+                        <div class="col p-2 border m-1 book-dash">
                             <?php
-                                $stmtt = "SELECT sum(amount) as cashout FROM cashbook_cashouts WHERE book_id = ?";
+                                $stmtt = "SELECT sum(amount) as cashout FROM cashbook_cashouts WHERE book_id = ? AND month(created_at) = month(now())";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
                             ?>
-                            <h3 class="p-2 text-muted">CASHOUT: <span class="right"><?=number_format($rws['cashout'],0);?></span></h3>
+                            <div class="p-2 text-muted">CASHOUT: <span class="right"><?=number_format($rws['cashout'],0);?></span></div>
                         </div>
-                        <div class="col p-2 border m-1">
+                        <div class="col p-2 border m-1 book-dash">
                             <?php
-                                $stmtt = "SELECT sum(amount) as cashout FROM cashbook_cashouts WHERE book_id = ?";
+                                $stmtt = "SELECT sum(amount) as cashout FROM cashbook_cashouts WHERE book_id = ? AND month(created_at) = month(now())";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
                             ?>
-                            <h3 class="p-2"><strong>BALANCE:</strong> <span class="right"><?=number_format(($rw['cashin']-$rws['cashout']),0);?></span></h3>
+                            <div class="p-2"><strong>BALANCE:</strong> <span class="right"><strong><?=number_format(($rw['cashin']-$rws['cashout']),0);?></span></strong></div>
                         </div>
                     </div>
                     <hr>
                     <div class="row mx-1">
                         <div class="col p-2">
-                            <h4 class="text-muted">TRANSACTIONS</h4>
+                            <div class="text-muted">TRANSACTIONS</div>
                         </div>
                         <div class="col p-2 text-muted">
                             <i class="fa fa-filter"></i>  FILTER TRANSACTIONS:
@@ -160,7 +162,7 @@
                             $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.created_at,ct.details,cu.name as customer FROM cashbook_transactions ct 
                                     LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id
                                     LEFT JOIn cashbook_customers cu ON cu.id = ct.customer_id
-                                WHERE ct.book_id = ? ORDER BY created_at desc";
+                                WHERE ct.book_id = ? AND month(ct.created_at) = month(now()) ORDER BY ct.created_at desc";
                             $res_ = prepared_statements($stmt_,'i',[$id]);
                             $t = 0;
                         ?>
@@ -172,7 +174,6 @@
                                         <th>Date</th>
                                         <th>Category</th>
                                         <th>Details</th>
-                                        <!-- <th>Customer</th> -->
                                         <th>Credit</th>
                                         <th>Debit</th>
                                         <th>Action</th>
@@ -185,7 +186,6 @@
                                         <td><?=$r['created_at'];?></td>
                                         <td><?=$r['category'];?></td>
                                         <td><?=$r['details'];?></td>
-                                        <td><?//=$r['customer'];?></td>
                                         <td><?=number_format($r['credits'],0);?></td>
                                         <td><?=number_format($r['debits'],0);?></td>
                                         <td>

@@ -29,6 +29,7 @@
                 case 'fetchForm':
                         $category = request('section');
                         $bkid =  request('book_id');
+
                         switch($category)
                         {
                             case 'category':
@@ -229,6 +230,74 @@
                                         </form>
                                     <?php
                                 break;
+                            case 'member-edit':
+                                    $id = request('id');
+                                    // fetch user from the database
+                                    $sql = "SELECT * FROM cashbook_users WHERE id = ?";
+                                    $res = prepared_statements($sql,'i',[$id]);
+                                    $row = $res->fetch_assoc();
+                                    ?>
+                                        <form id='MemberEditForm' method="post">
+                                            <div class="row mx-1">
+                                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                                <input type="hidden" name="form" value='MemberEditSave'>
+                                                <input type="hidden" name="action" value='SaveForm'>
+                                                <input type="hidden" name="member-id" value='<?=$row['id'];?>'>
+                                                <div class="col-md-3 p-2">
+                                                    <label for="user_name">NAME:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="user_name" id="user_name" value="<?=$row['name'] ?? '';?>" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="email">EMAIL:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="email" name="email" id="email" value="<?=$row['email'] ?? '';?>" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="role_id">ROLE:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = mysqli_query($server,"SELECT * FROM cashbook_roles");
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="role_id" id="role_id" class="form-control" required>
+                                                        <option hidden> --- Select --- </option>
+                                                        <?php while($rw = $sql->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['display_name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="contact">CONTACT:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="contact" id="contact" value="<?=$row['contact'] ?? '';?>" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="password">PASSWORD:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="password" name="password" id="password" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="roww mx-1">
+                                                <div class="col p-2">
+                                                    <button  type='submit' class="btn btn-flat btn-primary right saveEditUser">Save</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    <?php
+                                break;
                             case 'cashin':
                                     ?>
                                         <form id='newCashinForm' method="post">
@@ -240,7 +309,7 @@
                                                     <label for="inamount">AMOUNT:</label>
                                                 </div>
                                                 <div class="col p-2">
-                                                    <input type="text" name="inamount" id="inamount" class="form-control">
+                                                    <input type="text" name="inamount" id="inamount" class="form-control" placeholder='Amount..'>
                                                 </div>
                                             </div>
                                             <div class="row mx-1">
@@ -279,6 +348,31 @@
                                             </div>
                                             <div class="row mx-1">
                                                 <div class="col-md-3 p-2">
+                                                    <label for="customer_id">ITEM:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = "SELECT * FROM cashbook_items WHERE book_id = ?";
+                                                    $res = prepared_statements($sql,'i',[$bkid]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="item_id" id="item_id" class="form-control">
+                                                        <option hidden>Select</option>
+                                                        <?php while($rw = $res->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="customer_id">QUANTITY:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="quantity" id="quantity" class="form-control" autocomplete='off' placeholder='Qty'>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
                                                     <label for="paymode_id">PAYMENT MODE:</label>
                                                 </div>
                                                 <?php
@@ -299,7 +393,7 @@
                                                     <label for="cashin_details">DETAILS:</label>
                                                 </div>
                                                 <div class="col p-2">
-                                                    <input type="text" name="cashin_details" id="cashin_details" class="form-control">
+                                                    <input type="text" name="cashin_details" id="cashin_details" class="form-control" placeholder='Details'>
                                                 </div>
                                             </div>
                                             <div class="row mx-1">
@@ -409,6 +503,7 @@
                                 break;
                         }
                     break;
+                    
                 case 'SaveForm':
                     $form = request('form');
                     switch($form)
@@ -450,23 +545,74 @@
                                 }
 
                             break;
-                        case 'newMemberSave':
+                        case 'MemberEditSave':
                             $book_id = request('book_id');
                             $email = request('email');
                             $name = request('user_name');
                             $contact = request('contact');
                             $business_id = bookFind($book_id)->business_id;
                             $password = request('password');
-                            $password = password_hash($password,PASSWORD_DEFAULT);
+                            $role = request('role_id');
+                            $member_id = request('member-id');
+
+                            // check if user already exists and edit
+
+                                // save the content
+                                if(!empty($member_id))
+                                {   
+                                    if(!empty($password)):  // update password is not empty
+                                        $password = password_hash($password,PASSWORD_DEFAULT);
+                                        // update user here, check user books
+                                        $sql = "UPDATE cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,password =?,role_id= ?";
+                                        prepared_statements($sql,'sssisi',[$name,$email,$contact,$business_id,$password,$role_id]);
+                                        
+                                    else: // leave out password update
+                                        $sql = "UPDATE cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,role_id= ?";
+                                        prepared_statements($sql,'sssii',[$name,$email,$contact,$business_id,$role_id]);
+                                    endif;
+
+                                    $user_id = $member_id;
+                                }
+
+                                // check user book attachment
+                                $sql = "SELECT * FROM  cashbook_book_users WHERE user_id = ? AND book_id = ?";
+                                $check = prepared_statements($sql,'ii',[$user_id,$book_id]);
+                                
+                                // attach book if user is not linked
+                                if($check->num_rows == 0)
+                                {
+                                     // link user to books
+                                    $stmt = "INSERT INTO cashbook_book_users SET user_id = ?, book_id = ?";
+                                    prepared_statements($stmt,'ii',[$user_id,$book_id]);
+                                }
+
+                            break;
+                        case 'newMemberSave':
+
+                            $book_id = request('book_id');
+                            $email = request('email');
+                            $name = request('user_name');
+                            $contact = request('contact');
+                            $business_id = bookFind($book_id)->business_id;
+                            $password = request('password');
                             $role = request('role_id');
 
-                                // ssave the content
                                 $sql = "INSERT INTO cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,password =?,role_id=?";
                                 prepared_statements($sql,'sssisi',[$name,$email,$contact,$business_id,$password,$role_id]);
                                 $user_id = $server->insert_id;
-                                // link user to books
-                                $stmt = "INSERT INTO cashbook_book_users SET user_id = ?, book_id = ?";
-                                prepared_statements($stmt,'ii',[$user_id,$book_id]);
+
+                                // check user book attachment
+                                $sql = "SELECT * FROM  cashbook_book_users WHERE user_id = ? AND book_id = ?";
+                                $check = prepared_statements($sql,'ii',[$user_id,$book_id]);
+                                
+                                // attach book if user is not linked
+                                if($check->num_rows == 0)
+                                {
+                                     // link user to books
+                                    $stmt = "INSERT INTO cashbook_book_users SET user_id = ?, book_id = ?";
+                                    prepared_statements($stmt,'ii',[$user_id,$book_id]);
+                                }
+
                             break;
                         case 'newCustomerSave':
                             $book_id = request('book_id');
@@ -492,16 +638,20 @@
                                 $user_id = auth()->id;
                                 $type='credit';
                                 $customer_id = request('customer_id');
+                                $item_id = request('item_id');
+                                $quantity = request('quantity');
+                                $rate = request('rate');
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,book_id = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id=?,type=?,customer_id=?";
-                                $res = prepared_statements($sql,'iisiisisi',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id]);
+                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,book_id = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id=?,type=?,customer_id=?,item_id = ?, quantity = ?, rate = ?";
+                                $res = prepared_statements($sql,'iisiisisiiii',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id,$item_id,$qty,$rate]);
                                 $trans_id = $server->insert_id;
 
-                                $stmt = "INSERT INTO  cashbook_cashins SET amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?";
-                                prepared_statements($stmt,'iisiiisi',[$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id]);
+                                $stmt = "INSERT INTO  cashbook_cashins SET amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?, rate = ?";
+                                prepared_statements($stmt,'iisiiisiiii',[$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$rate]);
                                 $_SESSION['success'] ='Data Saved';
                             break;
+
                         case 'editCashinSave':
                                 $details = request('cashin_details');
                                 $category_id = request('category_id');
@@ -511,15 +661,22 @@
                                 $date = request('created_at');
                                 $user_id = auth()->id;
                                 $customer_id = request('customer_id');
+                                $item_id = request('item_id');
+                                $quantity = request('quantity');
+                                $rate = request('rate');
 
-                                // ssave the content
-                                $sql = "UPDATE cashbook_transactions SET credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ?,customer_id=? WHERE id = ?";
-                                $res = prepared_statements($sql,'isiisiii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$transid]);
+                                // track transaction edits
+                                trackTransactionEdits($transid,'edit');
 
-                                $stmt = "UPDATE cashbook_cashins SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id = ? WHERE transaction_id = ?";
-                                prepared_statements($stmt,'iisisii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
+                                // save the content
+                                $sql = "UPDATE cashbook_transactions SET credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ?,customer_id=?,item_id = ?, quantity = ?, rate = ? WHERE id = ?";
+                                $res = prepared_statements($sql,'isiisiiiiii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$item_id,$qty,$rate,$transid]);
+
+                                $stmt = "UPDATE cashbook_cashins SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id = ?,item_id = ?, quantity = ?, rate = ? WHERE transaction_id = ?";
+                                prepared_statements($stmt,'iisisiiiii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$item_id,$qty,$rate,$transid]);
                                 $_SESSION['success'] = "Data Saved";
                             break;
+                            
                         case 'newCashoutSave':
                                 $book_id = request('book_id');
                                 $details = request('cashout_details');
@@ -539,9 +696,10 @@
                                 $stmt = "INSERT INTO  cashbook_cashouts SET amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ?,user_id=?";
                                 prepared_statements($stmt,'iisiiisi',[$amount,$category_id,$details,$book_id,$trans_id,$payment_mode,$date,$user_id]);
                                 $_SESSION['success'] = 'Transaction Saved';
-                                
+                                trackTransactionEdits($trans_id,'new');
                             break;
                         case 'editCashoutSave':
+
                                 $details = request('cashout_details');
                                 $category_id = request('category_id');
                                 $amount = request('outamount');
@@ -549,6 +707,9 @@
                                 $transid = request('transaction_id');
                                 $date = request('created_at');
                                 $customer_id = request('customer_id');
+
+                                // record transaction edits
+                                trackTransactionEdits($transid,'edit');
 
                                 // ssave the content
                                 $sql = "UPDATE cashbook_transactions SET debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=?,user_id = ?,customer_id=? WHERE id = ?";
@@ -751,9 +912,13 @@
                         $id = request('id');
                         $transaction = transactionFind($id);
 
+                        // track changes before deletion
+                        trackTransactionEdits($id,'delete');
+                        
                         // delete transaction
                         $sql = "DELETE FROM cashbook_transactions WHERE id = ?";
                         prepared_statements($sql,'i',[$id]);
+
                         switch($type)
                         {
                             case 'credit':

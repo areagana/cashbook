@@ -195,6 +195,8 @@
             'item_id'=>'int(11) null',
             'paymode_id'=>'int(11) null',
             'customer_id'=>'int(11) null',
+            'quantity'=>'int(11) null',
+            'rate'=>'int(11) null',
             'credit_amount'=>'float null',
             'debit_amount'=>'float null',
             'details'=>'varchar(255) null',
@@ -309,6 +311,20 @@
         create_table($table,$columns);
     }
 
+    function cashbook_transaction_edits()
+    {
+        $table ='cashbook_transaction_edits';
+        $columns =[
+            'book_id'=>'int(11) null',
+            'transaction_id'=>'int(11) null',
+            'user_id'=>'int(11) null',
+            'edit_type'=> "ENUM('edit','delete') NOT NULL",
+            'previous_data'   => 'TEXT NULL',
+            'new_data'        => 'TEXT NULL',
+            'user_id'         => 'int(11) NULL'
+        ];
+        create_table($table,$columns);
+    }
     // functions to create
     cashbook_books();
     cashbook_users();
@@ -323,6 +339,7 @@
     cashbook_business_profile();
     cashbook_roles();
     cashbook_stocks();
+    cashbook_transaction_edits();
 
 // redirect to the home page after checking table creation functions
 if(isVerified())

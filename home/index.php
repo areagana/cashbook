@@ -3,7 +3,7 @@
     if(isVerified())
     {
         pageHeader('Home');
-        $business = (businessFind(auth())) ? businessFind(auth()) : businessFindId(auth()->business_id) ;
+        $business = (businessFind(auth())) ?? businessFindId(auth()->business_id) ;
         ?>
                     <div class="container">
                         <div class="row mx-1">

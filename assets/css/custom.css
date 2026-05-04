@@ -508,10 +508,6 @@ body{
         width:80%;
         margin-left:5%;
       }
-  }
-
-  @media screen and (max-width:600px)
-  {
       .dash-canvas{
           width:99% !important;
       }
@@ -556,7 +552,10 @@ body{
       }
       .container-fluid .tab-content .tab-pane{
           width:98% !important;
-      }           
+      }
+      .book-dash{
+        font-size: 12px;
+      }
   }
 
   @media screen and (max-width:1200px)
