@@ -136,7 +136,9 @@
             'amount'=>'float null',
             'details'=>'varchar(255) null',
             'transaction_id'=>'int(11) null',
-            'user_id'=>'int(11) null'
+            'user_id'=>'int(11) null',
+            'quantity'=>'int(11) null',
+            'rate'=>'int(11) null'
         ];
         $foreignKeys= [
             'book_id' => 'book_id', 'ref_table' => 'cashbook_books', 'ref_column' => 'id',
@@ -161,7 +163,9 @@
             'amount'=>'float null',
             'details'=>'varchar(255) null',
             'transaction_id'=>'int(11) null',
-            'user_id'=>'int(11) null'
+            'user_id'=>'int(11) null',
+            'quantity'=>'int(11) null',
+            'rate'=>'int(11) null'
         ];
          $foreignKeys= [
             'book_id' => 'book_id', 'ref_table' => 'cashbook_books', 'ref_column' => 'id',
@@ -325,6 +329,29 @@
         ];
         create_table($table,$columns);
     }
+
+    function cashbook_customer_ledger()
+    {
+        $table = 'cashbook_customer_ledger';
+
+        $columns = [
+            'customer_id'   => 'int(11) NOT NULL',
+            'book_id'       => 'int(11) NOT NULL',
+            'item_id'       => 'int(11) NOT NULL',
+            'type'          => "enum('cash_sale','payment','credit_sale') NOT NULL",
+            'debit_amount'  => 'decimal(10,2) DEFAULT 0',   // increases what customer owes
+            'credit_amount' => 'decimal(10,2) DEFAULT 0',   // reduces what customer owes
+            'transaction_id'  => 'int(11) NULL',
+            'paymode_id'   => 'int(11) NULL',
+            'quantity'   => 'int(11) NULL',
+            'details'   => 'text NULL',
+            'balance'       => 'decimal(10,2) DEFAULT 0',
+            'user_id'       => 'int(11) NULL'
+        ];
+
+        create_table($table, $columns);
+    }
+
     // functions to create
     cashbook_books();
     cashbook_users();
@@ -340,6 +367,7 @@
     cashbook_roles();
     cashbook_stocks();
     cashbook_transaction_edits();
+    cashbook_customer_ledger();
 
 // redirect to the home page after checking table creation functions
 if(isVerified())

@@ -22,18 +22,24 @@
                                     <th>Date</th>
                                     <th>Type</th>
                                     <th>Details</th>
-                                    <th>Amount</th>
+                                    <th>Credit</th>
+                                    <th>Debit</th>
+                                    <th>Balance</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                             <?php if($res->num_rows > 0):?>
-                                <?php while($r = $res->fetch_assoc()): $credits[] = $r['credit_amount']; $debits[] = $r['debit_amount']; ?>
+                                <?php while($r = $res->fetch_assoc()): $credits[] = $r['credit_amount']; $debits[] = $r['debit_amount'];
+                                    $bal = array_sum($credits) - array_sum($debits);
+                                ?>
                                     <tr>
                                         <td><?=$r['created_at'];?></td>
                                         <td><?=$r['type'];?></td>
                                         <td><?=$r['details'];?></td>
-                                        <td><?=(!empty($r['credit_amount'])) ? number_format($r['credit_amount'],0) : number_format(-$r['debit_amount'],0);?></td>
+                                        <td><?=(!empty($r['credit_amount'])) ? number_format($r['credit_amount'],0) : '';?></td>
+                                        <td><?=(!empty($r['debit_amount'])) ? number_format($r['debit_amount'],0) : '';?></td>
+                                        <td><?=number_format($bal,0);?></td>
                                         <td></td>
                                     </tr>
                                 <?php endwhile;?>
@@ -44,6 +50,8 @@
                             <?php endif;?>
                             <tr>
                                 <th colspan='3'>BALANCE</th>
+                                <th><?=number_format(array_sum($credits),0);?></th>
+                                <th><?=number_format(array_sum($debits),0);?></th>
                                 <th><?=number_format((array_sum($credits) - array_sum($debits)),0);?></th>
                             </tr>
                             </tbody>

@@ -40,13 +40,13 @@
                     <a href='../stock/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-primary"><i class="fa fa-stock"></i> Book Stock</a>
                 </div>
                 <?php if(hasRole(['owner','partner'])):?>
-                    <div class="col p-3">
-                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add category' data-section='category'><i class="fa fa-plus-circle"></i> Category</button>
-                        <button class="btn btn-sm btn-flat btn-outline-primary btn-click" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
-                        <button class="btn btn-sm btn-flat btn-outline-info btn-click" data-title='add member' data-section='member'><i class="fa fa-plus-circle"></i> Members</button>
-                        <button class="btn btn-sm btn-flat btn-outline-secondary btn-click" data-title='add item' data-section='item'><i class="fa fa-plus-circle"></i> Items</button>
-                        <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add payment mode' data-section='paymode'><i class="fa fa-plus-circle"></i> Payment Modes</button>
-                    </div>
+                        <div class="col p-3">
+                            <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add category' data-section='category'><i class="fa fa-plus-circle"></i> Category</button>
+                            <button class="btn btn-sm btn-flat btn-outline-primary btn-click" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
+                            <button class="btn btn-sm btn-flat btn-outline-info btn-click" data-title='add member' data-section='member'><i class="fa fa-plus-circle"></i> Members</button>
+                            <button class="btn btn-sm btn-flat btn-outline-secondary btn-click" data-title='add item' data-section='item'><i class="fa fa-plus-circle"></i> Items</button>
+                            <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add payment mode' data-section='paymode'><i class="fa fa-plus-circle"></i> Payment Modes</button>
+                        </div>
                 <?php endif;?>
             </div>
             <hr>
@@ -99,7 +99,11 @@
                     <div class="row m-1">
                         <div class="col p-2 border m-1 book-dash">
                             <?php
-                                $stmt = "SELECT sum(amount) as cashin FROM cashbook_cashins WHERE book_id = ? AND month(created_at) = month(now())";
+                                $stmt = "SELECT SUM(amount) as cashin 
+                                            FROM cashbook_cashins 
+                                            WHERE book_id = ? 
+                                            AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
+                                            AND created_at < DATE_FORMAT(NOW() + INTERVAL 1 MONTH, '%Y-%m-01')";
                                 $res = prepared_statements($stmt,'i',[$id]);
                                 $rw = $res->fetch_assoc();
                             ?>
@@ -107,7 +111,11 @@
                         </div>
                         <div class="col p-2 border m-1 book-dash">
                             <?php
-                                $stmtt = "SELECT sum(amount) as cashout FROM cashbook_cashouts WHERE book_id = ? AND month(created_at) = month(now())";
+                                $stmtt = "SELECT SUM(amount) as cashout 
+                                            FROM cashbook_cashouts 
+                                            WHERE book_id = ? 
+                                            AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
+                                            AND created_at < DATE_FORMAT(NOW() + INTERVAL 1 MONTH, '%Y-%m-01')";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
                             ?>
@@ -115,7 +123,7 @@
                         </div>
                         <div class="col p-2 border m-1 book-dash">
                             <?php
-                                $stmtt = "SELECT sum(amount) as cashout FROM cashbook_cashouts WHERE book_id = ? AND month(created_at) = month(now())";
+                                $stmtt = "SELECT SUM(amount) as cashout FROM cashbook_cashouts WHERE book_id = ? AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01') AND created_at < DATE_FORMAT(NOW() + INTERVAL 1 MONTH, '%Y-%m-01')";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
                             ?>
@@ -316,6 +324,14 @@
                 console.error("Form not found:", formId);
                 return;
             }
+            
+            // 🔴 VALIDATION CHECK
+            if(!form.checkValidity()) 
+            {
+                form.reportValidity(); // shows browser messages
+                xdialog.stopSpin();
+                return;
+            }
 
             // Attach submit listener once
             form.addEventListener("submit", function(e) {
@@ -334,6 +350,7 @@
                         responseDiv.id = "response_" + formId;
                         form.appendChild(responseDiv);
                     }
+                    // console.log("Server response:", response);
                     window.location.reload();
                 })
                 .catch(err => {
@@ -469,5 +486,32 @@
         $('#resetFilters').on('click', function () {
             $('.filter-item').val('');
             $('.filter-item').trigger('change');
+        });
+
+        // lock customer selection
+        document.addEventListener("change", function(e){
+            if(e.target && e.target.id == "transaction_type")
+            {
+
+                let type = e.target.value;
+                let paymode = document.getElementById("paymode_id");
+                let customer = document.getElementById("customer_id");
+
+                if(!paymode || !customer) return;
+
+                paymode.disabled = false;
+                customer.required = false;
+
+                if(type == 'credit_sale'){
+                    paymode.value = "";
+                    paymode.disabled = true;
+                    customer.setAttribute("required", true);
+                }
+
+                if(type == 'payment'){
+                    customer.setAttribute("required", true);
+                    paymode.setAttribute("required", true);
+                }
+            }
         });
     </script>

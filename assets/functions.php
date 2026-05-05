@@ -59,9 +59,11 @@
     function transactionFind($id)
     {
         global $server;
-        $stmt = "SELECT ct.*,c.name as category,p.name as paymode FROM cashbook_transactions ct 
+        $stmt = "SELECT ct.*,c.name as category,p.name as paymode,i.name as item_name,cust.name as customer_name FROM cashbook_transactions ct 
                     LEFT JOIN cashbook_categories c ON c.id = ct.category_id
                     LEFT JOIN cashbook_paymodes p ON p.id = ct.paymode_id
+                    LEFT JOIN cashbook_items i ON i.id = ct.item_id
+                    LEFT JOIN cashbook_customers cust ON cust.id = ct.customer_id
                 WHERE ct.id = ?";
         $data = prepared_statements($stmt,'i',[$id]);
         $row = $data->fetch_assoc();
@@ -237,6 +239,30 @@
         $sql = "INSERT INTO cashbook_transaction_edits (book_id,transaction_id, user_id, previous_data, edit_type) VALUES (?, ?, ?, ?, ?)";
         prepared_statements($sql, 'iiiss', [$book_id,$transaction_id, $user_id, $old_value,$type]);
     }
+
+    // customer ledger update function
+    function customerLedgerUpdate($customer_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty)
+    {
+        $sql = "
+            SELECT 
+                customer_id,
+                SUM(debit_amount - credit_amount) AS balance
+            FROM cashbook_customer_ledger
+            WHERE customer_id = ? AND book_id = ?
+            GROUP BY customer_id
+        ";
+
+        $res = prepared_statements($sql, 'ii', [$customer_id, $book_id]);
+        $row = $res->fetch_assoc();
+
+        $balance = $row['balance'] ?? 0;
+        // use balance tp update the ledger
+        $newBalance = $balance + $debit - $credit;
+        
+        $stmt = "INSERT INTO  cashbook_customer_ledger SET customer_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ?";
+        prepared_statements($stmt,'iddsiiisiiid',[$customer_id,$credit,$debit,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$newBalance]);  
+    }
+
 
      //header and footer functions
     function pageHeader($header = false)

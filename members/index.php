@@ -31,7 +31,9 @@
                         <hr>
                         <div class="p-2">
                             <?php
-                                $sql = "SELECT cu.* FROM cashbook_users cu WHERE business_id =?";
+                                $sql = "SELECT cu.*, r.name as role FROM cashbook_users cu
+                                        LEFT JOIN cashbook_roles r ON cu.role_id = r.id
+                                        WHERE business_id =?";
                                 $res =prepared_statements($sql,'i',[$book->business_id]);
                                 $t =0;
                             ?>
@@ -41,6 +43,7 @@
                                             <th>#</th>
                                             <th>Name</th>
                                             <th>Email</th>
+                                            <th>Role</th>
                                             <th>Contact</th>
                                             <th>Action</th>
                                         </tr>
@@ -51,6 +54,7 @@
                                                 <td><?=++$t;?></td>
                                                 <td><?=$r['name'];?></td>
                                                 <td><?=$r['email'];?></td>
+                                                <td><?=$r['role'];?></td>
                                                 <td><?=$r['contact'];?></td>
                                                 <td>
                                                     <?php if(hasRole(['owner','partner'])):?>
@@ -133,6 +137,14 @@
                     xdialog.startSpin();
                     if (!form) {
                         console.error("Form not found:", formId);
+                        return;
+                    }
+
+                    // 🔴 VALIDATION CHECK
+                    if(!form.checkValidity()) 
+                    {
+                        form.reportValidity(); // shows browser messages
+                        xdialog.stopSpin();
                         return;
                     }
 
