@@ -515,11 +515,51 @@
                                     </form>
                                 <?php
                                 break;
+                            case 'invoice':
+                                    ?>
+                                        <form id='newInvoiceForm' method="post">
+                                            <div class="row mx-1">
+                                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                                <input type="hidden" name="form" value='newInvoiceSave'>
+                                                <input type="hidden" name="action" value='SaveForm'>
+                                                <div class="col-md-3 p-2">
+                                                    <label for="customer_id">CUSTOMER:</label>
+                                                </div>
+                                                <?php
+                                                    $sqlc = "SELECT * FROM cashbook_customers WHERE book_id = ?";
+                                                    $ress = prepared_statements($sqlc,'i',[$bkid]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="customer_id" id="customer_id" class="form-control" required>
+                                                        <option value="">-- select--</option>
+                                                        <?php while($rr = $ress->fetch_assoc()):?>
+                                                            <option value="<?=$rr['id'];?>"><?=$rr['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="invoice_date">INVOICE DATE:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="date" name="invoice_date" id="invoice_date" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="roww mx-1">
+                                                <div class="col p-2">
+                                                    <button type='submit' class="btn btn-flat btn-primary right saveInvoice">Save</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    <?php
+                                break;
                         }
                     break;
                     
                 case 'SaveForm':
                     $form = request('form');
+                    
                     switch($form)
                     {
                         case 'newCategorySave':
@@ -663,6 +703,7 @@
                                 // CASH SALE
                                 if($type === 'cash_sale'){
                                     $credit = $amount; // cash increases
+                                    $creditable = 0;
                                 }
 
                                 // CREDIT SALE
@@ -672,12 +713,14 @@
 
                                 // capture payment the same way as cash sale
                                 if($type === 'payment'){
-                                    $credit = $amount; 
+                                    $credit = $amount;
+                                    $creditable = $amount; 
                                 }
 
                                 //other_income
                                  if($type === 'other_income'){
                                     $credit = $amount; 
+                                    $creditable = $amount;
                                 }
                                 // save the content
                                 $sql = "INSERT INTO cashbook_transactions  SET credit_amount = ?, debit_amount = ?, book_id = ?, details = ?, 
@@ -700,7 +743,7 @@
                                 // check if customer has been selected and update the ledger
                                 if(!empty($customer_id))
                                 {
-                                    customerLedgerUpdate($customer_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty);
+                                    customerLedgerUpdate($customer_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty);
                                 }
 
                                 $_SESSION['success'] ='Data Saved';
@@ -772,6 +815,76 @@
                                 prepared_statements($stmt,'iisisii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
                                 $_SESSION['success'] = "Data Saved";
 
+
+                            break;
+
+                        case 'newInvoiceSave':
+                                $customer_id = request('customer_id');
+                                $user_id = auth()->id;
+                                $invoice_date = request('invoice_date');
+                                $book_id = request('book_id');
+
+                                // save data
+                                $stmt = "INSERT INTO cashbook_invoices SET customer_id = ?, book_id = ?, user_id = ?, invoice_date = ?";
+                                $invoice_id = prepared_statements($stmt,'iiis',[$customer_id,$book_id,$user_id,$invoice_date]);
+                                $invoice_no = 'INV-'.date('Y').'-'.str_pad($invoice_id,6,'0',STR_PAD_LEFT);
+
+                                // update invoice number
+                                $update = "UPDATE cashbook_invoices SET invoice_no = ? WHERE id = ?";
+                                prepared_statements($update,'si',[$invoice_no,$invoice_id]);
+
+                                // find invoice to load its details
+                                $invoice = invoiceFind($invoice_id);
+                                echo json_encode($invoice);
+                            break;
+                            // save invoice items
+                        case 'newInvoiceItemSave':
+
+                            $invoice_id = request('invoice_id');
+                            $items = $_REQUEST['item_id'];
+                            $quantities = $_REQUEST['qty'];
+                            $rates = $_REQUEST['rate'];
+                            $amounts = $_REQUEST['amount']; 
+                            $user_id = auth()->id;
+                            $invoiceAmount = request('InvoiceAmount');
+                            $invoice = invoiceFind($invoice_id);
+                            $customer_id = $invoice->customer_id;
+                            $book_id = $invoice->book_id;
+                            $invoice_no = $invoice->invoice_no;
+
+                            // save data into the table
+                            $stmt = "INSERT INTO cashbook_invoice_items SET invoice_id = ?,item_id = ?,quantity = ?, unit_price = ?,total = ?, user_id = ?";
+
+                            $amountt = 0;
+                            // loop through items
+                            foreach($items as $k => $item)
+                            {
+                                $item = $items[$k];
+                                $qty = $quantities[$k];
+                                $rate = $rates[$k];
+                                $amount = $amounts[$k];
+                                $amountt += $amount;
+
+                                // use prepared statements
+                                prepared_statements($stmt,'iiiidi',[$invoice_id,$item,$qty,$rate,$amount,$user_id]);
+                            }
+
+                            $status = 'sent';
+                            // update invoice
+                            $stm = "UPDATE cashbook_invoices SET total = ?,balance = ?,status = ? WHERE id = ?";
+                            $ress = prepared_statements($stm,'iisi',[$amountt,$amountt,$status,$invoice_id]);
+
+                            if($ress > 0) // if the invoice has been updated
+                            {
+                                // enter transaction in the table to link to customer
+                                $trans = "INSERT INTO cashbook_transactions SET customer_id = ?, details = ?, debit_amount = ?,user_id = ?, book_id = ?, type = ? ";
+                                $trans_id = prepared_statements($trans,'isdiis',[$customer_id,$invoice->invoice_no,$amountt,$user_id,$book_id,'Invoice']);
+
+                                // update customer ledger section
+                                insertCustomerLedgerInvoice($customer_id, 'invoice',$amountt,$invoice_id,$trans_id,$book_id,$invoice_no);
+                            }
+                            
+                            $_SESSION['success'] = "Invoice Details Saved";
 
                             break;
                     }

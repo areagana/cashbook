@@ -6,20 +6,100 @@
         session_destroy();
     }
     // FUNCTION TO submit query
-    function prepared_statements($stat,$binds,$vars=[])
+    // function prepared_statements($stat,$binds,$vars=[])
+    // {
+    //     global $server;
+    //     if(!empty($stat))
+    //     {
+    //         $stmt = $server->prepare($stat);
+    //         echo mysqli_error($server);
+    //         $stmt->bind_param($binds,...$vars);
+    //         $stmt->execute();            
+    //         $res = $stmt->get_result();
+    //         return $res;
+    //     }else{
+    //         return; // abort the function and return epty function
+    //     }
+    // }
+
+    function prepared_statements($stat, $binds = '', $vars = [])
     {
         global $server;
-        if(!empty($stat))
+
+        if(empty($stat))
         {
-            $stmt = $server->prepare($stat);
-            echo mysqli_error($server);
-            $stmt->bind_param($binds,...$vars);
-            $stmt->execute();            
-            $res = $stmt->get_result();
-            return $res;
-        }else{
-            return; // abort the function and return epty function
+            return false;
         }
+
+        $stmt = $server->prepare($stat);
+
+        if(!$stmt)
+        {
+            die("Prepare failed: " . $server->error);
+        }
+
+        /*
+        =====================================
+        BIND PARAMETERS
+        =====================================
+        */
+
+        if(!empty($binds) && !empty($vars))
+        {
+            $stmt->bind_param($binds, ...$vars);
+        }
+
+        /*
+        =====================================
+        EXECUTE
+        =====================================
+        */
+
+        if(!$stmt->execute())
+        {
+            die("Execute failed: " . $stmt->error);
+        }
+
+        /*
+        =====================================
+        DETECT QUERY TYPE
+        =====================================
+        */
+
+        $queryType =
+            strtoupper(
+                strtok(trim($stat), " ")
+            );
+
+        /*
+        =====================================
+        SELECT QUERIES
+        =====================================
+        */
+
+        if($queryType == 'SELECT')
+        {
+            return $stmt->get_result();
+        }
+
+        /*
+        =====================================
+        INSERT QUERIES
+        =====================================
+        */
+
+        if($queryType == 'INSERT')
+        {
+            return $stmt->insert_id;
+        }
+
+        /*
+        =====================================
+        UPDATE / DELETE
+        =====================================
+        */
+
+        return $stmt->affected_rows;
     }
 
     function redirect($link)
@@ -94,6 +174,16 @@
     {
         global $server;
         $stmt = "SELECT * FROM cashbook_business_profile WHERE id = ?";
+        $res = prepared_statements($stmt,'i',[$id]);
+        $row = $res->fetch_assoc();
+        return myObject($row);
+    }
+
+    // find customer
+    function getCustomer($id)
+    {
+        global $server;
+        $stmt = "SELECT * FROM cashbook_customers WHERE id = ?";
         $res = prepared_statements($stmt,'i',[$id]);
         $row = $res->fetch_assoc();
         return myObject($row);
@@ -263,6 +353,11 @@
         prepared_statements($stmt,'iddsiiisiiid',[$customer_id,$credit,$debit,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$newBalance]);  
     }
 
+    // set book function
+    function setBook($book)
+    {
+        $_SESSION['book_id'] = encryptor('encrypt',$book->id);
+    }
 
      //header and footer functions
     function pageHeader($header = false)
@@ -292,46 +387,46 @@
                 <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css" />
             </head>
             <body>
-                <div class="">
-                <nav class="navbar navbar-expand-lg bg-success">
-                    <div class="container-fluid">
-                        <a class="navbar-brand text-white" href="../">FR(U)-CASHBOOK</a>
-                            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarText" aria-controls="navbarText" aria-expanded="false" aria-label="Toggle navigation">
-                            <span class="navbar-toggler-icon"></span>
-                            </button>
-                        <div class="collapse navbar-collapse" id="navbarText">
-                            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                                <li class="nav-item">
-                                    
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                    <form class="form-inline my-2 my-lg-0">
-                        <div class="dropdown">
-                            <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                <i class="fa fa-user"></i> <?=$_SESSION['auth']->name;?>
-                            </button>
-                            <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                                <a class="dropdown-item" href="#">Action</a>
-                                <a class="dropdown-item" href="#">Profile</a>
-                                <div class="dropdown-divider"></div>
-                                <a class="dropdown-item text-danger" href="../?logout=1"><strong>Logout</strong></a>
+                <div class="wrapper">
+                    <?=(isset($_REQUEST['book_id']) || isset($_REQUEST['bkid']) || isset($_REQUEST['bsid'])) ? sideBar() : ""; ?>
+                    <div class="main">
+                        <nav class="navbar navbar-expand-lg bg-success">
+                            <div class="container-fluid">
+                                <a class="navbar-brand text-white" href="../">FR(U)-CASHBOOK</a>
+                                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarText" aria-controls="navbarText" aria-expanded="false" aria-label="Toggle navigation">
+                                    <span class="navbar-toggler-icon"></span>
+                                    </button>
+                                <div class="collapse navbar-collapse" id="navbarText">
+                                    <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                                        <li class="nav-item">
+                                            
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
-                        </div>
-                    </form>
-                </nav>
-                <main>
-                    <?php //sideBar(); ?>
-                    <?php sessionMessage();?>
+                            <form class="form-inline my-2 my-lg-0">
+                                <div class="dropdown">
+                                    <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        <i class="fa fa-user"></i> <?=$_SESSION['auth']->name;?>
+                                    </button>
+                                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                                        <a class="dropdown-item" href="#">Action</a>
+                                        <a class="dropdown-item" href="#">Profile</a>
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item text-danger" href="../?logout=1"><strong>Logout</strong></a>
+                                    </div>
+                                </div>
+                            </form>
+                        </nav>
+                        <?php sessionMessage();?>
                 
         <?php
     }
 
     function pageFooter()
     {
-        ?>          </main>
-                </div>
+        ?>           </div> <!-- end main -->
+                </div> <!-- end wrapper -->
                     <script src="../assets/js/jquery-3.5.1.min.js"></script>
                     <!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script> -->
 
@@ -347,60 +442,148 @@
 
     function sideBar()
     {
+        global $book;
+        $book = bookFind(encryptor('decrypt',$_SESSION['book_id']));
         ?>
-            <div class="wrapper">
-                <aside id="sidebar">
-                    <div class="d-flex">
-                        <button id="toggle-btn" type='button'><i class="fa fa-th-large" aria-hidden="true"></i></button>
-                        <div class="sidebar-logo">
-                            <a href="#" class="sidebar-link">CASHBOOK</a>
-                        </div>
+            <aside id="sidebar">
+                <div class="sidebar-header">
+                    <button id="toggle-btn" type="button" class='p-2'>
+                        <i class="fa fa-bars"></i>
+                    </button>
+                    <div class="sidebar-logo h3">
+                        <a href="#" class="sidebar-link">
+                            <span>CASHBOOK</span>
+                        </a>
                     </div>
-                    <ul class="sidebar">
-                        <li class="sidebar-item">
-                            <a href="#" class="sidebar-link">
-                                <i class="fa fa-user"></i>
-                                <span>Profile</span>
-                            </a>
-                        </li>
-                        <li class="sidebar-item">
-                            <a href="#" class="sidebar-link">
-                                <i class="fa fa-user"></i>
-                                <span>Dashboard</span>
-                            </a>
-                        </li>
-                        <li class="sidebar-item">
-                            <a href="#" class="sidebar-link has-dropdown collapsed" data-toggle="collapse" data-target="#stock" aria-expanded="false" aria-controls="stock">
-                                <i class="fa fa-user"></i>
-                                <span>Stock</span>
-                            </a>
-                            <ul id="stock" class ='sidebar-dropdown list-unstyled collapsed' data-parent="#sidebar">
-                                <li class="sidebar-item">
-                                    <a href="#" class="sidebar-link">
-                                        <span> View Stock</span>
-                                    </a>
-                                </li>
-                                <li class="sidebar-item">
-                                    <a href="#" class="sidebar-link">
-                                        <span>Add stock</span>
-                                    </a>
-                                </li>
-                            </ul>
-                        </li>
-                        <li class="sidebar-item">
-                            <a href="#" class="sidebar-link">
-                                <i class="fa fa-user"></i>
-                                <span>Customers</span>
-                            </a>
-                        </li>
-                        <div class="sidebar-footer">
-                            <a href="#" class="sidebar-link"><i class="fa fa-sign-out" aria-hidden="true"></i> 
-                                <span>Logout</span>
-                            </a>
-                        </div>
-                    </ul>
-                </aside>
-            </div>
+                </div>
+
+                <ul class="sidebar-nav">
+                    <li class='sidebar-item'>
+                        <a href="../" class ='sidebar-link'>
+                            <i class="fa fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+
+                    <li class='sidebar-item'>
+                        <a href="../customers/?bsid=<?=encryptor('encrypt',$book->id);?>" class ='sidebar-link'>
+                            <i class="fa fa-user"></i>
+                            <span>Customers</span>
+                        </a>
+                    </li>
+
+                    <li class='sidebar-item'>
+                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#stockMenu">
+                            <i class="fa fa-box"></i>
+                            <span>Stock</span>
+                        </a>
+                        <ul id="stockMenu" class="collapse">
+                            <li><a href="../stock/?bkid=<?=encryptor('encrypt',$book->id);?>">View Stock</a></li>
+                            <li><a href="#">Add Stock</a></li>
+                        </ul>
+                    </li>
+                    <li class='sidebar-item'>
+                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#itemsMenu">
+                            <i class="fa fa-box"></i>
+                            <span>Items</span>
+                        </a>
+                        <ul id="itemsMenu" class="collapse">
+                            <li><a href="../items/?bsid=<?=encryptor('encrypt',$book->id);?>">View Items</a></li>
+                            <li><a href="#">Add Item</a></li>
+                        </ul>
+                    </li>
+                    <li class='sidebar-item'>
+                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#usersMenu">
+                            <i class="fa fa-users"></i>
+                            <span>Users</span>
+                        </a>
+                        <ul id="usersMenu" class="collapse">
+                            <li><a href="../members/?bkid=<?=encryptor('encrypt',$book->id);?>">View Users</a></li>
+                            <li><a href="#">Add User</a></li>
+                        </ul>
+                    </li>
+                    <li class='sidebar-item'>
+                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#categoriesMenu">
+                            <i class="fa fa-box"></i>
+                            <span>Categories</span>
+                        </a>
+                        <ul id="categoriesMenu" class="collapse">
+                            <li><a href="../categories/?bkid=<?=encryptor('encrypt',$book->id);?>">View Categories</a></li>
+                            <li><a href="#">Add Category</a></li>
+                        </ul>
+                    </li>
+                    <li class='sidebar-item'>
+                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#PayModesMenu">
+                            <i class="fa fa-handshake"></i>
+                            <span>Pay Modes</span>
+                        </a>
+                        <ul id="PayModesMenu" class="collapse">
+                            <li><a href="../modes/?bsid=<?=encryptor('encrypt',$book->id);?>">View Pay Modes</a></li>
+                            <li><a href="#">Add Category</a></li>
+                        </ul>
+                    </li>
+                    <li class='sidebar-item'>
+                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#RouteManagersMenu">
+                            <i class="fa fa-undo"></i>
+                            <span>Invoices</span>
+                        </a>
+                        <ul id="RouteManagersMenu" class="collapse">
+                            <li><a href="../invoices/?bsid=<?=encryptor('encrypt',$book->id);?>">View Invoices</a></li>
+                        </ul>
+                    </li>
+                </ul>
+
+                <div class="sidebar-footer">
+                    <a href="../?logout=1">
+                        <i class="fa fa-sign-out-alt"></i>
+                        <span>Logout</span>
+                    </a>
+                </div>
+
+            </aside>
         <?php
+    }
+
+    // invoice find function
+    function invoiceFind($id)
+    {
+        $stmt = "SELECT * FROM cashbook_invoices WHERE id = ?";
+        $res = prepared_statements($stmt,'i',[$id]);
+        return myObject($res->fetch_assoc());
+    }
+
+    function getCustomerBalance($customer_id)
+    {
+        global $server;
+
+        $sql = $server->prepare("
+            SELECT COALESCE( SUM(CASE
+                                WHEN type IN ('invoice','credit_sale')
+                                THEN debit_amount
+                                ELSE -credit_amount
+                            END
+                        ),0
+                    ) AS balance
+                FROM cashbook_customer_ledger
+                WHERE customer_id = ?
+            ");
+        $sql->bind_param('i',$customer_id);
+        $sql->execute();
+
+        return $sql->get_result()->fetch_assoc()['balance'];
+    }
+
+    function insertCustomerLedgerInvoice($customer_id, $type,$amount,$invoice_id,$trans_id,$book_id,$invoice_no)
+    {
+        global $server;
+
+        $currentBalance = getCustomerBalance($customer_id);
+        $user_id = auth()->id;
+        // get new balance
+        $newBalance = $currentBalance + $amount;
+
+        $stmt = $server->prepare("INSERT INTO cashbook_customer_ledger(customer_id,type,debit_amount,balance,invoice_id,invoice_amount,transaction_id,book_id,user_id,details) VALUES (?,?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param('isddidiiis',$customer_id,$type,$amount,$newBalance,$invoice_id,$amount,$trans_id,$book_id,$user_id,$invoice_no);
+        return $stmt->execute();
     }
 ?>

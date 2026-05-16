@@ -2,84 +2,229 @@
     session_start();
     require(__dir__.'/functions.php');
     
+    // function create_Table($table, array $columns)
+    // {
+    //         global $server, $db_name,$foreignKeys;
+    //         $query = $server->prepare("SELECT * 
+    //             FROM information_schema.tables 
+    //             WHERE table_schema = ? 
+    //             AND table_name = ?");
+    //         $query->bind_param('ss', $db_name, $table);
+    //         $query->execute();
+    //         $res = $query->get_result();
+
+    //         $texts = [];
+    //         $edits = [];
+
+    //         if ($res->num_rows == 0) {
+    //             // TABLE DOES NOT EXIST → CREATE IT
+    //             $sql = "CREATE TABLE IF NOT EXISTS `$table` (";
+    //             $texts[] = "`id` INT(11) NOT NULL PRIMARY KEY AUTO_INCREMENT";
+
+    //             foreach ($columns as $k => $v) {
+    //                 $texts[] = "`{$k}` {$v}";
+    //             }
+
+    //             // timestamps
+    //             $texts[] = "`created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
+    //             $texts[] = "`updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP";
+
+    //             // add foreign keys
+    //             if(isset($foreignKeys) && !empty($foreignKeys))
+    //             {
+    //                 foreach ($foreignKeys as $fkName => $fk) {
+    //                     // expected: ['column' => 'survey_id', 'ref_table' => 'options', 'ref_column' => 'option_id']
+    //                     $texts[] = "CONSTRAINT `$fkName` FOREIGN KEY (`{$fk['column']}`) REFERENCES `{$fk['ref_table']}`(`{$fk['ref_column']}`) ON DELETE CASCADE ON UPDATE CASCADE";
+    //                 }
+    //             }
+
+    //             $tableStructure = $sql . implode(', ', $texts) . ") ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+    //             if (!mysqli_query($server, $tableStructure)) {
+    //                 echo mysqli_error($server);
+    //             }
+    //         } else {
+    //             // TABLE EXISTS → check for missing columns & foreign keys
+
+    //             foreach ($columns as $k => $v) {
+    //                 $checkCol = $server->prepare("SELECT * 
+    //                     FROM information_schema.columns 
+    //                     WHERE table_schema = ? AND table_name = ? AND column_name = ?");
+    //                 $checkCol->bind_param('sss', $db_name, $table, $k);
+    //                 $checkCol->execute();
+    //                 $colRes = $checkCol->get_result();
+    //                 if ($colRes->num_rows == 0) {
+    //                     $edits[] = "ADD COLUMN `$k` $v";
+    //                 }
+    //             }
+
+    //             // foreign key checks
+    //             if(isset($foreignKeys) && !empty($foreignKeys))
+    //             {
+    //                 foreach ($foreignKeys as $fkName => $fk) {
+    //                     $checkFk = $server->prepare("SELECT * 
+    //                         FROM information_schema.KEY_COLUMN_USAGE 
+    //                         WHERE table_schema = ? AND table_name = ? AND constraint_name = ?");
+    //                     $checkFk->bind_param('sss', $db_name, $table, $fkName);
+    //                     $checkFk->execute();
+    //                     $fkRes = $checkFk->get_result();
+    //                     if ($fkRes->num_rows == 0) {
+    //                         $edits[] = "ADD CONSTRAINT `$fkName` FOREIGN KEY (`{$fk['column']}`) REFERENCES `{$fk['ref_table']}`(`{$fk['ref_column']}`) ON DELETE CASCADE ON UPDATE CASCADE";
+    //                     }
+    //                 }
+    //             }
+
+    //             if (!empty($edits)) {
+    //                 $tableStructure = "ALTER TABLE `$table` " . implode(', ', $edits);
+    //                 if (!mysqli_query($server, $tableStructure)) {
+    //                     echo mysqli_error($server);
+    //                 }
+    //             }
+    //         }
+    // }
     function create_Table($table, array $columns)
     {
-            global $server, $db_name,$foreignKeys;
-            $query = $server->prepare("SELECT * 
-                FROM information_schema.tables 
-                WHERE table_schema = ? 
-                AND table_name = ?");
-            $query->bind_param('ss', $db_name, $table);
-            $query->execute();
-            $res = $query->get_result();
+        global $server, $db_name, $foreignKeys;
 
-            $texts = [];
-            $edits = [];
+        /*
+        =====================================
+        CHECK IF TABLE EXISTS
+        =====================================
+        */
+        $query = $server->prepare("
+            SELECT TABLE_NAME 
+            FROM information_schema.tables 
+            WHERE table_schema = ? 
+            AND table_name = ?
+        ");
 
-            if ($res->num_rows == 0) {
-                // TABLE DOES NOT EXIST → CREATE IT
-                $sql = "CREATE TABLE IF NOT EXISTS `$table` (";
-                $texts[] = "`id` INT(11) NOT NULL PRIMARY KEY AUTO_INCREMENT";
+        $query->bind_param('ss', $db_name, $table);
+        $query->execute();
+        $res = $query->get_result();
 
-                foreach ($columns as $k => $v) {
-                    $texts[] = "`{$k}` {$v}";
-                }
+        $alter = [];
 
-                // timestamps
-                $texts[] = "`created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
-                $texts[] = "`updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP";
+        /*
+        =====================================
+        CREATE TABLE (IF NOT EXISTS)
+        =====================================
+        */
+        if ($res->num_rows == 0)
+        {
+            $sql = "CREATE TABLE `$table` (
+                `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY";
 
-                // add foreign keys
-                if(isset($foreignKeys) && !empty($foreignKeys))
+            foreach ($columns as $k => $v)
+            {
+                $sql .= ", `$k` $v";
+            }
+
+            $sql .= ",
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+
+            if (!mysqli_query($server, $sql))
+            {
+                die("Table creation failed: " . mysqli_error($server));
+            }
+        }
+        else
+        {
+            /*
+            =====================================
+            TABLE EXISTS → CHECK COLUMNS
+            =====================================
+            */
+            foreach ($columns as $k => $v)
+            {
+                $checkCol = $server->prepare("
+                    SELECT COLUMN_TYPE, IS_NULLABLE
+                    FROM information_schema.columns
+                    WHERE table_schema = ?
+                    AND table_name = ?
+                    AND column_name = ?
+                ");
+
+                $checkCol->bind_param('sss', $db_name, $table, $k);
+                $checkCol->execute();
+                $colRes = $checkCol->get_result();
+
+                if ($colRes->num_rows == 0)
                 {
-                    foreach ($foreignKeys as $fkName => $fk) {
-                        // expected: ['column' => 'survey_id', 'ref_table' => 'options', 'ref_column' => 'option_id']
-                        $texts[] = "CONSTRAINT `$fkName` FOREIGN KEY (`{$fk['column']}`) REFERENCES `{$fk['ref_table']}`(`{$fk['ref_column']}`) ON DELETE CASCADE ON UPDATE CASCADE";
-                    }
+                    // COLUMN DOES NOT EXIST
+                    $alter[] = "ADD COLUMN `$k` $v";
                 }
-
-                $tableStructure = $sql . implode(', ', $texts) . ") ENGINE=InnoDB DEFAULT CHARSET=utf8;";
-                if (!mysqli_query($server, $tableStructure)) {
-                    echo mysqli_error($server);
-                }
-            } else {
-                // TABLE EXISTS → check for missing columns & foreign keys
-
-                foreach ($columns as $k => $v) {
-                    $checkCol = $server->prepare("SELECT * 
-                        FROM information_schema.columns 
-                        WHERE table_schema = ? AND table_name = ? AND column_name = ?");
-                    $checkCol->bind_param('sss', $db_name, $table, $k);
-                    $checkCol->execute();
-                    $colRes = $checkCol->get_result();
-                    if ($colRes->num_rows == 0) {
-                        $edits[] = "ADD COLUMN `$k` $v";
-                    }
-                }
-
-                // foreign key checks
-                if(isset($foreignKeys) && !empty($foreignKeys))
+                else
                 {
-                    foreach ($foreignKeys as $fkName => $fk) {
-                        $checkFk = $server->prepare("SELECT * 
-                            FROM information_schema.KEY_COLUMN_USAGE 
-                            WHERE table_schema = ? AND table_name = ? AND constraint_name = ?");
-                        $checkFk->bind_param('sss', $db_name, $table, $fkName);
-                        $checkFk->execute();
-                        $fkRes = $checkFk->get_result();
-                        if ($fkRes->num_rows == 0) {
-                            $edits[] = "ADD CONSTRAINT `$fkName` FOREIGN KEY (`{$fk['column']}`) REFERENCES `{$fk['ref_table']}`(`{$fk['ref_column']}`) ON DELETE CASCADE ON UPDATE CASCADE";
-                        }
-                    }
-                }
+                    // COLUMN EXISTS → CHECK TYPE CHANGE
+                    $existing = $colRes->fetch_assoc();
 
-                if (!empty($edits)) {
-                    $tableStructure = "ALTER TABLE `$table` " . implode(', ', $edits);
-                    if (!mysqli_query($server, $tableStructure)) {
-                        echo mysqli_error($server);
+                    $currentType = strtoupper(trim($existing['COLUMN_TYPE']));
+
+                    // clean definition (remove NULL/NOT NULL/DEFAULT)
+                    $newType = strtoupper(
+                        trim(
+                            preg_replace(
+                                '/\s+NOT NULL|\s+NULL|\s+DEFAULT.+/i',
+                                '',
+                                $v
+                            )
+                        )
+                    );
+
+                    if (strpos($currentType, $newType) === false)
+                    {
+                        $alter[] = "MODIFY COLUMN `$k` $v";
                     }
                 }
             }
+
+            /*
+            =====================================
+            FOREIGN KEYS
+            =====================================
+            */
+            if (isset($foreignKeys) && !empty($foreignKeys))
+            {
+                foreach ($foreignKeys as $fkName => $fk)
+                {
+                    $checkFk = $server->prepare("
+                        SELECT CONSTRAINT_NAME
+                        FROM information_schema.KEY_COLUMN_USAGE
+                        WHERE table_schema = ?
+                        AND table_name = ?
+                        AND constraint_name = ?
+                    ");
+
+                    $checkFk->bind_param('sss', $db_name, $table, $fkName);
+                    $checkFk->execute();
+                    $fkRes = $checkFk->get_result();
+
+                    if ($fkRes->num_rows == 0)
+                    {
+                        $alter[] = "ADD CONSTRAINT `$fkName`
+                            FOREIGN KEY (`{$fk['column']}`)
+                            REFERENCES `{$fk['ref_table']}`(`{$fk['ref_column']}`)
+                            ON DELETE CASCADE ON UPDATE CASCADE";
+                    }
+                }
+            }
+
+            /*
+            =====================================
+            APPLY ALTER STATEMENTS
+            =====================================
+            */
+            if (!empty($alter))
+            {
+                $sql = "ALTER TABLE `$table` " . implode(", ", $alter);
+
+                if (!mysqli_query($server, $sql))
+                {
+                    die("ALTER TABLE failed: " . mysqli_error($server));
+                }
+            }
+        }
     }
 
     // create tables
@@ -338,7 +483,7 @@
             'customer_id'   => 'int(11) NOT NULL',
             'book_id'       => 'int(11) NOT NULL',
             'item_id'       => 'int(11) NOT NULL',
-            'type'          => "enum('cash_sale','payment','credit_sale') NOT NULL",
+            'type'          => "enum('cash_sale','payment','credit_sale','invoice') NOT NULL",
             'debit_amount'  => 'decimal(10,2) DEFAULT 0',   // increases what customer owes
             'credit_amount' => 'decimal(10,2) DEFAULT 0',   // reduces what customer owes
             'transaction_id'  => 'int(11) NULL',
@@ -346,9 +491,44 @@
             'quantity'   => 'int(11) NULL',
             'details'   => 'text NULL',
             'balance'       => 'decimal(10,2) DEFAULT 0',
-            'user_id'       => 'int(11) NULL'
+            'user_id'       => 'int(11) NULL',
+            'invoice_id'       => 'int(11) NULL',
+            'invoice_amount'       => 'decimal (10,2) DEFAULT 0'
         ];
 
+        create_table($table, $columns);
+    }
+
+    function cashbook_invoices()
+    {
+        $table = 'cashbook_invoices';
+
+        $columns = [
+            'customer_id'   => 'int(11) NOT NULL',
+            'book_id'       => 'int(11) NOT NULL',
+            'invoice_no'    => 'VARCHAR(50) UNIQUE not null',
+            'invoice_date'  => 'DATE',
+            'status'      => "ENUM('draft','sent','paid') DEFAULT 'draft'",
+            'total'       => 'DECIMAL(10,2) DEFAULT 0',
+            'paid_amount' => 'DECIMAL(10,2) DEFAULT 0',
+            'balance'     => 'decimal(10,2) DEFAULT 0',
+            'user_id'     => 'int(11) NULL'
+        ];
+        create_table($table, $columns);
+    }
+
+    function cashbook_invoice_items()
+    {
+        $table = 'cashbook_invoice_items';
+
+        $columns = [
+            'invoice_id'    => 'int(11) NOT NULL',
+            'item_id'       => 'int(11) NOT NULL',
+            'quantity'      => 'int(11) NOT NULL',
+            'unit_price'    => 'decimal(10,2) DEFAULT 0',
+            'total'         => 'decimal(10,2) DEFAULT 0',
+            'user_id'       => 'int(11) NULL'
+        ];
         create_table($table, $columns);
     }
 
@@ -368,6 +548,8 @@
     cashbook_stocks();
     cashbook_transaction_edits();
     cashbook_customer_ledger();
+    cashbook_invoices();
+    cashbook_invoice_items();
 
 // redirect to the home page after checking table creation functions
 if(isVerified())

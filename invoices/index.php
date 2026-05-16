@@ -2,15 +2,15 @@
     require_once(__dir__.'/../assets/functions.php');
     if(isVerified())
     {
-        pageHeader('Customers');
+        pageHeader('Invoices');
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
     ?>
-            <div class="container-fluid">
+            <div class="container">
                 <div class="row mx-1">
                     <div class="col p-2 inline-block">
                         <a href="../books/?bkid=<?=$bsid;?>" class="nav-link">Books</a><i class="fa fa-angle-right"></i>
-                        <a class="nav-link">Customers</a>
+                        <a class="nav-link">Invoices</a>
                     </div>
                 </div>
                 <hr>
@@ -18,12 +18,12 @@
                     <div class="col p-2">
                         <div class="row mx-1">
                             <div class="col p-2">
-                                <h3 class="p-2"><?=strToUpper($book->name);?> - CUSTOMERS</h3>
+                                <h3 class="p-2"><?=strToUpper($book->name);?> - INVOICES</h3>
                             </div>
                             <div class="col p-2">
                                 <?php if(hasRole(['owner','partner'])):?>
                                     <div class="col p-3">
-                                        <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
+                                        <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add invoice' data-section='invoice'><i class="fa fa-plus-circle"></i> Invoice</button>
                                     </div>
                                 <?php endif;?>
                             </div>
@@ -31,40 +31,45 @@
                         <hr>
                         <div class="p-2">
                             <?php
-                                $sql = "SELECT * FROM cashbook_customers WHERE book_id =?";
+                                $sql = "SELECT ci.*,cc.name as customer FROM cashbook_invoices ci 
+                                    INNER JOIN cashbook_customers cc ON cc.id = ci.customer_id
+                                    WHERE ci.book_id =? ORDER BY ci.invoice_date desc";
                                 $res =prepared_statements($sql,'i',[$book->id]);
 
                                 // fetch balance per customer
-                                $stmt = "SELECT balance FROM cashbook_customer_ledger WHERE customer_id = ? ORDER BY id DESC LIMIT 1";
+                                $stmt = "SELECT COALESCE(sum(credit_amount),0) as credits, COALESCE(sum(debit_amount),0) as debits,(COALESCE(sum(credit_amount),0) - COALESCE(sum(debit_amount),0)) as balance FROM cashbook_transactions WHERE customer_id =?";
                                 $s =1;
                             ?>
                                 <table class="table table-sm table-striped">
                                     <thead>
                                         <tr>
                                             <th>#</th>
-                                            <th>Name</th>
-                                            <th class='text-right'>Account Status</th>
-                                            <th class='text-right'>Action</th>
+                                            <th>Invoice no</th>
+                                            <th>Customer</th>
+                                            <th class='text-right'>Amount</th>
+                                            <th class='text-right'>Paid</th>
+                                            <th class='text-right'>Balance</th>
+                                            <th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php  while($r = $res->fetch_assoc()):
-                                            $cid = $r['id'];
-                                            $rc = prepared_statements($stmt,'i',[$cid]);
-                                            $rw = $rc->fetch_assoc();
                                         ?>
                                             <tr class='hover hover-hide-content'>
                                                 <td><?=$s++;?></td>
-                                                <td><?=$r['name'];?></td>
-                                                <td class='text-right'><?=(!empty($rw['balance'])) ? number_format($rw['balance'],0) : number_format(0,0);?></td>
+                                                <td><?=$r['invoice_no'];?></td>
+                                                <td><?=$r['customer'];?></td>
+                                                <td class='text-right'><?=number_format($r['total'],0);?></td>
+                                                <td class='text-right'><?=number_format($r['paid_amount'],0);?></td>
+                                                <td class='text-right'><?=number_format($r['balance'],0);?></td>
                                                 <td class='text-right'>
                                                     <?php if(hasRole(['owner','partner'])):?>
                                                         <span class="hover-display text-sms">
                                                             <?php if(hasRole(['owner'])):?>
-                                                                <button class="btn btn-sm btn-outline-info edit-customer text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
-                                                                <button class="btn btn-sm btn-outline-danger delete-customer" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
+                                                                <button class="btn btn-sm btn-outline-info edit-invoice text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
+                                                                <button class="btn btn-sm btn-outline-danger delete-invoice" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
                                                             <?php endif;?>
-                                                            <button class="btn btn-sm btn-outline-info view-customer text-muted" data-id="<?=$r['id'];?>" data-title="<?=$r['name'];?>"><i class="fa fa-eye"></i></button> 
+                                                            <button class="btn btn-sm btn-outline-info view-invoice text-muted" data-id="<?=$r['id'];?>" data-title=""><i class="fa fa-eye"></i></button> 
                                                         </span>
                                                     <?php endif;?>
                                                 </td>
@@ -79,6 +84,17 @@
              <!-- side modal for a cash in -->
             <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
                 <div class="side-modal-header">
+                    <h3 class="side-modal-title text-dark"></h3>
+                    <button type='button' class='side-modal-close'>&times;</button>
+                </div>
+                <div class="side-modal-content">
+                    
+                </div>
+            </div>
+            
+            <!-- side modal for a cash in -->
+            <div class="p-0 bg-white side-modal-full side-modal-full-page absolute border shadow" id='side-modal-cashin'>
+                <div class="side-modal-header bg-success">
                     <h3 class="side-modal-title text-dark"></h3>
                     <button type='button' class='side-modal-close'>&times;</button>
                 </div>
@@ -138,8 +154,12 @@
                 }
 
                 // Call the function for your form
-                $(document).on('click','.saveCustomer',function(){
-                    submitSingleForm("newCustomerForm", "../books/save/index.php");
+                $(document).on('click','.saveInvoice',function(){
+                    submitSingleForm("newInvoiceForm", "../books/save/index.php");
+                });
+
+                $(document).on('click','.saveInvoiceItems',function(){
+                    submitSingleForm("newInvoiceItemForm", "../books/save/index.php");
                 });
 
                 function submitSingleForm(formId, backendUrl) 
@@ -155,6 +175,7 @@
                     form.addEventListener("submit", function(e) {
                         e.preventDefault(); // prevent default page reload
                         const formData = new FormData(form);
+
                         fetch(backendUrl, {
                             method: "POST",
                             body: formData
@@ -168,16 +189,36 @@
                                 responseDiv.id = "response_" + formId;
                                 form.appendChild(responseDiv);
                             }
-                            window.location.reload();
+                            console.log(response);
+                            xdialog.stopSpin();
+                            // window.location.reload();
                         })
                         .catch(err => {
                             console.error("AJAX error:", err);
                         });
                     });
                 }
+                
+                // load invoice details form
+                function AddInvoiceItem()
+                {
+                    $.ajax({
+                        url:'save/index.php',
+                        data:{
+                            action:'AddInvoiceItem',
+                        },
+                        success:function(res){
+                            $('.invoiceItemsTbody').append(res);
+                        }
+                    });
+                }
+
+                $(document).on('click','.add-invoice-item',function(){
+                    AddInvoiceItem();
+                });
 
                 // view customer details
-                $(document).on('click','.view-customer',function(){
+                $(document).on('click','.view-invoice',function(){
                     $('#central-modal').show();
                     var title = $(this).data('title')+" Transactions";
                     $('.central-modal-title').html(title);
@@ -186,8 +227,8 @@
                     $.ajax({
                         url:'save/index.php',
                         data:{
-                            customer_id:id,
-                            action:'Customer-details'
+                            invoice_id:id,
+                            action:'Invoice-details'
                         },
                         beforeSend:function(){
                             $('.central-modal-content').html("<center><h3>Loading...</h3></center>");
@@ -200,6 +241,48 @@
                         }
                     });
                 });
+
+                // calculate amount based on quantity and rates
+                $(document).on('blur','.rateClass,.qtyClass',function(){
+                    var row = $(this).closest('tr');
+                    var rate = row.find('.rateClass').val();
+                    var qty = row.find('.qtyClass').val();
+                    var amountArea = row.find('.amountClass');
+
+                    var amount = 0;
+                    if(qty !== "" && rate !== '')
+                    {
+                        // amount calculation
+                        amount = parseFloat(qty) * parseFloat(rate);
+                        amountArea.val(amount);
+                        recalculateInvoiceTotals();
+                    }
+                });
+                
+                function recalculateInvoiceTotals()
+                {
+                    var total = 0;
+
+                    $('.amountClass').each(function () {
+                        var val = parseFloat($(this).val()) || 0;
+                        total += val;
+                    });
+
+                    $('#invoice_total').text(total.toFixed(2));
+                    $('.InvoiceAmount').val(total);
+                }
+
+                // remove row from the table
+                $(document).on('click','.remove-row',function(){
+                    var row = $(this).closest('tr');
+                    if (!confirm('Are you sure you want to remove this item?')) {
+                        return;
+                    }
+                    row.hide();
+                    row.find('.amountClass').val(0);
+                    recalculateInvoiceTotals();
+                });
+
             </script>
         <?php
     }else{

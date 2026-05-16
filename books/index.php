@@ -6,6 +6,7 @@
             $id = request('bkid');
             $id = encryptor('decrypt',$id);
             $book = bookFind($id);
+            setBook($book);
     ?>
             <style>
                 @media screen AND (max-width:768px)

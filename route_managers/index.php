@@ -2,15 +2,15 @@
     require_once(__dir__.'/../assets/functions.php');
     if(isVerified())
     {
-        pageHeader('Customers');
+        pageHeader('Route Managers');
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
     ?>
-            <div class="container-fluid">
+            <div class="container">
                 <div class="row mx-1">
                     <div class="col p-2 inline-block">
                         <a href="../books/?bkid=<?=$bsid;?>" class="nav-link">Books</a><i class="fa fa-angle-right"></i>
-                        <a class="nav-link">Customers</a>
+                        <a class="nav-link">Route Managers</a>
                     </div>
                 </div>
                 <hr>
@@ -18,12 +18,12 @@
                     <div class="col p-2">
                         <div class="row mx-1">
                             <div class="col p-2">
-                                <h3 class="p-2"><?=strToUpper($book->name);?> - CUSTOMERS</h3>
+                                <h3 class="p-2"><?=strToUpper($book->name);?> - ROUTE MANAGERS</h3>
                             </div>
                             <div class="col p-2">
                                 <?php if(hasRole(['owner','partner'])):?>
                                     <div class="col p-3">
-                                        <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
+                                        <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add_route_manager' data-section='route_manager'><i class="fa fa-plus-circle"></i> Route Manager</button>
                                     </div>
                                 <?php endif;?>
                             </div>
@@ -31,11 +31,11 @@
                         <hr>
                         <div class="p-2">
                             <?php
-                                $sql = "SELECT * FROM cashbook_customers WHERE book_id =?";
+                                $sql = "SELECT * FROM cashbook_route_managers WHERE book_id =?";
                                 $res =prepared_statements($sql,'i',[$book->id]);
 
-                                // fetch balance per customer
-                                $stmt = "SELECT balance FROM cashbook_customer_ledger WHERE customer_id = ? ORDER BY id DESC LIMIT 1";
+                                // fetch balance per route manager
+                                $stmt = "SELECT COALESCE(sum(credit_amount),0) as credits, COALESCE(sum(debit_amount),0) as debits,(COALESCE(sum(credit_amount),0) - COALESCE(sum(debit_amount),0)) as balance FROM cashbook_transactions WHERE route_manager_id =?";
                                 $s =1;
                             ?>
                                 <table class="table table-sm table-striped">
@@ -56,7 +56,7 @@
                                             <tr class='hover hover-hide-content'>
                                                 <td><?=$s++;?></td>
                                                 <td><?=$r['name'];?></td>
-                                                <td class='text-right'><?=(!empty($rw['balance'])) ? number_format($rw['balance'],0) : number_format(0,0);?></td>
+                                                <td class='text-right'><?=number_format($rw['balance'],0);?></td>
                                                 <td class='text-right'>
                                                     <?php if(hasRole(['owner','partner'])):?>
                                                         <span class="hover-display text-sms">
