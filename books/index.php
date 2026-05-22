@@ -253,7 +253,6 @@
                 </div>
             </div>
             
-            
             <!-- side modal for a cash in -->
             <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
                 <div class="side-modal-header">
@@ -351,7 +350,6 @@
                         responseDiv.id = "response_" + formId;
                         form.appendChild(responseDiv);
                     }
-                    // console.log("Server response:", response);
                     window.location.reload();
                 })
                 .catch(err => {
@@ -513,6 +511,30 @@
                     customer.setAttribute("required", true);
                     paymode.setAttribute("required", true);
                 }
+            }
+        });
+
+        // load customer invoices on data entry for cashin
+        $(document).on('change','#customer_id',function(){
+            var customer_id = $(this).val();
+            if(customer_id !='')
+            {
+                $.ajax({
+                    url: 'save/index.php',
+                    data: {
+                        customer_id:customer_id,
+                        action:'findCustomerInvoices'
+                    },
+                    beforeSend:function(){
+                        $('#invoice_id').html("<option>Loading...</option>");
+                    },
+                    success: function (res) {
+                        $('#invoice_id').html(res);
+                    },
+                    error: function (err) {
+                        $('#invoice_id').html("<option>!!!Error Loading!!!</option>");
+                    }
+                })
             }
         });
     </script>

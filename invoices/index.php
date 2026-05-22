@@ -6,6 +6,21 @@
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
     ?>
+            <style>
+                @media print {
+                    footer{
+                        position: fixed;
+                        bottom: 10px;
+                        left: 0;
+
+                        width: 100%;
+                        text-align: center;
+
+                        font-size: 11px;
+                        color: #666;
+                    }
+                }
+            </style>
             <div class="container">
                 <div class="row mx-1">
                     <div class="col p-2 inline-block">
@@ -31,16 +46,17 @@
                         <hr>
                         <div class="p-2">
                             <?php
-                                $sql = "SELECT ci.*,cc.name as customer FROM cashbook_invoices ci 
-                                    INNER JOIN cashbook_customers cc ON cc.id = ci.customer_id
-                                    WHERE ci.book_id =? ORDER BY ci.invoice_date desc";
+                                $sql = "SELECT ci.*,cc.name as customer,COALESCE(sum(cir.total),0) as returned,(COALESCE(ci.balance,0) -COALESCE(sum(cir.total),0)) as newBalance  FROM cashbook_invoices ci 
+                                            LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id
+                                            LEFT JOIN cashbook_invoice_returns cir ON cir.invoice_id = ci.id
+                                            WHERE ci.book_id =? GROUP BY ci.id ORDER BY ci.invoice_date DESC";
                                 $res =prepared_statements($sql,'i',[$book->id]);
 
                                 // fetch balance per customer
                                 $stmt = "SELECT COALESCE(sum(credit_amount),0) as credits, COALESCE(sum(debit_amount),0) as debits,(COALESCE(sum(credit_amount),0) - COALESCE(sum(debit_amount),0)) as balance FROM cashbook_transactions WHERE customer_id =?";
                                 $s =1;
                             ?>
-                                <table class="table table-sm table-striped">
+                                <table class="table table-sm table-striped dataTable">
                                     <thead>
                                         <tr>
                                             <th>#</th>
@@ -53,28 +69,31 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php  while($r = $res->fetch_assoc()):
-                                        ?>
-                                            <tr class='hover hover-hide-content'>
-                                                <td><?=$s++;?></td>
-                                                <td><?=$r['invoice_no'];?></td>
-                                                <td><?=$r['customer'];?></td>
-                                                <td class='text-right'><?=number_format($r['total'],0);?></td>
-                                                <td class='text-right'><?=number_format($r['paid_amount'],0);?></td>
-                                                <td class='text-right'><?=number_format($r['balance'],0);?></td>
-                                                <td class='text-right'>
-                                                    <?php if(hasRole(['owner','partner'])):?>
-                                                        <span class="hover-display text-sms">
-                                                            <?php if(hasRole(['owner'])):?>
-                                                                <button class="btn btn-sm btn-outline-info edit-invoice text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
-                                                                <button class="btn btn-sm btn-outline-danger delete-invoice" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
-                                                            <?php endif;?>
-                                                            <button class="btn btn-sm btn-outline-info view-invoice text-muted" data-id="<?=$r['id'];?>" data-title=""><i class="fa fa-eye"></i></button> 
-                                                        </span>
-                                                    <?php endif;?>
-                                                </td>
-                                            </tr>
-                                        <?php endwhile;?>
+                                        <?php if($res && $res->num_rows > 0): ?>
+                                            <?php  while($r = $res->fetch_assoc()):?>
+                                                <tr class='hover hover-hide-content'>
+                                                    <td><?=$s++;?></td>
+                                                    <td><?=$r['invoice_no'];?></td>
+                                                    <td><?=$r['customer'];?></td>
+                                                    <td class='text-right'><?=number_format($r['total'],0);?></td>
+                                                    <td class='text-right'><?=number_format($r['paid_amount'],0);?></td>
+                                                    <td class='text-right'><?=number_format($r['newBalance'],0);?></td>
+                                                    <td class='text-right'>
+                                                        <?php if(hasRole(['owner','partner'])):?>
+                                                            <span class="hover-display text-sms">
+                                                                <?php if(hasRole(['owner'])):?>
+                                                                    <button class="btn btn-sm btn-outline-info edit-invoice text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
+                                                                    <button class="btn btn-sm btn-outline-info create-detail text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-plus"></i></button>
+                                                                    <button class="btn btn-sm btn-outline-danger delete-invoice" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
+                                                                <?php endif;?>
+                                                                <button class="btn btn-sm btn-outline-info view-invoice text-muted" data-id="<?=$r['id'];?>" data-title="" title='view'><i class="fa fa-eye"></i></button>
+                                                                <button class="btn btn-sm btn-outline-info invoice-return text-muted" data-id="<?=$r['id'];?>" title='Invoice Return'><i class="fa fa-undo" aria-hidden="true"></i></button> 
+                                                            </span>
+                                                        <?php endif;?>
+                                                    </td>
+                                                </tr>
+                                            <?php endwhile;?>
+                                        <?php endif;?>
                                     </tbody>
                                 </table>
                         </div>
@@ -175,7 +194,7 @@
                     form.addEventListener("submit", function(e) {
                         e.preventDefault(); // prevent default page reload
                         const formData = new FormData(form);
-
+                        console.log(formData);
                         fetch(backendUrl, {
                             method: "POST",
                             body: formData
@@ -189,9 +208,9 @@
                                 responseDiv.id = "response_" + formId;
                                 form.appendChild(responseDiv);
                             }
-                            console.log(response);
+                            // console.log(response);
                             xdialog.stopSpin();
-                            // window.location.reload();
+                            window.location.reload();
                         })
                         .catch(err => {
                             console.error("AJAX error:", err);
@@ -218,7 +237,7 @@
                 });
 
                 // view customer details
-                $(document).on('click','.view-invoice',function(){
+                $(document).on('click','.create-detail',function(){
                     $('#central-modal').show();
                     var title = $(this).data('title')+" Transactions";
                     $('.central-modal-title').html(title);
@@ -242,6 +261,54 @@
                     });
                 });
 
+                $(document).on('click','.view-invoice',function(){
+                    $('#central-modal').show();
+                    var title = "VIEW INVOICE DETAILS";
+                    $('.central-modal-title').html(title);
+                    var id = $(this).data('id');
+
+                    $.ajax({
+                        url:'save/index.php',
+                        data:{
+                            invoice_id:id,
+                            action:'view-invoice'
+                        },
+                        beforeSend:function(){
+                            $('.central-modal-content').html("<center><h3>Loading...</h3></center>");
+                        },
+                        success:function(res){
+                            $('.central-modal-content').html(res);
+                        },
+                        error:function(err){
+                            $('.central-modal-content').html("<center><h3>!!! Error Loading data</h3></center>");
+                        }
+                    });
+                });
+
+                // record invoice return
+                $(document).on('click','.invoice-return',function(){
+                    $('#central-modal').show();
+                    var title = "RECORD INVOICE RETURNS";
+                    $('.central-modal-title').html(title);
+                    var id = $(this).data('id');
+
+                    $.ajax({
+                        url:'save/index.php',
+                        data:{
+                            invoice_id:id,
+                            action:'view-returns'
+                        },
+                        beforeSend:function(){
+                            $('.central-modal-content').html("<center><h3>Loading...</h3></center>");
+                        },
+                        success:function(res){
+                            $('.central-modal-content').html(res);
+                        },
+                        error:function(err){
+                            $('.central-modal-content').html("<center><h3>!!! Error Loading data</h3></center>");
+                        }
+                    });
+                });
                 // calculate amount based on quantity and rates
                 $(document).on('blur','.rateClass,.qtyClass',function(){
                     var row = $(this).closest('tr');
@@ -258,6 +325,8 @@
                         recalculateInvoiceTotals();
                     }
                 });
+
+
                 
                 function recalculateInvoiceTotals()
                 {
@@ -270,6 +339,74 @@
 
                     $('#invoice_total').text(total.toFixed(2));
                     $('.InvoiceAmount').val(total);
+                }
+
+                // save returns //saveReturns
+                 $(document).on('click','.saveReturns',function(){
+                    submitSingleForm("invoiceReturnsForm", "save/index.php");
+                });
+
+                $(document).on('input', '.qty_returned', function () {
+
+                    var row = $(this).closest('tr');
+
+                    var rate = parseFloat(
+                        row.find('.itemRate').val()
+                    ) || 0;
+
+                    var qty = parseFloat(
+                        row.find('.qty_returned').val()
+                    ) || 0;
+
+                    // original issued quantity
+                    var issuedQty = parseFloat(
+                        row.find('.issuedQty').val()
+                    ) || 0;
+
+                    // prevent over-returning
+                    if(qty > issuedQty)
+                    {
+                        alert('Returned quantity cannot exceed issued quantity');
+
+                        qty = issuedQty;
+
+                        row.find('.qty_returned').val(issuedQty);
+                    }
+
+                    // calculate amount
+                    var amount = qty * rate;
+
+                    // display formatted amount
+                    row.find('.rowTotal').text(
+                        amount.toLocaleString()
+                    );
+
+                    // hidden raw value
+                    row.find('.returnedAmount').val(amount);
+
+                    // recalculate totals
+                    recalculateInvoiceTotalsReturned();
+                });
+
+                function recalculateInvoiceTotalsReturned()
+                {
+                    var total = 0;
+
+                    $('.returnedAmount').each(function(){
+                        var val = parseFloat($(this).val()) || 0;
+                        total += val;
+                    });
+
+                    // formatted visible total
+                    $('#returnedInvoiceTotal').text(
+                        total.toLocaleString(undefined,{
+                            minimumFractionDigits:2,
+                            maximumFractionDigits:2
+                        })
+                    );
+
+                    // raw hidden input
+                    $('.returnedInvoiceTotal').val(total);
                 }
 
                 // remove row from the table

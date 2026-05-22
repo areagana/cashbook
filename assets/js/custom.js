@@ -738,6 +738,9 @@ function searchTable(val,id)
       $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
     });
 }
+ //datatables activation function
+$('#dataTable').DataTable();
+$('.dataTable').DataTable();
 
 // image preview function
 // function imagePreview(id,idimageHolder)

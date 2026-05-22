@@ -379,6 +379,16 @@
                                             </div>
                                             <div class="row mx-1">
                                                 <div class="col-md-3 p-2">
+                                                    <label for="invoice_id">INVOICE:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <select name="invoice_id" id="invoice_id" class="form-control">
+                                                        <option value="" selected disabled>Select</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
                                                     <label for="customer_id">QUANTITY:</label>
                                                 </div>
                                                 <div class="col p-2">
@@ -483,7 +493,7 @@
                                                 $res = prepared_statements($sql,'i',[$bkid]);
                                             ?>
                                             <div class="col p-2">
-                                                <select name="paymode_id" id="paymode_id" class="form-control">
+                                                <select name="paymode_id" id="paymode_id" class="form-control" required>
                                                     <option hidden>Select</option>
                                                     <?php while($rw = $res->fetch_assoc()):?>
                                                         <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
@@ -496,7 +506,7 @@
                                                 <label for="cashout_details">DETAILS:</label>
                                             </div>
                                             <div class="col p-2">
-                                                <input type="text" name="cashout_details" id="cashout_details" class="form-control">
+                                                <input type="text" name="cashout_details" id="cashout_details" class="form-control" required>
                                             </div>
                                         </div>
                                         <div class="row mx-1">
@@ -504,7 +514,7 @@
                                                 <label for="created_at">DATE:</label>
                                             </div>
                                             <div class="col p-2">
-                                                <input type="datetime-local" name="created_at" id="created_at" class="form-control" required>
+                                                <input type="date" name="created_at" id="created_at" class="form-control" required>
                                             </div>
                                         </div>
                                         <div class="roww mx-1">
@@ -691,10 +701,17 @@
                                 $date = request('created_at');
                                 $user_id = auth()->id;
                                 $customer_id = request('customer_id');
-                                $item_id = request('item_id');
+                                $item_id = request('item_id') ?? 0;
                                 $qty = request('quantity');
                                 // $rate = request('rate');
                                 $type = request('transaction_type');
+                                $invoice_id = request('invoice_id') ?? 0;
+
+                                if(!empty($invoice_id) || $invoice_id > 0 )
+                                {
+                                    $invoice = invoiceFind($invoice_id);
+                                    $details = $invoice->invoice_no;
+                                }
 
                                 // distribute according to the transaction type
                                 $credit = 0;
@@ -730,9 +747,21 @@
                                 $res = prepared_statements(
                                     $sql,'ddisiisisiii',[$credit,$debit,$book_id, $details,$category_id,$payment_mode,$date,$user_id, $type,$customer_id,$item_id,$qty]
                                 );
-
                                 $trans_id = $server->insert_id;
-                                        
+
+                                // update invoices if not empty
+                                if(!empty($invoice_id) || $invoice_id > 0 )
+                                {
+                                    $details = $invoice->invoice_no;
+                                    $total_paid = $invoice->paid_amount + $amount;
+                                    $total_balance = $invoice->balance - $amount;
+
+                                    // update invoice
+                                    $update = "UPDATE cashbook_invoices SET paid_amount = ?, balance = ? WHERE id = ?";
+                                    prepared_statements($update,'ddi',[$total_paid,$total_balance,$invoice_id]);
+                                }
+                               
+                                 // credit cashins       
                                 if($credit > 0)
                                 {
                                     // insert into cashins table
@@ -743,6 +772,7 @@
                                 // check if customer has been selected and update the ledger
                                 if(!empty($customer_id))
                                 {
+                                    // update customer ledger
                                     customerLedgerUpdate($customer_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty);
                                 }
 
@@ -793,6 +823,7 @@
                                 $stmt = "INSERT INTO  cashbook_cashouts SET amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ?,user_id=?";
                                 prepared_statements($stmt,'iisiiisi',[$amount,$category_id,$details,$book_id,$trans_id,$payment_mode,$date,$user_id]);
                                 $_SESSION['success'] = 'Transaction Saved';
+
                             break;
                         case 'editCashoutSave':
 
@@ -888,6 +919,7 @@
 
                             break;
                     }
+                    
                     break;
                 case 'editTransaction':
                     $type = request('type');
@@ -1208,6 +1240,21 @@
                                 </tr>
                             <?php
                         endif;
+                    break;
+                case 'findCustomerInvoices':
+                    $id = request('customer_id');
+                    // fetch invoices
+                    $stmt = "SELECT * FROM cashbook_invoices WHERE customer_id = ? AND balance  > 0";
+                    $res = prepared_statements($stmt,'i',[$id]);
+                    ?>
+                        <option value="" selected disabled>-- select --</option>
+                    <?php
+                    while ($r = $res->fetch_assoc()):
+                        ?>
+                            <option value="<?=$r['id'];?>"><?=$r['invoice_no'];?> (<?=$r['balance'];?>)</option>
+                        <?php
+                    endwhile;
+
                     break;
 
             }

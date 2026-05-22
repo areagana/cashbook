@@ -1,26 +1,11 @@
 <?php
     session_start();
     require(__dir__.'/db_connect.php');
+    date_default_timezone_set('Africa/Kampala');
     if(isset($_GET['logout']))
     {
         session_destroy();
     }
-    // FUNCTION TO submit query
-    // function prepared_statements($stat,$binds,$vars=[])
-    // {
-    //     global $server;
-    //     if(!empty($stat))
-    //     {
-    //         $stmt = $server->prepare($stat);
-    //         echo mysqli_error($server);
-    //         $stmt->bind_param($binds,...$vars);
-    //         $stmt->execute();            
-    //         $res = $stmt->get_result();
-    //         return $res;
-    //     }else{
-    //         return; // abort the function and return epty function
-    //     }
-    // }
 
     function prepared_statements($stat, $binds = '', $vars = [])
     {
@@ -385,6 +370,8 @@
                 <!-- linie icons -->
                 <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/line/lineicons.css" />
                 <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css" />
+
+                <link = rel='stylesheet' href='https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css'>  
             </head>
             <body>
                 <div class="wrapper">
@@ -432,6 +419,7 @@
 
                     <script src="../assets/js/bootstrap.min.js"></script>
                     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                    <script src ="https://cdn.datatables.net/2.3.8/js/dataTables.min.js" ></script>
                     <script src="../assets/js/xdialog.3.4.0.min.js"></script>
                     <script src="../assets/js/custom.js"></script>
                     <script src="../assets/script.js"></script>
@@ -443,7 +431,7 @@
     function sideBar()
     {
         global $book;
-        $book = bookFind(encryptor('decrypt',$_SESSION['book_id']));
+        $book = bookFind(encryptor('decrypt',$_SESSION['book_id'])) ?? bookFind(encryptor('decrypt',$_REQUEST['bkid']));
         ?>
             <aside id="sidebar">
                 <div class="sidebar-header">
@@ -547,7 +535,9 @@
     // invoice find function
     function invoiceFind($id)
     {
-        $stmt = "SELECT * FROM cashbook_invoices WHERE id = ?";
+        $stmt = "SELECT ci.*,cc.name as customer,cc.contact FROM cashbook_invoices ci 
+                    LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id
+                WHERE ci.id = ?";
         $res = prepared_statements($stmt,'i',[$id]);
         return myObject($res->fetch_assoc());
     }

@@ -38,7 +38,7 @@
                                 $stmt = "SELECT balance FROM cashbook_customer_ledger WHERE customer_id = ? ORDER BY id DESC LIMIT 1";
                                 $s =1;
                             ?>
-                                <table class="table table-sm table-striped">
+                                <table class="table table-sm table-striped dataTable">
                                     <thead>
                                         <tr>
                                             <th>#</th>

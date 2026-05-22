@@ -43,10 +43,11 @@
                         <hr>
                         <div class="row mx-1">
                             <div class="col p-2">
-                                <table class="table table-striped table-bordered">
+                                <table class="table table-striped table-bordered dataTable">
                                     <thead>
                                         <tr>
                                             <th>Date</th>
+                                            <th>Trans_id</th>
                                             <th>Item</th>
                                             <th>Qty</th>
                                             <th>Pay Mode</th>
@@ -63,12 +64,13 @@
                                             ?>
                                                 <tr>
                                                     <td><?=$r['created_at'];?></td>
-                                                    <td><?=$r['item_name'];?> </td>
+                                                    <td><?=$r['id'];?></td>
+                                                    <td><?=$r['item_name'] ?? $r['details'];?> </td>
                                                     <td><?=$r['quantity'];?> <?=$r['units'];?></td>
                                                     <td><?=$r['paymode_name'];?></td>
                                                     <td><?=(!empty($r['credit_amount'])) ? number_format($r['credit_amount'],0) : '';?></td>
                                                     <td><?=(!empty($r['debit_amount'])) ? number_format($r['debit_amount'],0) : '';?></td>
-                                                    <td><?=number_format($bal,0);?></td>
+                                                    <td><?=number_format($r['balance'],0);?></td>
                                                     <td></td>
                                                 </tr>
                                             <?php endwhile;?>
@@ -92,6 +94,10 @@
                     <?php
                     break;
                 case'edit-customer':
+
+
+                    break;
+                case 'invoice-returns':
 
 
                     break;

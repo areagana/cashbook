@@ -422,7 +422,10 @@
         $roles =[
             'owner'=>'OWNER',
             'partner'=>'PARTNER',
-            'staff'=>'STAFF'
+            'staff'=>'STAFF',
+            'cashier'=>'CASHIER',
+            'stock_manager'=>'STOCK MANAGER',
+            'route_manager'=>'ROUTE MANAGER'
         ];
 
         $sql = "INSERT INTO cashbook_roles SET name =?, display_name =?";
@@ -483,7 +486,7 @@
             'customer_id'   => 'int(11) NOT NULL',
             'book_id'       => 'int(11) NOT NULL',
             'item_id'       => 'int(11) NOT NULL',
-            'type'          => "enum('cash_sale','payment','credit_sale','invoice') NOT NULL",
+            'type'          => "enum('cash_sale','payment','credit_sale','invoice','invoice_return') NOT NULL",
             'debit_amount'  => 'decimal(10,2) DEFAULT 0',   // increases what customer owes
             'credit_amount' => 'decimal(10,2) DEFAULT 0',   // reduces what customer owes
             'transaction_id'  => 'int(11) NULL',
@@ -532,6 +535,36 @@
         create_table($table, $columns);
     }
 
+    function cashbook_invoice_returns()
+    {
+        $table = 'cashbook_invoice_returns';
+
+        $columns = [
+            'invoice_id'    => 'int(11) NOT NULL',
+            'customer_id' => 'int(11) NOT NULL',
+            'total'         => 'decimal(10,2) DEFAULT 0',
+            'user_id'       => 'int(11) NULL'
+        ];
+        create_table($table, $columns);
+    }
+
+    function cashbook_invoice_return_items()
+    {
+        $table = 'cashbook_invoice_return_items';
+
+        $columns = [
+            'return_id'=> 'varchar(55) null',
+            'invoice_id'    => 'int(11) NOT NULL',
+            'invoice_item_id' => 'int(11) NOT NULL',
+            'item_id'       => 'int(11) NOT NULL',
+            'qty_returned'      => 'int(11) NOT NULL',
+            'unit_price'    => 'decimal(10,2) DEFAULT 0',
+            'total'         => 'decimal(10,2) DEFAULT 0',
+            'user_id'       => 'int(11) NULL'
+        ];
+        create_table($table, $columns);
+    }
+    
     // functions to create
     cashbook_books();
     cashbook_users();
@@ -550,6 +583,8 @@
     cashbook_customer_ledger();
     cashbook_invoices();
     cashbook_invoice_items();
+    cashbook_invoice_returns();
+    cashbook_invoice_return_items();
 
 // redirect to the home page after checking table creation functions
 if(isVerified())
