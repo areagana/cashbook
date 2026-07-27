@@ -6,7 +6,7 @@
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
     ?>
-            <div class="container-fluid">
+            <div class="container">
                 <div class="row mx-1">
                     <div class="col p-2 inline-block">
                         <a href="../books/?bkid=<?=$bsid;?>" class="nav-link">Books</a><i class="fa fa-angle-right"></i>
@@ -21,7 +21,7 @@
                                 <h3 class="p-2"><?=strToUpper($book->name);?> - CUSTOMERS</h3>
                             </div>
                             <div class="col p-2">
-                                <?php if(hasRole(['owner','partner'])):?>
+                                <?php if(hasRole(['owner','partner','staff'])):?>
                                     <div class="col p-3">
                                         <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
                                     </div>
@@ -31,37 +31,45 @@
                         <hr>
                         <div class="p-2">
                             <?php
-                                $sql = "SELECT * FROM cashbook_customers WHERE book_id =?";
-                                $res =prepared_statements($sql,'i',[$book->id]);
+                                $sql = "SELECT c.*,COALESCE(l.balance,0) AS balance FROM cashbook_customers c
+                                            LEFT JOIN (
+                                                    SELECT cl.customer_id, cl.balance
+                                                    FROM cashbook_customer_ledger cl
+                                                    INNER JOIN (
+                                                        SELECT customer_id, MAX(id) as max_id
+                                                        FROM cashbook_customer_ledger
+                                                        GROUP BY customer_id
+                                                    ) latest
+                                                    ON latest.max_id = cl.id
+                                                ) l
+                                            ON l.customer_id = c.id
+                                        WHERE c.book_id = ? ORDER BY l.balance DESC, c.name ASC";
 
-                                // fetch balance per customer
-                                $stmt = "SELECT balance FROM cashbook_customer_ledger WHERE customer_id = ? ORDER BY id DESC LIMIT 1";
+                                $res = prepared_statements($sql,'i',[$book->id]);
                                 $s =1;
                             ?>
-                                <table class="table table-sm table-striped dataTable">
+                                <table class="table table-sm table-striped dataTable" id='dataTable'>
                                     <thead>
                                         <tr>
                                             <th>#</th>
                                             <th>Name</th>
+                                            <th>Contact</th>
                                             <th class='text-right'>Account Status</th>
                                             <th class='text-right'>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php  while($r = $res->fetch_assoc()):
-                                            $cid = $r['id'];
-                                            $rc = prepared_statements($stmt,'i',[$cid]);
-                                            $rw = $rc->fetch_assoc();
-                                        ?>
+                                        <?php  while($r = $res->fetch_assoc()):?>
                                             <tr class='hover hover-hide-content'>
                                                 <td><?=$s++;?></td>
                                                 <td><?=$r['name'];?></td>
-                                                <td class='text-right'><?=(!empty($rw['balance'])) ? number_format($rw['balance'],0) : number_format(0,0);?></td>
+                                                <td><?=$r['contact'];?></td>
+                                                <td class='text-right'><?=number_format($r['balance'],0);?></td>
                                                 <td class='text-right'>
-                                                    <?php if(hasRole(['owner','partner'])):?>
+                                                    <?php if(hasRole(['owner','partner','staff'])):?>
                                                         <span class="hover-display text-sms">
-                                                            <?php if(hasRole(['owner'])):?>
-                                                                <button class="btn btn-sm btn-outline-info edit-customer text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
+                                                            <?php if(hasRole(['owner','partner'])):?>
+                                                                <button class="btn btn-sm btn-outline-info edit-customer text-muted" data-id="<?=$r['id'];?>"  data-title="<?=$r['name'];?>"><i class="fa fa-edit"></i></button>
                                                                 <button class="btn btn-sm btn-outline-danger delete-customer" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
                                                             <?php endif;?>
                                                             <button class="btn btn-sm btn-outline-info view-customer text-muted" data-id="<?=$r['id'];?>" data-title="<?=$r['name'];?>"><i class="fa fa-eye"></i></button> 
@@ -76,7 +84,8 @@
                     </div>
                 </div>
             </div>
-             <!-- side modal for a cash in -->
+            
+            <!-- side modal for a cash in -->
             <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
                 <div class="side-modal-header">
                     <h3 class="side-modal-title text-dark"></h3>
@@ -142,6 +151,11 @@
                     submitSingleForm("newCustomerForm", "../books/save/index.php");
                 });
 
+                // Call the function for your form
+                $(document).on('click','.saveCustomer',function(){
+                    submitSingleForm("newCustomerForm", "../books/save/index.php");
+                });
+
                 function submitSingleForm(formId, backendUrl) 
                 {
                     const form = document.getElementById(formId);
@@ -200,6 +214,8 @@
                         }
                     });
                 });
+
+
             </script>
         <?php
     }else{

@@ -1,6 +1,6 @@
 <?php
     require_once(__dir__.'/../../assets/functions.php');
-    if(isVerified() && hasRole(['owner','partner']))
+    if(isVerified() && hasRole(['owner','partner','staff']))
     {
         if(isset($_REQUEST['action']) && !empty($_REQUEST['action']))
         {

@@ -701,11 +701,11 @@
                                 $date = request('created_at');
                                 $user_id = auth()->id;
                                 $customer_id = request('customer_id');
-                                $item_id = request('item_id') ?? 0;
+                                $item_id = isset($_POST['item_id']) ? request('item_id') : 0;
                                 $qty = request('quantity');
                                 // $rate = request('rate');
                                 $type = request('transaction_type');
-                                $invoice_id = request('invoice_id') ?? 0;
+                                $invoice_id = isset($_POST['invoice_id']) ? request('invoice_id') : 0;
 
                                 if(!empty($invoice_id) || $invoice_id > 0 )
                                 {
@@ -719,25 +719,26 @@
 
                                 // CASH SALE
                                 if($type === 'cash_sale'){
-                                    $credit = $amount; // cash increases
+                                    $credit = (float)$amount; // cash increases
                                     $creditable = 0;
                                 }
 
                                 // CREDIT SALE
                                 if($type === 'credit_sale'){
-                                    $debit = $amount; 
+                                    $debit = (float)$amount; 
+                                    $creditable = 0;
                                 }
 
                                 // capture payment the same way as cash sale
                                 if($type === 'payment'){
-                                    $credit = $amount;
-                                    $creditable = $amount; 
+                                    $credit = (float)$amount;
+                                    $creditable = (float)$amount; 
                                 }
 
                                 //other_income
                                  if($type === 'other_income'){
-                                    $credit = $amount; 
-                                    $creditable = $amount;
+                                    $credit = (float)$amount; 
+                                    $creditable = (float)$amount;
                                 }
                                 // save the content
                                 $sql = "INSERT INTO cashbook_transactions  SET credit_amount = ?, debit_amount = ?, book_id = ?, details = ?, 
@@ -919,7 +920,6 @@
 
                             break;
                     }
-                    
                     break;
                 case 'editTransaction':
                     $type = request('type');

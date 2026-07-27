@@ -234,29 +234,53 @@
     }
     }
     // check roles
+    // function hasRole($array)
+    // {
+    //     global $server;
+    //     $auth = auth();
+    //     $roles = mysqli_query($server,"SELECT * FROM cashbook_roles");
+    //     $dat =[];
+    //     print_r($auth);
+
+    //     while($r = $roles->fetch_assoc())
+    //     {
+    //         if($r['id'] == $auth->role_id)
+    //         {
+    //             $dat[] = $r['name'];
+    //         }
+    //     }
+
+    //     foreach($array as $role)
+    //     {
+    //         if(in_array($role,$dat))
+    //         {
+    //             return true;
+    //         }else{
+    //             return false;
+    //         }
+    //     }
+    // }
     function hasRole($array)
     {
         global $server;
+
         $auth = auth();
-        $roles = mysqli_query($server,"SELECT * FROM cashbook_roles");
-        $dat =[];
-        while($r = $roles->fetch_assoc())
+
+        $query = mysqli_query($server, "
+            SELECT name 
+            FROM cashbook_roles 
+            WHERE id = '{$auth->role_id}'
+            LIMIT 1
+        ");
+
+        if(!$query || mysqli_num_rows($query) == 0)
         {
-            if($r['id']== $auth->role_id)
-            {
-                $dat[] = $r['name'];
-            }
+            return false;
         }
 
-        foreach($array as $role)
-        {
-            if(in_array($role,$dat))
-            {
-                return true;
-            }else{
-                return false;
-            }
-        }
+        $role = mysqli_fetch_assoc($query);
+
+        return in_array($role['name'], $array);
     }
 
     // display session message
@@ -318,22 +342,19 @@
     // customer ledger update function
     function customerLedgerUpdate($customer_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty)
     {
-        $sql = "
-            SELECT 
-                customer_id,
-                SUM(debit_amount - credit_amount) AS balance
-            FROM cashbook_customer_ledger
-            WHERE customer_id = ? AND book_id = ?
-            GROUP BY customer_id
-        ";
+        $sql = "SELECT customer_id, SUM(debit_amount - credit_amount) AS balance
+                    FROM cashbook_customer_ledger
+                    WHERE customer_id = ? AND book_id = ?
+                GROUP BY customer_id
+            ";
 
         $res = prepared_statements($sql, 'ii', [$customer_id, $book_id]);
         $row = $res->fetch_assoc();
 
         $balance = $row['balance'] ?? 0;
-        // use balance tp update the ledger
-        $newBalance = $balance + $debit - $credit;
         
+        // use balance to update the ledger
+        $newBalance = $balance + $debit - $credit;
         $stmt = "INSERT INTO  cashbook_customer_ledger SET customer_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ?";
         prepared_statements($stmt,'iddsiiisiiid',[$customer_id,$credit,$debit,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$newBalance]);  
     }
@@ -371,7 +392,7 @@
                 <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/line/lineicons.css" />
                 <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css" />
 
-                <link = rel='stylesheet' href='https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css'>  
+                <link rel='stylesheet' href='https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css'>  
             </head>
             <body>
                 <div class="wrapper">
@@ -496,7 +517,7 @@
                             <span>Categories</span>
                         </a>
                         <ul id="categoriesMenu" class="collapse">
-                            <li><a href="../categories/?bkid=<?=encryptor('encrypt',$book->id);?>">View Categories</a></li>
+                            <li><a href="../category/?bkid=<?=encryptor('encrypt',$book->id);?>">View Categories</a></li>
                             <li><a href="#">Add Category</a></li>
                         </ul>
                     </li>

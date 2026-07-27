@@ -34,7 +34,7 @@
                                 $sql = "SELECT * FROM cashbook_items WHERE book_id =?";
                                 $res =prepared_statements($sql,'i',[$book->id]);
                             ?>
-                                <table class="table table-sm table-striped">
+                                <table class="table table-sm table-striped dataTable">
                                     <thead>
                                         <tr>
                                             <th>#</th>

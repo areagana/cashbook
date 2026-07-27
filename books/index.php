@@ -64,7 +64,9 @@
                             ?>
                         </div>
                         <hr>
-                        <a href="../members/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
+                        <?php if(hasRole(['owner','partner'])):?>
+                            <a href="../members/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
+                        <?php endif;?>
                     </div>
                     <div class="p-2 border rounded-3 m-1">
                         <h3 class="border-bottom rounded-3 p-2">TRANSACTIONS</h3>
@@ -171,7 +173,7 @@
                             $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.created_at,ct.details,cu.name as customer FROM cashbook_transactions ct 
                                     LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id
                                     LEFT JOIn cashbook_customers cu ON cu.id = ct.customer_id
-                                WHERE ct.book_id = ? AND month(ct.created_at) = month(now()) ORDER BY ct.created_at desc";
+                                WHERE ct.book_id = ? AND month(ct.created_at) = month(now()) ORDER BY ct.id desc";
                             $res_ = prepared_statements($stmt_,'i',[$id]);
                             $t = 0;
                         ?>

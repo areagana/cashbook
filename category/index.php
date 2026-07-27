@@ -3,7 +3,7 @@
     if(isVerified())
     {
         pageHeader('Categories');
-        $bsid = request('bsid');
+        $bsid = request('bkid');
         $book = bookFind(encryptor('decrypt',$bsid));
         ?>
             <div class="container">
@@ -34,7 +34,7 @@
                                 $sql = "SELECT * FROM cashbook_categories WHERE book_id =?";
                                 $res =prepared_statements($sql,'i',[$book->id]);
                             ?>
-                                <table class="table table-sm table-striped">
+                                <table class="table table-sm table-striped dataTable">
                                     <thead>
                                         <tr>
                                             <th>#</th>

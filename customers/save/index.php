@@ -1,6 +1,6 @@
 <?php
     require_once(__dir__.'/../../assets/functions.php');
-    if(isVerified() && hasRole(['owner','partner']))
+    if(isVerified() && hasRole(['owner','partner','staff']))
     {
         if(isset($_REQUEST['action']) && !empty($_REQUEST['action']))
         {
@@ -16,7 +16,7 @@
                                 LEFT JOIN cashbook_items ci ON ccl.item_id = ci.id
                                 INNER JOIN cashbook_transactions ct2 ON ccl.transaction_id = ct2.id
                                 LEFT JOIN cashbook_paymodes pm ON ccl.paymode_id = pm.id
-                                WHERE ccl.customer_id = ? ORDER BY ccl.created_at desc";
+                                WHERE ccl.customer_id = ? ORDER BY ccl.created_at ASC";
                         $res = prepared_statements($sql,'i',[$id]);
                         $credits = [];
                         $debits =[];

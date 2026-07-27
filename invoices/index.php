@@ -36,7 +36,7 @@
                                 <h3 class="p-2"><?=strToUpper($book->name);?> - INVOICES</h3>
                             </div>
                             <div class="col p-2">
-                                <?php if(hasRole(['owner','partner'])):?>
+                                <?php if(hasRole(['owner','partner','staff'])):?>
                                     <div class="col p-3">
                                         <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add invoice' data-section='invoice'><i class="fa fa-plus-circle"></i> Invoice</button>
                                     </div>
@@ -79,13 +79,13 @@
                                                     <td class='text-right'><?=number_format($r['paid_amount'],0);?></td>
                                                     <td class='text-right'><?=number_format($r['newBalance'],0);?></td>
                                                     <td class='text-right'>
-                                                        <?php if(hasRole(['owner','partner'])):?>
+                                                        <?php if(hasRole(['owner','partner','staff'])):?>
                                                             <span class="hover-display text-sms">
                                                                 <?php if(hasRole(['owner'])):?>
                                                                     <button class="btn btn-sm btn-outline-info edit-invoice text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
-                                                                    <button class="btn btn-sm btn-outline-info create-detail text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-plus"></i></button>
                                                                     <button class="btn btn-sm btn-outline-danger delete-invoice" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
                                                                 <?php endif;?>
+                                                                <button class="btn btn-sm btn-outline-info create-detail text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-plus"></i></button>
                                                                 <button class="btn btn-sm btn-outline-info view-invoice text-muted" data-id="<?=$r['id'];?>" data-title="" title='view'><i class="fa fa-eye"></i></button>
                                                                 <button class="btn btn-sm btn-outline-info invoice-return text-muted" data-id="<?=$r['id'];?>" title='Invoice Return'><i class="fa fa-undo" aria-hidden="true"></i></button> 
                                                             </span>
