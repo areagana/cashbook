@@ -154,7 +154,7 @@
                                         $amounts = [];
                                         $s = 1;
                                     ?>
-                                    <table class="table table-striped table-bordered">
+                                    <table class="table table-striped table-bordered table-sm">
                                         <thead>
                                             <tr>
                                                 <th>S/NO</th>
@@ -175,9 +175,60 @@
                                                 <td><?=number_format($r['total'],0);?></td>
                                             </tr>
                                         <?php endwhile;?>
-                                        <tr class='h3'>
+                                        <tr class='h5'>
                                             <td colspan='4'>TOTAL</td>
                                             <td id='invoice_total'><?=number_format(array_sum($amounts),0);?></td>
+                                        </tr>
+                                    </table>
+                                    <hr>
+                                    <div class="p-2 h5">
+                                        <center> <h5 class="p-2 text-center">INVOICE RETURN</h5></center>
+                                    </div>
+                                    <hr>
+                                    <div class="p-2">
+                                        <?php
+                                        $stmtr = "SELECT cii.*,ci.name as item,ci.units FROM cashbook_invoice_return_items cii 
+                                                    INNER JOIN cashbook_items ci ON ci.id = cii.item_id
+                                                    WHERE cii.invoice_id = ? ORDER BY id ASC";
+                                        $res = prepared_statements($stmtr,'i',[$id]);
+                                        
+                                        $returnAmounts = [];
+                                        $s = 1;
+                                    ?>
+                                        <table class="table table-striped table-bordered table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>S/NO</th>
+                                                    <th>Item name</th>
+                                                    <th>Qty Returned</th>
+                                                    <th>Rate</th>
+                                                    <th>Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class='invoiceItemsTbody'>                            
+                                            </tbody>
+                                            <?php while($rr = $res->fetch_assoc()): $returnAmounts[] = $rr['total'];?>
+                                                <tr class='invoice-item-row'>
+                                                    <td><?=$s++;?></td>
+                                                    <td><?=$rr['item'];?></td>
+                                                    <td><?=$rr['qty_returned'];?> <?=$rr['units'];?></td>
+                                                    <td><?=number_format($rr['unit_price'],0);?></td>
+                                                    <td><?=number_format($rr['total'],0);?></td>
+                                                </tr>
+                                            <?php endwhile;?>
+                                            <tr class='h5'>
+                                                <td colspan='4'>TOTAL</td>
+                                                <td id='invoice_total'><?=number_format(array_sum($returnAmounts),0);?></td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    <?php
+                                        // fetch invoice payments
+                                    ?>
+                                    <table class="table table-bordered table-striped table-sm">
+                                        <tr class='h5'>
+                                            <td colspan='4'>INVOICE BALANCE</td>
+                                            <td id='invoice_total'><?=number_format((array_sum($amounts)-array_sum($returnAmounts)),2);?></td>
                                         </tr>
                                     </table>
                                     <hr>
@@ -331,6 +382,30 @@
 
                                 break;
                         }
+                    break;
+                case 'deleteInvoice':
+                    $id = request('id');
+
+                    // delete customer
+                    $stmt = "DELETE FROM cashbook_invoices WHERE id = ?";
+                    $res = prepared_statements($stmt,'i',[$id]);
+
+                    // get transaction if
+                    $check = "SELECT ct.id as trans_id FROM cashbook_transactions
+                        INNER JOIN cashbook_invoice ci ON ci.invoice_no = ct.details 
+                        WHERE ci.id = ?";
+                    $tt = prepared_statements($check,'i',[$id]);
+                    $rr = $tt->fetch_assoc();
+                    $tid = $rr['trans_id'];
+
+                    if($res)
+                    {
+                        // track transaction edits
+                        trackTransactionEdits($tid,'invoice-deletion');
+
+                        // adjust customer ledger records
+                        echo "Success";
+                    }
                     break;
             }
         }

@@ -509,7 +509,7 @@
         $columns = [
             'customer_id'   => 'int(11) NOT NULL',
             'book_id'       => 'int(11) NOT NULL',
-            'invoice_no'    => 'VARCHAR(50) UNIQUE not null',
+            'invoice_no'    => 'VARCHAR(50) NOT NULL',
             'invoice_date'  => 'DATE',
             'status'      => "ENUM('draft','sent','paid') DEFAULT 'draft'",
             'total'       => 'DECIMAL(10,2) DEFAULT 0',

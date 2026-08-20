@@ -51,52 +51,12 @@
                 <?php endif;?>
             </div>
             <hr>
-
             <div class="row mx-1 mt-2">
-                <div class="col p-2 side-displays">
-                    <div class="p-2 border rounded-3 m-1 text-center">
-                        <h3 class="border-bottom rounded-3 p-2">MEMBERS</h3>
-                        <div class="p-2 text-center">
-                            <?php
-                                $sqlu = "SELECT DISTINCT user_id FROM cashbook_book_users WHERE book_id = ?";
-                                $rspu = prepared_statements($sqlu,'i',[$book->id]);
-                                echo $rspu->num_rows;
-                            ?>
-                        </div>
-                        <hr>
-                        <?php if(hasRole(['owner','partner'])):?>
-                            <a href="../members/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
-                        <?php endif;?>
-                    </div>
-                    <div class="p-2 border rounded-3 m-1">
-                        <h3 class="border-bottom rounded-3 p-2">TRANSACTIONS</h3>
-                        <div class="p-2 text-center">
-                            <?php
-                                $sqlt = "SELECT count(id) as transactions FROM cashbook_transactions WHERE book_id = ?";
-                                $rspt = prepared_statements($sqlt,'i',[$book->id]);
-                                $rwt = $rspt->fetch_assoc();
-                                echo $rwt['transactions'];
-                            ?>
-                        </div>
-                    </div>
-                    <div class="p-2 border rounded-3 m-1">
-                        <h3 class="border-bottom rounded-3 p-2">ITEMS</h3>
-                        <div class="p-2 text-center">
-                            <?php
-                                $sqli = "SELECT * FROM cashbook_items WHERE book_id = ?";
-                                $rsi = prepared_statements($sqli,'i',[$book->id]);
-                                echo $rsi->num_rows;
-                            ?>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-7 p-2 border rounded-3 main-display">
+                <div class="col p-2 border rounded-3 main-display">
                     <div class="row mx-1">
-                        <div class="col p-2 bg-success cash-in text-center hover text-white btn-click" data-title='add cashin' data-section='cashin'>
-                            CASHIN
-                        </div>
-                        <div class="col p-2 bg-danger cash-out text-center hover text-white btn-click" data-title='add cashout' data-section='cashout'>
-                            CASHOUT
+                        <div class="col p-2 text-right">
+                            <button class="btn btn-flat btn-danger right mx-2 cash-out btn-click hover" data-title='add cashout' data-section='cashout'>CASH Out</button>
+                            <button class="btn btn-flat btn-primary right mx-2 cash-in btn-click hover" data-title='add cashin' data-section='cashin'>CASH IN</button>
                         </div>
                     </div>
                     <div class="row m-1">
@@ -165,6 +125,16 @@
                                     <option value="<?=$rc['id'];?>"><?=$rc['name'];?></option>
                                 <?php endwhile;?>
                             </select>
+                            <?php
+                                $sqlc = "SELECT * FROM cashbook_customers WHERE book_id =? order by name asc";
+                                $cust = prepared_statements($sqlc,'i',[$book->id]);
+                            ?>
+                            <select name="filter-customer" id="filter-customer" data-type='customer' class="form-control filter-item">
+                                <option value=''><i class="fa fa-filter"></i> By Customer</option>
+                                <?php while($rcu = $cust->fetch_assoc()):?>
+                                    <option value="<?=$rcu['id'];?>"><?=$rcu['name'];?></option>
+                                <?php endwhile;?>
+                            </select>
                         </div>
                     </div>
                     <hr>
@@ -178,12 +148,14 @@
                             $t = 0;
                         ?>
                         <div class="col p-2 table-responsive transaction-table-wrapper">
+                            <h4 class='text-center'>RECENT TRANSACTIONS (CURRENT MONTH)</h4>
                             <table class="table table-sm table-striped">
                                 <thead>
                                     <tr>
                                         <th>#</th>
                                         <th>Date</th>
                                         <th>Category</th>
+                                        <th>Customer</th>
                                         <th>Details</th>
                                         <th>Credit</th>
                                         <th>Debit</th>
@@ -196,6 +168,7 @@
                                         <td><?=++$t;?></td>
                                         <td><?=$r['created_at'];?></td>
                                         <td><?=$r['category'];?></td>
+                                        <td><?=$r['customer'];?></td>
                                         <td><?=$r['details'];?></td>
                                         <td><?=number_format($r['credits'],0);?></td>
                                         <td><?=number_format($r['debits'],0);?></td>
@@ -214,51 +187,12 @@
                         </div>
                     </div>
                 </div>
-                <div class="col p-2 side-displays">
-                    <div class="p-2 border rounded-3 m-1 text-center">
-                        <h3 class="border-bottom rounded-3 p-2">CATEGORIES</h3>
-                        <div class="p-2 text-center">
-                            <?php
-                                $sqlc = "SELECT * FROM cashbook_categories WHERE book_id = ?";
-                                $rsc = prepared_statements($sqlc,'i',[$book->id]);
-                                echo $rsc->num_rows;
-                            ?>
-                        </div>
-                        <hr>
-                        <a href="../category/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
-                    </div>
-
-                    <div class="p-2 border rounded-3 m-1 text-center">
-                        <h3 class="border-bottom rounded-3 p-2">PAYMODES</h3>
-                        <div class="p-2 text-center">
-                            <?php
-                                $sqlp = "SELECT * FROM cashbook_paymodes WHERE book_id = ?";
-                                $rsp = prepared_statements($sqlp,'i',[$book->id]);
-                                echo $rsp->num_rows;
-                            ?>
-                        </div>
-                        <hr>
-                        <a href="../modes/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
-                    </div>
-                    <div class="p-2 border rounded-3 m-1 text-center">
-                        <h3 class="border-bottom rounded-3 p-2">CUSTOMERS</h3>
-                        <div class="p-2 text-center">
-                            <?php
-                                $sqlcu = "SELECT * FROM cashbook_customers WHERE book_id = ?";
-                                $rspcu = prepared_statements($sqlcu,'i',[$book->id]);
-                                echo $rspcu->num_rows;
-                            ?>
-                        </div>
-                        <hr>
-                        <a href="../customers/?bsid=<?=encryptor('encrypt',$book->id);?>" class="nav-link">View</a>
-                    </div>
-                </div>
             </div>
             
             <!-- side modal for a cash in -->
-            <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
-                <div class="side-modal-header">
-                    <h3 class="side-modal-title text-dark"></h3>
+            <div class="p-0 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
+                <div class="side-modal-header bg-success">
+                    <h3 class="side-modal-title text-white"></h3>
                     <button type='button' class='side-modal-close'>&times;</button>
                 </div>
                 <div class="side-modal-content">
@@ -483,6 +417,7 @@
                 }
             });
         });
+
         // reset filter items
         $('#resetFilters').on('click', function () {
             $('.filter-item').val('');
@@ -538,5 +473,17 @@
                     }
                 })
             }
+        });
+
+        // control displkay of other form items
+        $(document).on('blur','#inamount',function(){
+            var amount = $(this).val();
+            if(amount == '')
+            {
+                $('.inAmount-controlled').hide();
+            }else{
+                $('.inAmount-controlled').show();
+            }
+            
         });
     </script>

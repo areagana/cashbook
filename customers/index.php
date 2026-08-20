@@ -151,11 +151,6 @@
                     submitSingleForm("newCustomerForm", "../books/save/index.php");
                 });
 
-                // Call the function for your form
-                $(document).on('click','.saveCustomer',function(){
-                    submitSingleForm("newCustomerForm", "../books/save/index.php");
-                });
-
                 function submitSingleForm(formId, backendUrl) 
                 {
                     const form = document.getElementById(formId);
@@ -215,6 +210,30 @@
                     });
                 });
 
+                // delete customer
+                $(document).on('click','.delete-customer',function(){
+                    var id = $(this).data('id');
+                    xdialog.confirm('Confirm to delete customer?',function(){
+                        $.ajax({
+                            url:'save/index.php',
+                            data:{
+                                action:'deleteCustomer',
+                                id:id
+                            },
+                            beforeSend:function(){
+                                xdialog.startSpin();
+                            },
+                            success:function(res){
+                                xdialog.stopSpin();
+                                xdialog.info("Customer deleted successfully");
+                                window.location.reload();
+                            },
+                            error:function(err){
+                                xdialog.info("Error removing customer");
+                            }
+                        });
+                    });
+                });
 
             </script>
         <?php

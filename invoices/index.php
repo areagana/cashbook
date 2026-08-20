@@ -326,8 +326,6 @@
                     }
                 });
 
-
-                
                 function recalculateInvoiceTotals()
                 {
                     var total = 0;
@@ -418,6 +416,33 @@
                     row.hide();
                     row.find('.amountClass').val(0);
                     recalculateInvoiceTotals();
+                });
+
+                // delete invoice
+                
+                // delete customer
+                $(document).on('click','.delete-invoice',function(){
+                    var id = $(this).data('id');
+                    xdialog.confirm('Confirm to delete this invoice?',function(){
+                        $.ajax({
+                            url:'save/index.php',
+                            data:{
+                                action:'deleteInvoice',
+                                id:id
+                            },
+                            beforeSend:function(){
+                                xdialog.startSpin();
+                            },
+                            success:function(res){
+                                xdialog.stopSpin();
+                                xdialog.info("Invoice deleted successfully");
+                                window.location.reload();
+                            },
+                            error:function(err){
+                                xdialog.info("Error removing Invoice");
+                            }
+                        });
+                    });
                 });
 
             </script>

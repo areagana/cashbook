@@ -48,6 +48,7 @@
                                         <tr>
                                             <th>Date</th>
                                             <th>Trans_id</th>
+                                            <th>Type</th>
                                             <th>Item</th>
                                             <th>Qty</th>
                                             <th>Pay Mode</th>
@@ -59,12 +60,15 @@
                                     </thead>
                                         <tbody>
                                         <?php if($res->num_rows > 0):?>
-                                            <?php while($r = $res->fetch_assoc()): $credits[] = $r['credit_amount']; $debits[] = $r['debit_amount'];
+                                            <?php while($r = $res->fetch_assoc()): 
+                                                $credits[] = $r['credit_amount']; 
+                                                $debits[] = $r['debit_amount'];
                                                 $bal = array_sum($credits) - array_sum($debits);
                                             ?>
                                                 <tr>
-                                                    <td><?=$r['created_at'];?></td>
+                                                    <td><?=date_format(date_create($r['created_at']),"d-m-Y");?></td>
                                                     <td><?=$r['id'];?></td>
+                                                    <td><?=$r['type'];?></td>
                                                     <td><?=$r['item_name'] ?? $r['details'];?> </td>
                                                     <td><?=$r['quantity'];?> <?=$r['units'];?></td>
                                                     <td><?=$r['paymode_name'];?></td>
@@ -82,6 +86,8 @@
                                         <tr>
                                             <th colspan='3'>BALANCE</th>
                                             <th></th>
+                                            <th></th>
+                                            <th></th>
                                             <th><?=number_format(array_sum($credits),0);?></th>
                                             <th><?=number_format(array_sum($debits),0);?></th>
                                             <th><?=number_format((array_sum($credits) - array_sum($debits)),0);?></th>
@@ -89,17 +95,26 @@
                                     </tbody>
                                 </table>
                             </div>
-                            
+                            <div class="col-md-3 p-2">
+                                <h3 class="p-2">INVOICES</h3>
+                                <div class="p">
+
+                                </div>
+                            </div>
                         </div>
                     <?php
                     break;
-                case'edit-customer':
+                
+                case 'deleteCustomer':
+                    $id = request('id');
 
-
-                    break;
-                case 'invoice-returns':
-
-
+                    // delete customer
+                    $stmt = "DELETE FROM cashbook_customers WHERE id = ?";
+                    $res = prepared_statements($stmt,'i',[$id]);
+                    if($res)
+                    {
+                        echo "Success";
+                    }
                     break;
             }
         }
