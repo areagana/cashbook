@@ -375,8 +375,12 @@
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title><?=($header) ? $header : "Cashbook";?></title>
+                
                 <!-- Bootstrap 4 -->
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.18/css/bootstrap-select.min.css">
                 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css">
+                
+
                 <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous"> -->
 
                 <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
@@ -392,7 +396,9 @@
                 <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/line/lineicons.css" />
                 <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css" />
 
-                <link rel='stylesheet' href='https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css'>  
+                <!-- select 2 css -->
+                <link rel='stylesheet' href='https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css'>
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css"> 
             </head>
             <body>
                 <div class="wrapper">
@@ -437,11 +443,14 @@
                 </div> <!-- end wrapper -->
                     <script src="../assets/js/jquery-3.5.1.min.js"></script>
                     <!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script> -->
-
+                    
+                    <!-- select 2 scripts -->
+                    <!-- <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> -->
                     <script src="../assets/js/bootstrap.min.js"></script>
                     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
                     <script src ="https://cdn.datatables.net/2.3.8/js/dataTables.min.js" ></script>
                     <script src="../assets/js/xdialog.3.4.0.min.js"></script>
+                    <script src="../assets/js/select2.min.js" defer></script>
                     <script src="../assets/js/custom.js"></script>
                     <script src="../assets/script.js"></script>
             </body>
@@ -482,63 +491,57 @@
                     </li>
 
                     <li class='sidebar-item'>
-                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#stockMenu">
+                        <a href="../stock/?bkid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
                             <i class="fa fa-box"></i>
                             <span>Stock</span>
                         </a>
-                        <ul id="stockMenu" class="collapse">
-                            <li><a href="../stock/?bkid=<?=encryptor('encrypt',$book->id);?>">View Stock</a></li>
-                            <li><a href="#">Add Stock</a></li>
-                        </ul>
                     </li>
                     <li class='sidebar-item'>
-                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#itemsMenu">
+                        <a href="../items/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
                             <i class="fa fa-box"></i>
                             <span>Items</span>
                         </a>
-                        <ul id="itemsMenu" class="collapse">
-                            <li><a href="../items/?bsid=<?=encryptor('encrypt',$book->id);?>">View Items</a></li>
-                            <li><a href="#">Add Item</a></li>
-                        </ul>
                     </li>
                     <li class='sidebar-item'>
-                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#usersMenu">
+                        <a href="../members/?bkid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
                             <i class="fa fa-users"></i>
                             <span>Users</span>
                         </a>
-                        <ul id="usersMenu" class="collapse">
-                            <li><a href="../members/?bkid=<?=encryptor('encrypt',$book->id);?>">View Users</a></li>
+                        <!-- <ul id="usersMenu" class="collapse">
+                            <li><a href="../members/?bkid=<?//=encryptor('encrypt',$book->id);?>">View Users</a></li>
                             <li><a href="#">Add User</a></li>
-                        </ul>
+                        </ul> -->
                     </li>
                     <li class='sidebar-item'>
-                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#categoriesMenu">
+                        <a href="../category/?bkid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
                             <i class="fa fa-box"></i>
                             <span>Categories</span>
                         </a>
-                        <ul id="categoriesMenu" class="collapse">
-                            <li><a href="../category/?bkid=<?=encryptor('encrypt',$book->id);?>">View Categories</a></li>
-                            <li><a href="#">Add Category</a></li>
-                        </ul>
                     </li>
                     <li class='sidebar-item'>
-                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#PayModesMenu">
+                        <a href="../modes/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
                             <i class="fa fa-handshake"></i>
                             <span>Pay Modes</span>
                         </a>
-                        <ul id="PayModesMenu" class="collapse">
-                            <li><a href="../modes/?bsid=<?=encryptor('encrypt',$book->id);?>">View Pay Modes</a></li>
-                            <li><a href="#">Add Category</a></li>
-                        </ul>
                     </li>
                     <li class='sidebar-item'>
-                        <a href="#" class='sidebar-link has-dropdown collapsed' data-toggle="collapse" data-target="#RouteManagersMenu">
+                        <a href="../invoices/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
+                            <!-- data-toggle="collapse" data-target="#Invoices-menu" -->
                             <i class="fa fa-undo"></i>
                             <span>Invoices</span>
                         </a>
-                        <ul id="RouteManagersMenu" class="collapse">
-                            <li><a href="../invoices/?bsid=<?=encryptor('encrypt',$book->id);?>">View Invoices</a></li>
-                        </ul>
+                    </li>
+                    <li class='sidebar-item'>
+                        <a href="../routes/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
+                            <i class="fa fa-redo"></i>
+                            <span>Routes</span>
+                        </a>
+                    </li>
+                    <li class='sidebar-item'>
+                        <a href="../route_managers/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link'>
+                            <i class="fa fa-redo"></i>
+                            <span>Route Managers</span>
+                        </a>
                     </li>
                 </ul>
 

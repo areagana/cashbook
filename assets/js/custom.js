@@ -742,6 +742,21 @@ function searchTable(val,id)
 $('#dataTable').DataTable();
 $('.dataTable').DataTable();
 
+$(document).ready(function() {
+    $('#mySelect').select2();
+    $('.form-control.search-select').select2();
+    // You can add additional options or customize the behavior here
+});
+
+$(document).ready(function() {
+    $('#mySelect').select2();
+    $('.form-control.search-select .multiple').select2({
+    multiple:true,
+    tags: true,
+    tokenSeparators: [',', ' ']
+    });
+    // You can add additional options or customize the behavior here
+});
 // image preview function
 // function imagePreview(id,idimageHolder)
 // {

@@ -130,6 +130,40 @@
                                                     <input type="text" name="address" id="address" class="form-control">
                                                 </div>
                                             </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="route">ROUTE:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = "SELECT * FROM cashbook_routes WHERE book_id = ?";
+                                                    $res = prepared_statements($sql,'i',[$bkid]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="route_id" id="route_id" class="form-control search-select" required>
+                                                        <option value="" selected disabled>Select</option>
+                                                        <?php while($rw = $res->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="address">ROUTE MANAGER:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = "SELECT * FROM cashbook_route_managers WHERE book_id = ?";
+                                                    $res = prepared_statements($sql,'i',[$bkid]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="route_manager_id" id="route_manager_id" class="form-control search-select" required>
+                                                        <option value="" selected disabled>Select</option>
+                                                        <?php while($rw = $res->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
                                             <div class="roww mx-1">
                                                 <div class="col p-2">
                                                     <button class="btn btn-flat btn-primary right saveCustomer">Save</button>
@@ -336,7 +370,7 @@
                                                         $res = prepared_statements($sql,'i',[$bkid]);
                                                     ?>
                                                     <div class="col p-2">
-                                                        <select name="category_id" id="category_id" class="form-control" required>
+                                                        <select name="category_id" id="category_id" class="form-control search-select" required>
                                                             <option value="" selected disabled>Select</option>
                                                             <?php while($rw = $res->fetch_assoc()):?>
                                                                 <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
@@ -353,7 +387,7 @@
                                                         $res = prepared_statements($sql,'i',[$bkid]);
                                                     ?>
                                                     <div class="col p-2">
-                                                        <select name="customer_id" id="customer_id" class="form-control">
+                                                        <select name="customer_id" id="customer_id" class="form-control search-select">
                                                             <option value="" disabled selected>Select</option>
                                                             <?php while($rw = $res->fetch_assoc()):?>
                                                                 <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
@@ -370,7 +404,7 @@
                                                         $res = prepared_statements($sql,'i',[$bkid]);
                                                     ?>
                                                     <div class="col p-2">
-                                                        <select name="item_id" id="item_id" class="form-control">
+                                                        <select name="item_id" id="item_id" class="form-control search-select">
                                                             <option value="" selected disabled>Select</option>
                                                             <?php while($rw = $res->fetch_assoc()):?>
                                                                 <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
@@ -405,7 +439,7 @@
                                                         $res = prepared_statements($sql,'i',[$bkid]);
                                                     ?>
                                                     <div class="col p-2">
-                                                        <select name="paymode_id" id="paymode_id" class="form-control">
+                                                        <select name="paymode_id" id="paymode_id" class="form-control search-select">
                                                             <option value="" selected disabled>Select</option>
                                                             <?php while($rw = $res->fetch_assoc()):?>
                                                                 <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
@@ -542,7 +576,7 @@
                                                     $ress = prepared_statements($sqlc,'i',[$bkid]);
                                                 ?>
                                                 <div class="col p-2">
-                                                    <select name="customer_id" id="customer_id" class="form-control" required>
+                                                    <select name="customer_id" id="customer_id" class="form-control search-select" required>
                                                         <option value="">-- select--</option>
                                                         <?php while($rr = $ress->fetch_assoc()):?>
                                                             <option value="<?=$rr['id'];?>"><?=$rr['name'];?></option>
@@ -564,6 +598,90 @@
                                                 </div>
                                             </div>
                                         </form>
+                                    <?php
+                                break;
+                            case 'route_manager':
+                                    ?>
+                                        <form id='newRouteManagerForm' method="post">
+                                            <div class="row mx-1">
+                                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                                <input type="hidden" name="form" value='newRouteManagerSave'>
+                                                <input type="hidden" name="action" value='SaveForm'>
+                                                <div class="col-md-3 p-2">
+                                                    <label for="user_name">NAME:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="name" id="route_manager_name" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="Contact1">CONTACT 1:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="contact1" id="contact1" class="form-control">
+                                                </div>
+                                            </div>
+                                             <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="Contact2">CONTACT 2:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="contact2" id="contact2" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="nin">NIN:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="nin" id="nin" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="residence">RESIDENCE:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="residence" id="residence" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="roww mx-1">
+                                                <div class="col p-2">
+                                                    <button  type='submit' class="btn btn-flat btn-primary right saveRouteManager">Save</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    <?php
+                                break;
+                            case 'route':
+                                ?>
+                                     <form id='newRouteForm' method="post">
+                                        <div class="row mx-1">
+                                            <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                            <input type="hidden" name="form" value='newRouteSave'>
+                                            <input type="hidden" name="action" value='SaveForm'>
+                                            <div class="col-md-3 p-2">
+                                                <label for="route_name">NAME:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <input type="text" name="name" id="route_name" class="form-control">
+                                            </div>
+                                        </div>
+                                        <div class="row mx-1">
+                                            <div class="col-md-3 p-2">
+                                                <label for="details">Details:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <input type="text" name="details" id="details" class="form-control">
+                                            </div>
+                                        </div>
+                                        <div class="roww mx-1">
+                                            <div class="col p-2">
+                                                <button  type='submit' class="btn btn-flat btn-primary right saveRoute">Save</button>
+                                            </div>
+                                        </div>
+                                    </form>
                                     <?php
                                 break;
                         }
@@ -684,13 +802,20 @@
                             $name = request('name');
                             $address = request('address');
                             $contact = request('contact');
+                            $route_id = request('route_id');
+                            $manager = request('route_manager_id');
+                            $user_id = auth()->id;
 
                                 // save the content
-                                $sql = "INSERT INTO cashbook_customers SET name = ?,address=?,contact = ?,book_id = ?";
-                                $res = prepared_statements($sql,'sssi',[$name,$address,$contact,$book_id]);
+                                $sql = "INSERT INTO cashbook_customers SET name = ?,address=?,contact = ?,book_id = ?,route_id = ?,route_manager_id = ?,user_id = ?";
+                                $res = prepared_statements($sql,'sssiiii',[$name,$address,$contact,$book_id,$route_id,$manager,$user_id]);
+                                $customer_id = $server->insert_id;
+
                                 if($res)
                                 {
-                                    echo "success";
+                                    // attach customer to manager and route
+                                    $route = "INSERT INTO cashbook_customer_route SET customer_id = ?, route_id = ?";
+                                    prepared_statements($route,'ii',[$customer_id,$route_id]);
                                 }
                             break;
                         case 'newCashinSave':
@@ -924,6 +1049,51 @@
                             
                             $_SESSION['success'] = "Invoice Details Saved";
 
+                            break;
+                        case 'routeManagerEditSave':
+                                $book_id = request('book_id');
+                                $residence = request('residence');
+                                $name = request('name');
+                                $contact1 = request('contact1');
+                                $contact2 = request('contact2');
+                                $nin = request('nin');
+                                $business_id = bookFind($book_id)->business_id;
+                                $manager_id = request('manager_id') ?? "";
+
+                                // check if user already exists and edit
+                                    // save the content
+                                    if(!empty($manager_id))
+                                    {   
+                                        $sql = "UPDATE cashbook_route_managers SET name = ?,nin=?,contact1 = ?,contact2 = ?,residence = ?,book_id = ? WHERE id = ?";
+                                        prepared_statements($sql,'sssssi',[$name,$nin,$contact1,$contact2,$residence,$manager_id]);
+                                    }
+
+                            break;
+                        case 'newRouteManagerSave':
+
+                            $book_id = request('book_id');
+                            $residence = request('residence');
+                            $name = request('name');
+                            $contact1 = request('contact1');
+                            $contact2 = request('contact2');
+                            $nin = request('nin');
+                            $business_id = bookFind($book_id)->business_id;
+                            $user_id = auth()->id;
+                            
+                                $sql = "INSERT INTO cashbook_route_managers SET name = ?,nin=?,contact1 = ?,contact2 = ?,residence = ?,book_id = ?,user_id = ?";
+                                prepared_statements($sql,'sssssii',[$name,$nin,$contact1,$contact2,$residence,$book_id,$user_id]);
+                                $record_id = $server->insert_id;
+                            break;
+                        case 'newRouteSave':
+                                $book_id = request('book_id');
+                                $name = request('name');
+                                $details = request('details');
+                                $user_id = auth()->id;
+                            
+                                $sql = "INSERT INTO cashbook_routes SET book_id = ?, name = ?,details = ?, user_id = ?";
+                                prepared_statements($sql,'issi',[$book_id,$name,$details,$user_id]);
+                                $record_id = $server->insert_id;
+                                echo $record_id;
                             break;
                     }
                     break;

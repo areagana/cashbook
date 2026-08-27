@@ -63,6 +63,7 @@
                                             <th>Invoice no</th>
                                             <th>Customer</th>
                                             <th class='text-right'>Amount</th>
+                                            <th class='text-right'>Return</th>
                                             <th class='text-right'>Paid</th>
                                             <th class='text-right'>Balance</th>
                                             <th>Action</th>
@@ -76,6 +77,7 @@
                                                     <td><?=$r['invoice_no'];?></td>
                                                     <td><?=$r['customer'];?></td>
                                                     <td class='text-right'><?=number_format($r['total'],0);?></td>
+                                                    <td class='text-right'><?=number_format($r['returned'],0);?></td>
                                                     <td class='text-right'><?=number_format($r['paid_amount'],0);?></td>
                                                     <td class='text-right'><?=number_format($r['newBalance'],0);?></td>
                                                     <td class='text-right'>

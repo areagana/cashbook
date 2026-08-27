@@ -350,6 +350,7 @@
             'debit_amount'=>'float null',
             'details'=>'varchar(255) null',
             'balance'=>'float null',
+            'route_manager_id'=>'int(11) null',
             'user_id'=>'int(11) null'
         ];
         create_table($table,$columns);
@@ -387,7 +388,9 @@
             'book_id'=>'int(11) null',
             'contact'=>'varchar(255) null',
             'address'=>'varchar(255) null',
-            'user_id'=>'int(11) null'
+            'route_manager_id'=>'int(11) null',
+            'user_id'=>'int(11) null',
+            'route_id' =>'int(11) null'
         ];
         create_table($table,$columns);
     }
@@ -564,6 +567,61 @@
         ];
         create_table($table, $columns);
     }
+
+    function cashbook_route_managers()
+    {
+        $table = 'cashbook_route_managers';
+
+        $columns = [
+            'book_id'       => 'int(11) NOT NULL',
+            'name'=> 'varchar(255) null',
+            'contact1'    => 'varchar(255) NOT NULL',
+            'contact2'    => 'varchar(255) NOT NULL',
+            'nin'           => 'varchar(255) NULL',
+            'residence'       => 'varchar(255) NULL',
+            'user_id'       => 'int(11) NULL'
+        ];
+        create_table($table, $columns);
+    }
+
+    // user can have many routes
+    function cashbook_manager_route()
+    {
+        $table = 'cashbook_manager_route';
+
+        $columns = [
+            'route_id' => 'int(11) NOT NULL',
+            'route_manager_id'  => 'int(11) NOT NULL',
+            'user_id' => 'int(11) NULL'
+        ];
+        create_table($table, $columns);
+    }
+
+    function cashbook_customer_route()
+    {
+        $table = 'cashbook_customer_route';
+
+        $columns = [
+            'route_id'       => 'int(11) NOT NULL',
+            'customer_id'  => 'int(11) NOT NULL'
+        ];
+        create_table($table, $columns);
+    }
+
+    // create routes
+    function cashbook_routes()
+    {
+        $table = 'cashbook_routes';
+
+        $columns = [
+            'book_id'  => 'int(11) NOT NULL',
+            'name'  => 'varchar(255) NOT NULL',
+            'details'  => 'varchar(255) NOT NULL',
+            'managers'  => 'varchar(255) NULL',
+            'user_id'  => 'int(11) NULL'
+        ];
+        create_table($table, $columns);
+    }
     
     // functions to create
     cashbook_books();
@@ -585,6 +643,10 @@
     cashbook_invoice_items();
     cashbook_invoice_returns();
     cashbook_invoice_return_items();
+    cashbook_route_managers();
+    cashbook_manager_route();
+    cashbook_customer_route();
+    cashbook_routes();
 
 // redirect to the home page after checking table creation functions
 if(isVerified())

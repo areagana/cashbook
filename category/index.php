@@ -33,24 +33,21 @@
                             <?php
                                 $sql = "SELECT * FROM cashbook_categories WHERE book_id =?";
                                 $res =prepared_statements($sql,'i',[$book->id]);
+                                $s = 0;
                             ?>
                                 <table class="table table-sm table-striped dataTable">
                                     <thead>
                                         <tr>
                                             <th>#</th>
                                             <th>Name</th>
-                                            <th>Cashin</th>
-                                            <th>Cashout</th>
                                             <th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php  while($r = $res->fetch_assoc()):?>
                                             <tr class='hover hover-hide-content'>
-                                                <td></td>
+                                                <td><?=++$s;?></td>
                                                 <td><?=$r['name'];?></td>
-                                                <td></td>
-                                                <td></td>
                                                 <td>
                                                     <?php if(hasRole(['owner','partner'])):?>
                                                         <span class="hover-display text-sms">
