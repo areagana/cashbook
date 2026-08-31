@@ -62,6 +62,39 @@
                                         </form>
                                     <?php
                                 break;
+                            case 'edit-category':
+                                    $id = request('category_id');
+                                    $category = categoryFind($id);
+                                ?>
+                                        <form id='newCategoryForm' method="post">
+                                            <div class="row mx-1">
+                                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                                <input type="hidden" name="category_id" value="<?=$id;?>">
+                                                <input type="hidden" name="form" value='newCategorySave'>
+                                                <input type="hidden" name="action" value='SaveForm'>
+                                                <div class="col-md-3 p-2">
+                                                    <label for="category_name">NAME:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="category_name" value="<?=$category->name;?>" id="category_name" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="">DETAILS:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="category_details" value="<?=$category->details;?>" id="category_details" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="roww mx-1">
+                                                <div class="col p-2">
+                                                    <button type='submit' class="btn btn-flat btn-primary right saveCategory">Save</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    <?php
+                                break;
                             case 'item':
                                     ?>
                                         <form id='newItemForm' method="post">
@@ -90,6 +123,47 @@
                                                 </div>
                                                 <div class="col p-2">
                                                     <input type="text" name="item_details" id="item_details" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="roww mx-1">
+                                                <div class="col p-2">
+                                                    <button type='submit' class="btn btn-flat btn-primary right saveItem">Save</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    <?php
+                                break;
+                            case 'item-edit':
+                                $id = request('item_id');
+                                $item = itemFind($id);
+                                    ?>
+                                        <form id='newItemForm' method="post">
+                                            <div class="row mx-1">
+                                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                                <input type="hidden" name="item_id" value="<?=$id;?>">
+                                                <input type="hidden" name="form" value='newItemSave'>
+                                                <input type="hidden" name="action" value='SaveForm'>
+                                                <div class="col-md-3 p-2">
+                                                    <label for="item_name">NAME:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="item_name" value="<?=$item->name;?>" id="item_name" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="item_units">Units:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="item_units" value="<?=$item->units;?>" id="item_units" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="item_details">DETAILS:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="item_details" value="<?=$item->details;?>" id="item_details" class="form-control">
                                                 </div>
                                             </div>
                                             <div class="roww mx-1">
@@ -192,6 +266,41 @@
                                                 </div>
                                                 <div class="col p-2">
                                                     <input type="text" name="paymode_details" id="paymode_details" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="roww mx-1">
+                                                <div class="col p-2">
+                                                    <button type='submit' class="btn btn-flat btn-primary right savePaymode">Save</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    <?php
+                                break;
+                            case 'paymode-edit':
+                                $id = request('mode_id');
+                                $stmt = "SELECT * FROM cashbook_paymodes WHERE id = ?";
+                                $res = prepared_statements($stmt,'i',[$id]);
+                                $mode  = myObject($res->fetch_assoc());
+                                ?>
+                                        <form id='newPaymodeForm' method="post">
+                                            <div class="row mx-1">
+                                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                                <input type="hidden" name="mode_id" value="<?=$id;?>">
+                                                <input type="hidden" name="form" value='newPaymodeSave'>
+                                                <input type="hidden" name="action" value='SaveForm'>
+                                                <div class="col-md-3 p-2">
+                                                    <label for="paymode_name">NAME:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="paymode_name"   value="<?=$mode->name;?>" id="paymode_name" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="">DETAILS:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="paymode_details" value="<?=$mode->details;?>" id="paymode_details" class="form-control">
                                                 </div>
                                             </div>
                                             <div class="roww mx-1">
@@ -654,6 +763,63 @@
                                         </form>
                                     <?php
                                 break;
+                            case 'route-manager-edit':
+                                $id = request('route_manager_id');
+                                $manager = routeManagerFind($id);
+                                    ?>
+                                        <form id='newRouteManagerForm' method="post">
+                                            <div class="row mx-1">
+                                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                                <input type="hidden" name="route_manager_id" value="<?=$id;?>">
+                                                <input type="hidden" name="form" value='newRouteManagerSave'>
+                                                <input type="hidden" name="action" value='SaveForm'>
+                                                <div class="col-md-3 p-2">
+                                                    <label for="user_name">NAME:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="name" value="<?=$manager->name;?>" id="route_manager_name" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="Contact1">CONTACT 1:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="contact1" value="<?=$manager->contact1;?>"  id="contact1" class="form-control">
+                                                </div>
+                                            </div>
+                                             <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="Contact2">CONTACT 2:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="contact2" value="<?=$manager->contact2;?>" id="contact2" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="nin">NIN:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="nin" value="<?=$manager->nin;?>" id="nin" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="residence">RESIDENCE:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="residence" value="<?=$manager->residence;?>" id="residence" class="form-control">
+                                                </div>
+                                            </div>
+                                            <div class="roww mx-1">
+                                                <div class="col p-2">
+                                                    <button  type='submit' class="btn btn-flat btn-primary right saveRouteManager">Save</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    <?php
+                                break;
                             case 'route':
                                 ?>
                                      <form id='newRouteForm' method="post">
@@ -684,6 +850,40 @@
                                     </form>
                                     <?php
                                 break;
+                            case 'route-edit':
+                                $id = request('route_id');
+                                $route = routeFind($id);
+
+                                ?>
+                                     <form id='newRouteForm' method="post">
+                                        <div class="row mx-1">
+                                            <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                            <input type="hidden" name="route_id" value="<?=$id;?>">
+                                            <input type="hidden" name="form" value='newRouteSave'>
+                                            <input type="hidden" name="action" value='SaveForm'>
+                                            <div class="col-md-3 p-2">
+                                                <label for="route_name">NAME:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <input type="text" name="name" id="route_name" value="<?=$route->name;?>" class="form-control">
+                                            </div>
+                                        </div>
+                                        <div class="row mx-1">
+                                            <div class="col-md-3 p-2">
+                                                <label for="details">Details:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <input type="text" name="details" value="<?=$route->details;?>" id="details" class="form-control">
+                                            </div>
+                                        </div>
+                                        <div class="roww mx-1">
+                                            <div class="col p-2">
+                                                <button  type='submit' class="btn btn-flat btn-primary right saveRoute">Save</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                    <?php
+                                break;
                         }
                     break;
                     
@@ -696,12 +896,16 @@
                                 $book_id = request('book_id');
                                 $details = request('category_details');
                                 $name = request('category_name');
+                                $category_id = request('category_id') ?? "";
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_categories SET name = ?,book_id = ?, details = ?";
-                                if(prepared_statements($sql,'sis',[$name,$book_id,$details]))
+                                if(empty($category_id))
                                 {
-                                    echo "success";
+                                    $sql = "INSERT INTO cashbook_categories SET name = ?,book_id = ?, details = ?";
+                                    prepared_statements($sql,'sis',[$name,$book_id,$details]);
+                                }else{
+                                    $sql = "UPDATE cashbook_categories SET name = ?, details = ? WHERE id = ?";
+                                    prepared_statements($sql,'ssi',[$name,$details,$category_id]);
                                 }
                             break;
                         case 'newItemSave':
@@ -710,22 +914,34 @@
                                 $name = request('item_name');
                                 $units = request('item_units');
                                 $user_id = auth()->id;
+                                $item_id = request('item_id') ?? "";
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_items SET name = ?,book_id = ?, details = ?,units=?,user_id=?";
-                                prepared_statements($sql,'sissi',[$name,$book_id,$details,$units,$user_id]);
+                                if(empty($item_id))
+                                {
+                                    $sql = "INSERT INTO cashbook_items SET name = ?,book_id = ?, details = ?,units=?,user_id=?";
+                                    prepared_statements($sql,'sissi',[$name,$book_id,$details,$units,$user_id]);
+                                }else{
+                                    $sql = "UPDATE cashbook_items SET name = ?, details = ?,units=?,user_id=? WHERE id = ?";
+                                    prepared_statements($sql,'sssii',[$name,$details,$units,$user_id,$item_id]);
+                                }
                                 $_SESSION['success'] = 'Item Saved';
+
                             break;
                         case 'newPaymodeSave':
                                 $book_id = request('book_id');
                                 $details = request('paymode_details');
                                 $name = request('paymode_name');
+                                $mode_id = request('mode_id') ?? '';
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_paymodes SET name = ?,book_id = ?, details = ?";
-                                if(prepared_statements($sql,'sis',[$name,$book_id,$details]))
+                                if(empty($mode_id))
                                 {
-                                    echo "success";
+                                    $sql = "INSERT INTO cashbook_paymodes SET name = ?,book_id = ?, details = ?";
+                                    prepared_statements($sql,'sis',[$name,$book_id,$details]);
+                                }else{
+                                    $sql = "UPDATE cashbook_paymodes SET name = ?, details = ? WHERE id = ?";
+                                    prepared_statements($sql,'ssi',[$name,$details,$mode_id]);
                                 }
 
                             break;
@@ -805,17 +1021,30 @@
                             $route_id = request('route_id');
                             $manager = request('route_manager_id');
                             $user_id = auth()->id;
+                            $customer_id = request('customer_id') ?? "";
 
-                                // save the content
-                                $sql = "INSERT INTO cashbook_customers SET name = ?,address=?,contact = ?,book_id = ?,route_id = ?,route_manager_id = ?,user_id = ?";
-                                $res = prepared_statements($sql,'sssiiii',[$name,$address,$contact,$book_id,$route_id,$manager,$user_id]);
-                                $customer_id = $server->insert_id;
-
-                                if($res)
+                                // save the content                                
+                                if(!empty($customer_id))
                                 {
-                                    // attach customer to manager and route
-                                    $route = "INSERT INTO cashbook_customer_route SET customer_id = ?, route_id = ?";
-                                    prepared_statements($route,'ii',[$customer_id,$route_id]);
+                                    $sql = "UPDATE cashbook_customers SET name = ?,address=?,contact = ?,book_id = ?,route_id = ?,route_manager_id = ?,user_id = ? WHERE id = ?";
+                                    $res = prepared_statements($sql,'sssiiiii',[$name,$address,$contact,$book_id,$route_id,$manager,$user_id,$customer_id]);
+                                }else{
+                                    $sql = "INSERT INTO cashbook_customers SET name = ?,address=?,contact = ?,book_id = ?,route_id = ?,route_manager_id = ?,user_id = ?";
+                                    $res = prepared_statements($sql,'sssiiii',[$name,$address,$contact,$book_id,$route_id,$manager,$user_id]);
+                                    $customer_id = $server->insert_id;
+                                }
+                                
+                                if($res) // prevent duplicate entries
+                                {
+                                    $route = "INSERT INTO cashbook_customer_route (customer_id, route_id)
+                                                SELECT ?, ?
+                                                WHERE NOT EXISTS (
+                                                    SELECT 1
+                                                    FROM cashbook_customer_route
+                                                    WHERE customer_id = ?
+                                                    AND route_id = ?
+                                                )";
+                                    prepared_statements($route,'iiii',[$customer_id, $route_id, $customer_id, $route_id]);
                                 }
                             break;
                         case 'newCashinSave':
@@ -1079,21 +1308,36 @@
                             $nin = request('nin');
                             $business_id = bookFind($book_id)->business_id;
                             $user_id = auth()->id;
+                            $manager_id = request('route_manager_id') ?? "";
                             
+                            if(empty($manager_id))
+                            {
                                 $sql = "INSERT INTO cashbook_route_managers SET name = ?,nin=?,contact1 = ?,contact2 = ?,residence = ?,book_id = ?,user_id = ?";
                                 prepared_statements($sql,'sssssii',[$name,$nin,$contact1,$contact2,$residence,$book_id,$user_id]);
                                 $record_id = $server->insert_id;
+                            }else{
+                                $sql = "UPDATE cashbook_route_managers SET name = ?,nin=?,contact1 = ?,contact2 = ?,residence = ?,user_id = ? WHERE id = ?";
+                                prepared_statements($sql,'sssssii',[$name,$nin,$contact1,$contact2,$residence,$user_id,$manager_id]);
+                            }
+                                
                             break;
                         case 'newRouteSave':
                                 $book_id = request('book_id');
                                 $name = request('name');
                                 $details = request('details');
                                 $user_id = auth()->id;
-                            
-                                $sql = "INSERT INTO cashbook_routes SET book_id = ?, name = ?,details = ?, user_id = ?";
-                                prepared_statements($sql,'issi',[$book_id,$name,$details,$user_id]);
-                                $record_id = $server->insert_id;
-                                echo $record_id;
+                                $route_id = request('route_id') ?? "";
+
+                                if(empty($route_id))
+                                {
+                                    $sql = "INSERT INTO cashbook_routes SET book_id = ?, name = ?,details = ?, user_id = ?";
+                                    prepared_statements($sql,'issi',[$book_id,$name,$details,$user_id]);    
+                                    $record_id = $server->insert_id;
+                                }else{
+                                    $sql = "UPDATE cashbook_routes SET name = ?,details = ?, user_id = ? WHERE id = ?";
+                                    prepared_statements($sql,'ssii',[$name,$details,$user_id,$route_id]);
+                                }                                
+                                
                             break;
                     }
                     break;
@@ -1345,10 +1589,32 @@
                         $types       .= "i";
 
                         /* Date filter (ignore time) */
-                        if (!empty($_POST['date'])) {
+                        if (!empty($_POST['min_date']) && empty($_POST['max_date'])) 
+                        {
                             $conditions[] = "DATE(t.created_at) = ?";
-                            $params[]     = $_POST['date'];
+                            $params[]     = $_POST['min_date'];
                             $types       .= "s";
+                        }
+
+                        if (!empty($_POST['max_date']) && !empty($_POST['min_date']))
+                        {
+                            $conditions[] = "DATE(t.created_at) BETWEEN ? AND ?";
+                            $params[]     = $_POST['min_date'];
+                            $params[]     = $_POST['max_date'];
+                            $types       .= "ss";
+                        }
+
+                        if (!empty($_POST['max_date']) && empty($_POST['min_date'])) 
+                        {
+                            $conditions[] = "DATE(t.created_at) = ?";
+                            $params[]     = $_POST['max_date'];
+                            $types       .= "s";
+                        }
+
+                        if (!empty($_POST['month'])) {
+                            $conditions[] = "MONTH(t.created_at) = ?";
+                            $params[]     = $_POST['month'];
+                            $types       .= "i";
                         }
 
                         /* Type filter */
@@ -1393,10 +1659,16 @@
                         $stmt->bind_param($types, ...$params);
                         $stmt->execute();
                         $result = $stmt->get_result();
-
+                            
+                        $credits =[];
+                        $debits = [];
+                        
                         /* Render rows */
                         if($result->num_rows >0):
-                            while ($row = $result->fetch_assoc()) {
+                            while ($row = $result->fetch_assoc()) 
+                            {
+                                $credits[] = $row['credit_amount'];
+                                $debits[] = $row['debit_amount'];
                                 ?>
                                     <tr class='transaction-details hover hover-hide-content'>
                                         <td></td>
@@ -1404,8 +1676,8 @@
                                         <td><?=$row['category_name'];?></td>
                                         <td><?=$row['customer_name'];?></td>
                                         <td><?=$row['details'];?></td>
-                                        <td><?=number_format($row['credit_amount'],0);?></td>
-                                        <td><?=number_format($row['debit_amount'],0);?></td>
+                                        <td class ="<?=$row['credit_amount'] > 0 ? " text-primary" : "";?>"><?=number_format($row['credit_amount'],0);?></td>
+                                        <td class ="<?=$row['debit_amount'] > 0 ? " text-danger" : "";?>"><?=number_format($row['debit_amount'],0);?></td>
                                         <td>
                                             <?php if(hasRole(['owner','partner'])):?>
                                                 <span class="hover-display text-sms">
@@ -1417,6 +1689,15 @@
                                     </tr>
                                 <?php
                             }
+                            ?>
+                                    <tr>
+                                        <th>TOTAL</th>
+                                        <th colspan='4'></th>
+                                        <th><?=number_format(array_sum($credits),0);?></th>
+                                        <th><?=number_format(array_sum($debits),0);?></th>
+                                        <th>BAL: <?=number_format((array_sum($credits)-array_sum($debits)),0);?></th>
+                                    </tr>
+                            <?php
                         else:
                             ?>
                                 <tr>

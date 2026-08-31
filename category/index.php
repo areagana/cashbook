@@ -51,7 +51,7 @@
                                                 <td>
                                                     <?php if(hasRole(['owner','partner'])):?>
                                                         <span class="hover-display text-sms">
-                                                            <button class="btn btn-sm btn-outline-info edit-category text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
+                                                            <button class="btn btn-sm btn-outline-info edit-category text-muted btn-click "  data-title='Edit category' data-section='edit-category' data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
                                                             <button class="btn btn-sm btn-outline-danger delete-category" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button> 
                                                         </span>
                                                     <?php endif;?>
@@ -65,9 +65,9 @@
                 </div>
             </div>
              <!-- side modal for a cash in -->
-            <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
-                <div class="side-modal-header">
-                    <h3 class="side-modal-title text-dark"></h3>
+            <div class="p-0 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
+                <div class="side-modal-header bg-success">
+                    <h3 class="side-modal-title text-white"></h3>
                     <button type='button' class='side-modal-close'>&times;</button>
                 </div>
                 <div class="side-modal-content">
@@ -86,12 +86,13 @@
                     $('.side-modal-title').html(title);
                     // display data in the side modal
                     var category = $(this).data('section');
-                    fetchData(category);
+                    var id = $(this).data('id');
+                    fetchData(category,id);
                 });
 
-                function fetchData(sect)
+                function fetchData(sect,id)
                 {
-                    var book_id = "<?=encryptor('decrypt',request('bsid'));?>";
+                    var book_id = "<?=$book->id;?>";
                     if(sect !='')
                     {
                         $.ajax({
@@ -99,7 +100,8 @@
                             data:{
                                 section:sect,
                                 book_id:book_id,
-                                action:'fetchForm'
+                                action:'fetchForm',
+                                category_id: id
                             },
                             beforesend:function(){
                                 $('.side-modal-content').html("<h3 class='text-center'>Loading...</h3>");

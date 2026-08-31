@@ -168,8 +168,42 @@
     function getCustomer($id)
     {
         global $server;
-        $stmt = "SELECT * FROM cashbook_customers WHERE id = ?";
+        $stmt = "SELECT cc.*,cr.name as route,crm.id as route_manager_id,crm.name as route_manager FROM cashbook_customers cc 
+                    LEFT JOIN cashbook_routes cr ON cr.id = cc.route_id 
+                    LEFT JOIN cashbook_route_managers crm ON crm.id = cc.route_manager_id
+                WHERE cc.id = ?";
         $res = prepared_statements($stmt,'i',[$id]);
+        $row = $res->fetch_assoc();
+        return myObject($row);
+    }
+
+    // find category
+    function categoryFind($id)
+    {
+        global $server;
+        $sql = "SELECT * FROM cashbook_categories WHERE id = ?";
+        $res = prepared_statements($sql,'i',[$id]);
+        $row = $res->fetch_assoc();
+        return myObject($row);
+    }
+
+    // find category
+    function routeFind($id)
+    {
+        global $server;
+        $sql = "SELECT * FROM cashbook_routes WHERE id = ?";
+        $res = prepared_statements($sql,'i',[$id]);
+        $row = $res->fetch_assoc();
+        return myObject($row);
+    }
+
+
+    // find category
+    function routeManagerFind($id)
+    {
+        global $server;
+        $sql = "SELECT * FROM cashbook_route_managers WHERE id = ?";
+        $res = prepared_statements($sql,'i',[$id]);
         $row = $res->fetch_assoc();
         return myObject($row);
     }

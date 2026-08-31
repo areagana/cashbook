@@ -31,7 +31,7 @@
                         <hr>
                         <div class="p-2">
                             <?php
-                                $sql = "SELECT c.*,COALESCE(l.balance,0) AS balance FROM cashbook_customers c
+                                $sql = "SELECT c.*, cr.name as route, crm.name as route_manager,COALESCE(l.balance,0) AS balance FROM cashbook_customers c
                                             LEFT JOIN (
                                                     SELECT cl.customer_id, cl.balance
                                                     FROM cashbook_customer_ledger cl
@@ -43,6 +43,8 @@
                                                     ON latest.max_id = cl.id
                                                 ) l
                                             ON l.customer_id = c.id
+                                            LEFT JOIN cashbook_routes cr ON cr.id = c.route_id
+                                            LEFT JOIN cashbook_route_managers crm ON crm.id = c.route_manager_id
                                         WHERE c.book_id = ? ORDER BY l.balance DESC, c.name ASC";
 
                                 $res = prepared_statements($sql,'i',[$book->id]);
@@ -54,6 +56,8 @@
                                             <th>#</th>
                                             <th>Name</th>
                                             <th>Contact</th>
+                                            <th>Route</th>
+                                            <th>Manager</th>
                                             <th class='text-right'>Account Status</th>
                                             <th class='text-right'>Action</th>
                                         </tr>
@@ -64,6 +68,8 @@
                                                 <td><?=$s++;?></td>
                                                 <td><?=$r['name'];?></td>
                                                 <td><?=$r['contact'];?></td>
+                                                <td><?=$r['route'];?></td>
+                                                <td><?=$r['route_manager'];?></td>
                                                 <td class='text-right'><?=number_format($r['balance'],0);?></td>
                                                 <td class='text-right'>
                                                     <?php if(hasRole(['owner','partner','staff'])):?>
@@ -86,7 +92,7 @@
             </div>
             
             <!-- side modal for a cash in -->
-            <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
+            <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-customer'>
                 <div class="side-modal-header">
                     <h3 class="side-modal-title text-dark"></h3>
                     <button type='button' class='side-modal-close'>&times;</button>
@@ -206,6 +212,31 @@
                         },
                         error:function(err){
                             $('.central-modal-content').html("<center><h3>!!! Error Loading data</h3></center>");
+                        }
+                    });
+                });
+
+                // view customer details
+                $(document).on('click','.edit-customer',function(){
+                    $('#side-modal-customer').show();
+                    var title = $(this).data('title')+" Edit";
+                    $('.side-modal-title').html(title);
+                    var id = $(this).data('id');
+
+                    $.ajax({
+                        url:'save/index.php',
+                        data:{
+                            customer_id:id,
+                            action:'Customer-edit'
+                        },
+                        beforeSend:function(){
+                            $('.side-modal-content').html("<center><h3>Loading...</h3></center>");
+                        },
+                        success:function(res){
+                            $('.side-modal-content').html(res);
+                        },
+                        error:function(err){
+                            $('.side-modal-content').html("<center><h3>!!! Error Loading data</h3></center>");
                         }
                     });
                 });

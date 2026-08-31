@@ -116,6 +116,83 @@
                         echo "Success";
                     }
                     break;
+                case 'Customer-edit':
+                        $id = request('customer_id');
+                        $customer = getCustomer($id);
+                        $bkid = $customer->book_id;
+                        ?>
+                            <form id='newCustomerForm' method="post">
+                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                <input type="hidden" name="form" value='newCustomerSave'>
+                                <input type="hidden" name="customer_id" value="<?=$id;?>">
+                                <input type="hidden" name="action" value='SaveForm'>
+                                <div class="row mx-1">
+                                    <div class="col-md-3 p-2">
+                                        <label for="name">NAME:</label>
+                                    </div>
+                                    <div class="col p-2">
+                                        <input type="text" name="name" id="name" value="<?=$customer->name;?>" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="row mx-1">
+                                    <div class="col-md-3 p-2">
+                                        <label for="category_id">CONTACT:</label>
+                                    </div>
+                                    <div class="col p-2">
+                                        <input type="text" name="contact" value="<?=$customer->contact;?>" id="contact" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="row mx-1">
+                                    <div class="col-md-3 p-2">
+                                        <label for="address">ADDRESS:</label>
+                                    </div>
+                                    <div class="col p-2">
+                                        <input type="text" name="address" value="<?=$customer->address;?>" id="address" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="row mx-1">
+                                    <div class="col-md-3 p-2">
+                                        <label for="route">ROUTE:</label>
+                                    </div>
+                                    <?php
+                                        $sql = "SELECT * FROM cashbook_routes WHERE book_id = ?";
+                                        $res = prepared_statements($sql,'i',[$bkid]);
+                                    ?>
+                                    <div class="col p-2">
+                                        <select name="route_id" id="route_id" class="form-control search-select" required>
+                                            <option value="<?=$customer->route_id;?>"><?=$customer->route;?></option>
+                                            
+                                            <?php while($rw = $res->fetch_assoc()):?>
+                                                <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                            <?php endwhile;?>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row mx-1">
+                                    <div class="col-md-3 p-2">
+                                        <label for="address">ROUTE MANAGER:</label>
+                                    </div>
+                                    <?php
+                                        $sql = "SELECT * FROM cashbook_route_managers WHERE book_id = ?";
+                                        $res = prepared_statements($sql,'i',[$bkid]);
+                                    ?>
+                                    <div class="col p-2">
+                                        <select name="route_manager_id" id="route_manager_id" class="form-control search-select" required>
+                                            <option value="<?=$customer->route_manager_id;?>"><?=$customer->route_manager;?></option>
+                                            <?php while($rw = $res->fetch_assoc()):?>
+                                                <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                            <?php endwhile;?>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="roww mx-1">
+                                    <div class="col p-2">
+                                        <button class="btn btn-flat btn-primary right saveCustomer">Save</button>
+                                    </div>
+                                </div>
+                            </form>
+                        <?php
+                    break;
             }
         }
     }else{

@@ -60,37 +60,60 @@
                         </div>
                     </div>
                     <div class="row m-1">
-                        <div class="col p-2 border m-1 book-dash">
+                        <div class="col p-2 border m-1 book-dash border-dark">
+                            <?php
+                                $stmti = "SELECT SUM(amount) as cashin 
+                                            FROM cashbook_cashins 
+                                            WHERE book_id = ? 
+                                            AND created_at < DATE_FORMAT(NOW(), '%Y-%m-%d')";
+                                $resi = prepared_statements($stmti,'i',[$id]);
+                                $rwi = $resi->fetch_assoc();
+                                $cashinbbf = $rwi['cashin'];
+
+                                // cashout
+                                $stmto = "SELECT SUM(amount) as cashout 
+                                            FROM cashbook_cashouts 
+                                            WHERE book_id = ? 
+                                            AND DATE(created_at) < DATE_FORMAT(NOW(), '%Y-%m-%d')";
+                                $reso = prepared_statements($stmto,'i',[$id]);
+                                $rwo = $reso->fetch_assoc();
+                                $cashoutbbf = $rwo['cashout'];
+
+                                // get bbf
+                                $bbf = $cashinbbf - $cashoutbbf;
+
+                            ?>
+                            <div class="p-2 text-dark">BBF: <span class="right"><strong><?=number_format($bbf,0);?></strong></span></div>
+                        </div>
+                        <div class="col p-2 border m-1 book-dash border-primary">
                             <?php
                                 $stmt = "SELECT SUM(amount) as cashin 
                                             FROM cashbook_cashins 
                                             WHERE book_id = ? 
-                                            AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
-                                            AND created_at < DATE_FORMAT(NOW() + INTERVAL 1 MONTH, '%Y-%m-01')";
+                                            AND DATE(created_at) = DATE_FORMAT(NOW(), '%Y-%m-%d')";
                                 $res = prepared_statements($stmt,'i',[$id]);
                                 $rw = $res->fetch_assoc();
                             ?>
-                            <div class="p-2 text-muted">CASHIN: <span class="right"><?=number_format($rw['cashin'],0);?></span></div>
+                            <div class="p-2 text-primary">CASHIN: <span class="right"><?=number_format($rw['cashin'],0);?></span></div>
                         </div>
-                        <div class="col p-2 border m-1 book-dash">
+                        <div class="col p-2 border m-1 book-dash border-danger">
                             <?php
                                 $stmtt = "SELECT SUM(amount) as cashout 
                                             FROM cashbook_cashouts 
                                             WHERE book_id = ? 
-                                            AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
-                                            AND created_at < DATE_FORMAT(NOW() + INTERVAL 1 MONTH, '%Y-%m-01')";
+                                            AND DATE(created_at) = DATE_FORMAT(NOW(), '%Y-%m-%d')";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
                             ?>
-                            <div class="p-2 text-muted">CASHOUT: <span class="right"><?=number_format($rws['cashout'],0);?></span></div>
+                            <div class="p-2 text-danger">CASHOUT: <span class="right"><?=number_format($rws['cashout'],0);?></span></div>
                         </div>
-                        <div class="col p-2 border m-1 book-dash">
+                        <div class="col p-2 border m-1 book-dash border-dark">
                             <?php
                                 $stmtt = "SELECT SUM(amount) as cashout FROM cashbook_cashouts WHERE book_id = ? AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01') AND created_at < DATE_FORMAT(NOW() + INTERVAL 1 MONTH, '%Y-%m-01')";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
                             ?>
-                            <div class="p-2"><strong>BALANCE:</strong> <span class="right"><strong><?=number_format(($rw['cashin']-$rws['cashout']),0);?></span></strong></div>
+                            <div class="p-2"><strong>BALANCE:</strong> <span class="right"><strong><?= number_format(($bbf + $rw['cashin']-$rws['cashout']),0);?></span></strong></div>
                         </div>
                     </div>
                     <hr>
@@ -109,7 +132,23 @@
                                 $sqld = "SELECT distinct DATE(created_at) as date FROM cashbook_transactions WHERE book_id =? order by DATE(created_at) desc";
                                 $dats = prepared_statements($sqld,'i',[$book->id]);
                             ?>
-                            <input type="date" name="filter-date" id="filter-date" data-type='date' max='<?=date('Y-m-d');?>' class="form-control filter-item">
+                            <input type="date" name="filter-date" id="filter-date" data-type='min_date' max='<?=date('Y-m-d');?>' class="form-control filter-item">
+                            <input type="date" name="filter-date" id="filter-date" data-type='max_date' max='<?=date('Y-m-d');?>' class="form-control filter-item">
+                            <?php
+                                $sqlm = "SELECT distinct MONTH(created_at) as month,YEAR(created_at) as year FROM cashbook_transactions WHERE book_id =? order by MONTH(created_at) asc";
+                                $months = prepared_statements($sqlm,'i',[$book->id]);
+                                $month_names =[
+                                    1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',7=>'July',
+                                    8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'
+                                ];
+                            ?>
+                             <select name="filter-month" id="filter-month" data-type='month' class="form-control filter-item">
+                                <option value='' hidden><i class="fa fa-filter"></i> By Month</option>
+                                <?php while($rm = $months->fetch_assoc()):?>
+                                    <option value="<?=$rm['month'];?>"><?=$month_names[$rm['month']];?> <?=$rm['year'];?></option>
+                                <?php endwhile;?>
+                            </select>
+
                             <select name="filter-type" id="filter-type" data-type='type' class="form-control filter-item">
                                 <option value=''><i class="fa fa-filter"></i> By Type</option>
                                 <option value="credit">Cashin</option>
@@ -164,14 +203,14 @@
                                 </thead>
                                 <tbody class='transactions-tbody'>
                                 <?php while($r = $res_->fetch_assoc()):?>
-                                    <tr class='transaction-details hover hover-hide-content'>
+                                    <tr class='transaction-details hover hover-hide-content '>
                                         <td><?=++$t;?></td>
                                         <td><?=$r['created_at'];?></td>
                                         <td><?=$r['category'];?></td>
                                         <td><?=$r['customer'];?></td>
                                         <td><?=$r['details'];?></td>
-                                        <td><?=number_format($r['credits'],0);?></td>
-                                        <td><?=number_format($r['debits'],0);?></td>
+                                        <td class ="<?=$r['credits'] > 0 ? " text-primary" : "text-danger";?>"><?=number_format($r['credits'],0);?></td>
+                                        <td class ="<?=$r['credits'] > 0 ? " text-primary" : "text-danger";?>"><?=number_format($r['debits'],0);?></td>
                                         <td>
                                             <?php if(hasRole(['owner','partner'])):?>
                                                 <span class="hover-display text-sms">
