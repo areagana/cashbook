@@ -208,6 +208,18 @@
         return myObject($row);
     }
 
+    // find category
+    function memberFind($id)
+    {
+        global $server;
+        $sql = "SELECT cu.*, cr.name as role_name FROM cashbook_users cu
+                    LEFT JOIN cashbook_roles cr ON cr.id = cu.role_id
+                WHERE cu.id = ?";
+        $res = prepared_statements($sql,'i',[$id]);
+        $row = $res->fetch_assoc();
+        return myObject($row);
+    }
+
     // encryptor function
     function encryptor($action, $string) 
 	{

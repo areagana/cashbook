@@ -40,6 +40,7 @@
                                         <tr>
                                             <th>#</th>
                                             <th>Name</th>
+                                            <th>Details</th>
                                             <th>Action</th>
                                         </tr>
                                     </thead>
@@ -48,6 +49,7 @@
                                             <tr class='hover hover-hide-content'>
                                                 <td><?=++$s;?></td>
                                                 <td><?=$r['name'];?></td>
+                                                <td><?=$r['details'];?></td>
                                                 <td>
                                                     <?php if(hasRole(['owner','partner'])):?>
                                                         <span class="hover-display text-sms">

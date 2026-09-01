@@ -374,23 +374,20 @@
                                     <?php
                                 break;
                             case 'member-edit':
-                                    $id = request('id');
-                                    // fetch user from the database
-                                    $sql = "SELECT * FROM cashbook_users WHERE id = ?";
-                                    $res = prepared_statements($sql,'i',[$id]);
-                                    $row = $res->fetch_assoc();
+                                $id = request('member_id');
+                                $member = memberFind($id);
                                     ?>
-                                        <form id='MemberEditForm' method="post">
+                                        <form id='newUserForm' method="post">
                                             <div class="row mx-1">
                                                 <input type="hidden" name="book_id" value="<?=$bkid;?>">
-                                                <input type="hidden" name="form" value='MemberEditSave'>
+                                                <input type="hidden" name="member_id" value="<?=$id;?>">
+                                                <input type="hidden" name="form" value='newMemberSave'>
                                                 <input type="hidden" name="action" value='SaveForm'>
-                                                <input type="hidden" name="member-id" value='<?=$row['id'];?>'>
                                                 <div class="col-md-3 p-2">
                                                     <label for="user_name">NAME:</label>
                                                 </div>
                                                 <div class="col p-2">
-                                                    <input type="text" name="user_name" id="user_name" value="<?=$row['name'] ?? '';?>" class="form-control">
+                                                    <input type="text" name="user_name" value="<?=$member->name;?>" id="user_name" class="form-control">
                                                 </div>
                                             </div>
                                             <div class="row mx-1">
@@ -398,7 +395,7 @@
                                                     <label for="email">EMAIL:</label>
                                                 </div>
                                                 <div class="col p-2">
-                                                    <input type="email" name="email" id="email" value="<?=$row['email'] ?? '';?>" class="form-control">
+                                                    <input type="email" name="email" value="<?=$member->email;?>" id="email" class="form-control">
                                                 </div>
                                             </div>
                                             <div class="row mx-1">
@@ -409,8 +406,9 @@
                                                     $sql = mysqli_query($server,"SELECT * FROM cashbook_roles");
                                                 ?>
                                                 <div class="col p-2">
-                                                    <select name="role_id" id="role_id" class="form-control" required>
-                                                        <option hidden> --- Select --- </option>
+                                                    <select name="role_id" id="role_id" class="form-control">
+                                                        <option value="<?=$member->role_id;?>" selected><?=$member->role_name;?></option>
+                                                        <option hidden>Select</option>
                                                         <?php while($rw = $sql->fetch_assoc()):?>
                                                             <option value="<?=$rw['id'];?>"><?=$rw['display_name'];?></option>
                                                         <?php endwhile;?>
@@ -422,7 +420,7 @@
                                                     <label for="contact">CONTACT:</label>
                                                 </div>
                                                 <div class="col p-2">
-                                                    <input type="text" name="contact" id="contact" value="<?=$row['contact'] ?? '';?>" class="form-control">
+                                                    <input type="text" name="contact" value="<?=$member->contact;?>" id="contact" class="form-control">
                                                 </div>
                                             </div>
                                             <div class="row mx-1">
@@ -435,12 +433,13 @@
                                             </div>
                                             <div class="roww mx-1">
                                                 <div class="col p-2">
-                                                    <button  type='submit' class="btn btn-flat btn-primary right saveEditUser">Save</button>
+                                                    <button  type='submit' class="btn btn-flat btn-primary right saveUser">Save</button>
                                                 </div>
                                             </div>
                                         </form>
                                     <?php
                                 break;
+
                             case 'cashin':
                                     ?>
                                         <form id='newCashinForm' method="post">
@@ -995,10 +994,29 @@
                             $business_id = bookFind($book_id)->business_id;
                             $password = request('password');
                             $role = request('role_id');
+                            $member_id = request('member_id') ?? "";
 
-                                $sql = "INSERT INTO cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,password =?,role_id=?";
-                                prepared_statements($sql,'sssisi',[$name,$email,$contact,$business_id,$password,$role]);
-                                $user_id = $server->insert_id;
+                                if(empty($member_id))
+                                {
+                                    $password = password_hash($password,PASSWORD_DEFAULT);
+                                    $sql = "INSERT INTO cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,password =?,role_id=?";
+                                    prepared_statements($sql,'sssisi',[$name,$email,$contact,$business_id,$password,$role]);
+                                    $user_id = $server->insert_id;
+                                }else{
+    
+                                    if(!empty($password)):  // update password is not empty
+                                        $password = password_hash($password,PASSWORD_DEFAULT);
+                                        // update user here, check user books
+                                        $sql = "UPDATE cashbook_users SET name = ?,email=?,contact = ?,password =?,role_id= ? WHERE id = ?";
+                                        prepared_statements($sql,'ssssii',[$name,$email,$contact,$password,$role,$member_id]);
+                                        
+                                    else: // leave out password update
+                                        $sql = "UPDATE cashbook_users SET name = ?,email=?,contact = ?,role_id= ? WHERE id = ?";
+                                        prepared_statements($sql,'sssii',[$name,$email,$contact,$role,$member_id]);
+                                    endif;
+                                    $user_id = $member_id;  
+                                }
+                                
 
                                 // check user book attachment
                                 $sql = "SELECT * FROM  cashbook_book_users WHERE user_id = ? AND book_id = ?";

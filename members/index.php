@@ -93,83 +93,74 @@
                     $('.side-modal-tall').show();
                     $('.side-modal-title').html(title);
                     // display data in the side modal
+                    var id = $(this).data('id');
                     var category = $(this).data('section');
-                    fetchData(category);
+                    fetchData(category,id);
                 });
                 
-                // function fetchData(sect,id = null)
-                // {
-                //     var book_id = "<?=encryptor('decrypt',request('bsid'));?>";                    
-                //     if(sect !='')
-                //     {
-                //         $.ajax({
-                //             url:'../books/save/index.php',
-                //             data:{
-                //                 section:sect,
-                //                 book_id:book_id,
-                //                 id:id,
-                //                 action:'fetchForm'
-                //             },
-                //             beforesend:function(){
-                //                 $('.side-modal-content').html("<h3 class='text-center'>Loading...</h3>");
-                //             },
-                //             success:function(res){
-                //                 $('.side-modal-content').html(res);
-                //             },
-                //             error:function(err){
-                //                 $('.side-modal-content').html("<h3 class='text-center'>Error Loading data!!</h3>");
-                //             }
-                //         });
-                //     }
-                // }
+                function fetchData(sect,id)
+                {
+                    var book_id = "<?=$book->id;?>";
+                    if(sect !='')
+                    {
+                        $.ajax({
+                            url:'../books/save/index.php',
+                            data:{
+                                section:sect,
+                                book_id:book_id,
+                                action:'fetchForm',
+                                member_id: id
+                            },
+                            beforesend:function(){
+                                $('.side-modal-content').html("<h3 class='text-center'>Loading...</h3>");
+                            },
+                            success:function(res){
+                                $('.side-modal-content').html(res);
+                            },
+                            error:function(err){
+                                $('.side-modal-content').html("<h3 class='text-center'>Error Loading data!!</h3>");
+                            }
+                        });
+                    }
+                }
 
-                // // Call the function for your form
-                // $(document).on('click','.saveEditUser',function(){
-                //     submitSingleForm("MemberEditForm", "../books/save/index.php");
-                // });
+                $(document).on('click','.saveUser',function(){
+                    submitSingleForm("newUserForm", "../books/save/index.php");
+                });
 
-                // function submitSingleForm(formId, backendUrl) 
-                // {
-                //     const form = document.getElementById(formId);
-                //     xdialog.startSpin();
-                //     if (!form) {
-                //         console.error("Form not found:", formId);
-                //         return;
-                //     }
+                function submitSingleForm(formId, backendUrl) 
+                {
+                    const form = document.getElementById(formId);
+                    xdialog.startSpin();
+                    if (!form) {
+                        console.error("Form not found:", formId);
+                        return;
+                    }
 
-                //     // 🔴 VALIDATION CHECK
-                //     if(!form.checkValidity()) 
-                //     {
-                //         form.reportValidity(); // shows browser messages
-                //         xdialog.stopSpin();
-                //         return;
-                //     }
-
-                //     // Attach submit listener once
-                //     form.addEventListener("submit", function(e) {
-                //         e.preventDefault(); // prevent default page reload
-                //         const formData = new FormData(form);
-                //         console.log(formData);
-                //         fetch(backendUrl, {
-                //             method: "POST",
-                //             body: formData
-                //         })
-                //         .then(res => res.text()) // or .json() if backend returns JSON
-                //         .then(response => {
-                //             // Optionally show response below form
-                //             let responseDiv = document.getElementById("response_" + formId);
-                //             if (!responseDiv) {
-                //                 responseDiv = document.createElement("div");
-                //                 responseDiv.id = "response_" + formId;
-                //                 form.appendChild(responseDiv);
-                //             }
-                //             window.location.reload();
-                //         })
-                //         .catch(err => {
-                //             console.error("AJAX error:", err);
-                //         });
-                //     });
-                // }
+                    // Attach submit listener once
+                    form.addEventListener("submit", function(e) {
+                        e.preventDefault(); // prevent default page reload
+                        const formData = new FormData(form);
+                        fetch(backendUrl, {
+                            method: "POST",
+                            body: formData
+                        })
+                        .then(res => res.text()) // or .json() if backend returns JSON
+                        .then(response => {
+                            // Optionally show response below form
+                            let responseDiv = document.getElementById("response_" + formId);
+                            if (!responseDiv) {
+                                responseDiv = document.createElement("div");
+                                responseDiv.id = "response_" + formId;
+                                form.appendChild(responseDiv);
+                            }
+                            window.location.reload();
+                        })
+                        .catch(err => {
+                            console.error("AJAX error:", err);
+                        });
+                    });
+                }
             </script>
         <?php
     }else{

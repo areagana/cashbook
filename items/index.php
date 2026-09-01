@@ -39,6 +39,7 @@
                                         <tr>
                                             <th>#</th>
                                             <th>Name</th>
+                                            <th>Units</th>
                                             <th>Details</th>
                                             <th>Action</th>
                                         </tr>
@@ -48,6 +49,7 @@
                                             <tr class='hover hover-hide-content'>
                                                 <td></td>
                                                 <td><?=$r['name'];?></td>
+                                                <td><?=$r['units'];?></td>
                                                 <td><?=$r['details'];?></td>
                                                 <td>
                                                     <?php if(hasRole(['owner','partner'])):?>
