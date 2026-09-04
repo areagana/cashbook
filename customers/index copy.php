@@ -6,14 +6,11 @@
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
     ?>
-            <div class="container">
+            <div class="container-fluid">
                 <div class="row mx-1">
                     <div class="col p-2 inline-block">
                         <a href="../books/?bkid=<?=$bsid;?>" class="nav-link">Books</a><i class="fa fa-angle-right"></i>
                         <a class="nav-link">Customers</a>
-                    </div>
-                    <div class="col p-2">
-                        <a href="index_ai.php?bsid=<?=$bsid;?>" class="nav-link">AI PAGE</a>
                     </div>
                 </div>
                 <hr>

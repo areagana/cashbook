@@ -37,11 +37,16 @@
                                     $stmt = prepared_statements($stmt,'i',[$business->id]);
 
                                     //fetch total transactions for the book
-                                    $query ="SELECT sum(debit_amount) as debits, sum(credit_amount) as credits FROM cashbook_transactions WHERE book_id = ?";
+                                    $cashins ="SELECT sum(amount) as credits FROM cashbook_cashins WHERE book_id = ?";
+                                    $cashouts ="SELECT sum(amount) as debits FROM cashbook_cashouts WHERE book_id = ?";
                                     while($rw = $stmt->fetch_assoc()):
-                                            $bk= prepared_statements($query,'i',[$rw['id']]);
-                                            $r = $bk->fetch_assoc();
-                                            $credits = $r['credits']; $debits = $r['debits'];
+                                            $cashinbk= prepared_statements($cashins,'i',[$rw['id']]);
+                                            $r = $cashinbk->fetch_assoc();
+
+                                            $cashoutbk= prepared_statements($cashouts,'i',[$rw['id']]);
+                                            $ro = $cashoutbk->fetch_assoc();
+
+                                            $credits = $r['credits']; $debits = $ro['debits'];
                                             $bal = number_format(($credits - $debits),0);
                                         ?>  
                                         <div class="row mx-1 border h3 rounded-3">

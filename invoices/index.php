@@ -331,13 +331,21 @@
                 function recalculateInvoiceTotals()
                 {
                     var total = 0;
+                    var totall = 0;
 
                     $('.amountClass').each(function () {
                         var val = parseFloat($(this).val()) || 0;
                         total += val;
                     });
 
+                    $('.trTotal').each(function () {
+                        var valt = parseFloat($(this).text()) || 0;
+                        totall += valt;
+                    });
+
+                    
                     $('#invoice_total').text(total.toFixed(2));
+                    $('#invoice_total').text(totall.toFixed(2));
                     $('.InvoiceAmount').val(total);
                 }
 
@@ -409,6 +417,27 @@
                     $('.returnedInvoiceTotal').val(total);
                 }
 
+                // function recalculateInvoiceTotalsReturnedOnView()
+                // {
+                //     var total = 0;
+
+                //     $('.trTotal').each(function(){
+                //         var val = parseFloat($(this).text()) || 0;
+                //         total += val;
+                //     });
+
+                //     // formatted visible total
+                //     $('#returnedInvoiceTotal').text(
+                //         total.toLocaleString(undefined,{
+                //             minimumFractionDigits:2,
+                //             maximumFractionDigits:2
+                //         })
+                //     );
+
+                //     // raw hidden input
+                //     $('.returnedInvoiceTotal').val(total);
+                // }
+
                 // remove row from the table
                 $(document).on('click','.remove-row',function(){
                     var row = $(this).closest('tr');
@@ -444,6 +473,41 @@
                                 xdialog.info("Error removing Invoice");
                             }
                         });
+                    });
+                });
+
+                // remove an item from an invoice
+                $(document).on('click','.remove-invoice-item',function(){
+                    const button = $(this);
+                    const id = button.data('id');
+                    const row = button.closest('tr');
+
+                    // run a function to complete the task
+                    xdialog.confirm("Continue to remove this item?",function(){
+                        $.ajax({
+                            url:'save/index.php',
+                            data:{
+                                action:'removeInvoiceItem',
+                                id:id
+                            },
+                            beforeSend:function(){
+                                xdialog.startSpin();
+                            },
+                            success:function(res){
+                                xdialog.stopSpin();
+                                row.fadeOut(300, function () {
+                                    $(this).remove();
+                                });
+                                // recalculate the total for the invoice
+                                console.log(res);
+                                recalculateInvoiceTotals();
+                            },
+                            error:function(err){
+                                console.log(err);
+                                xdialog.alert('error removing item');
+                            }
+                        });
+
                     });
                 });
 

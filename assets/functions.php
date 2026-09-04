@@ -7,85 +7,180 @@
         session_destroy();
     }
 
+    // function prepared_statements($stat, $binds = '', $vars = [])
+    // {
+    //     global $server;
+
+    //     if(empty($stat))
+    //     {
+    //         return false;
+    //     }
+
+    //     $stmt = $server->prepare($stat);
+
+    //     if(!$stmt)
+    //     {
+    //         die("Prepare failed: " . $server->error);
+    //     }
+
+    //     /*
+    //     =====================================
+    //     BIND PARAMETERS
+    //     =====================================
+    //     */
+
+    //     if(!empty($binds) && !empty($vars))
+    //     {
+    //         $stmt->bind_param($binds, ...$vars);
+    //     }
+
+    //     /*
+    //     =====================================
+    //     EXECUTE
+    //     =====================================
+    //     */
+
+    //     if(!$stmt->execute())
+    //     {
+    //         die("Execute failed: " . $stmt->error);
+    //     }
+
+    //     /*
+    //     =====================================
+    //     DETECT QUERY TYPE
+    //     =====================================
+    //     */
+
+    //     $queryType = strtoupper(strtok(trim($stat), " "));
+
+    //     /*
+    //     =====================================
+    //     SELECT QUERIES
+    //     =====================================
+    //     */
+
+    //     if($queryType == 'SELECT')
+    //     {
+    //         return $stmt->get_result();
+    //     }
+
+    //     /*
+    //     =====================================
+    //     INSERT QUERIES
+    //     =====================================
+    //     */
+
+    //     if($queryType == 'INSERT')
+    //     {
+    //         return $stmt->insert_id;
+    //     }
+
+    //     /*
+    //     =====================================
+    //     UPDATE / DELETE
+    //     =====================================
+    //     */
+
+    //     return $stmt->affected_rows;
+    // }
+
     function prepared_statements($stat, $binds = '', $vars = [])
-    {
-        global $server;
+{
+    global $server;
 
-        if(empty($stat))
-        {
-            return false;
-        }
-
-        $stmt = $server->prepare($stat);
-
-        if(!$stmt)
-        {
-            die("Prepare failed: " . $server->error);
-        }
-
-        /*
-        =====================================
-        BIND PARAMETERS
-        =====================================
-        */
-
-        if(!empty($binds) && !empty($vars))
-        {
-            $stmt->bind_param($binds, ...$vars);
-        }
-
-        /*
-        =====================================
-        EXECUTE
-        =====================================
-        */
-
-        if(!$stmt->execute())
-        {
-            die("Execute failed: " . $stmt->error);
-        }
-
-        /*
-        =====================================
-        DETECT QUERY TYPE
-        =====================================
-        */
-
-        $queryType =
-            strtoupper(
-                strtok(trim($stat), " ")
-            );
-
-        /*
-        =====================================
-        SELECT QUERIES
-        =====================================
-        */
-
-        if($queryType == 'SELECT')
-        {
-            return $stmt->get_result();
-        }
-
-        /*
-        =====================================
-        INSERT QUERIES
-        =====================================
-        */
-
-        if($queryType == 'INSERT')
-        {
-            return $stmt->insert_id;
-        }
-
-        /*
-        =====================================
-        UPDATE / DELETE
-        =====================================
-        */
-
-        return $stmt->affected_rows;
+    if (empty(trim($stat))) {
+        return false;
     }
+
+    /*
+    =====================================
+    PREPARE
+    =====================================
+    */
+
+    $stmt = $server->prepare($stat);
+
+    if (!$stmt) {
+        die("Prepare failed: " . $server->error);
+    }
+
+    /*
+    =====================================
+    BIND PARAMETERS
+    =====================================
+    */
+
+    if (!empty($binds) && !empty($vars)) {
+
+        if (strlen($binds) != count($vars)) {
+            die("Bind parameter count does not match variable count.");
+        }
+
+        $stmt->bind_param($binds, ...$vars);
+    }
+
+    /*
+    =====================================
+    EXECUTE
+    =====================================
+    */
+
+    if (!$stmt->execute()) {
+        die("Execute failed: " . $stmt->error);
+    }
+
+    /*
+    =====================================
+    DETECT QUERY TYPE
+    =====================================
+    */
+
+    $query = ltrim($stat);
+
+    /*
+    Remove SQL comments if they appear
+    before the actual query.
+    */
+
+    $query = preg_replace('/^(--[^\n]*\n|\/\*.*?\*\/\s*)+/s', '', $query);
+
+    $queryType = strtoupper(strtok(ltrim($query), " \t\r\n"));
+
+    /*
+    =====================================
+    SELECT
+    =====================================
+    */
+
+    if ($queryType === 'SELECT') {
+
+        $result = $stmt->get_result();
+
+        if ($result === false) {
+            die("Unable to get SELECT result: " . $stmt->error);
+        }
+
+        return $result;
+    }
+
+    /*
+    =====================================
+    INSERT
+    =====================================
+    */
+
+    if ($queryType === 'INSERT') {
+        return $stmt->insert_id;
+    }
+
+    /*
+    =====================================
+    UPDATE / DELETE
+    =====================================
+    */
+
+    return $stmt->affected_rows;
+}
 
     function redirect($link)
     {
@@ -218,6 +313,43 @@
         $res = prepared_statements($sql,'i',[$id]);
         $row = $res->fetch_assoc();
         return myObject($row);
+    }
+
+    function customerAttachItem($customer_id,$item_id)
+    {
+        global $server;
+        $sql = "INSERT INTO cashbook_customer_items SET customer_id = ?, item_id = ?";
+        prepared_statements($sql,'ii',[$customer_id,$item_id]);
+    }
+
+    function customerDettachItem($customer_id,$item_id)
+    {
+        global $server;
+        $sql = "DELETE FROM cashbook_customer_items WHERE customer_id = ? AND item_id = ?";
+        prepared_statements($sql,'ii',[$customer_id,$item_id]);
+    }
+
+    // find customer items
+    function customerItems($customer_id)
+    {
+        global $server;
+        $sql = "SELECT cci.*,ci.name as item_name FROM cashbook_customer_items cci 
+                    LEFT JOIN cashbook_items ci ON ci.id = cci.item_id
+                WHERE cci.customer_id = ?";
+        $res = prepared_statements($sql,'i',[$customer_id]);
+        return $res;
+    }
+
+    // remove invoice item
+    function removeInvoiceItem($id)
+    {
+        global $server;
+        $sql = "DELETE FROM cashbook_invoice_items WHERE id = ?";
+        if(prepared_statements($sql,'i',[$id]))
+        {
+            return true;
+        }
+        return false;
     }
 
     // encryptor function
@@ -388,17 +520,8 @@
     // customer ledger update function
     function customerLedgerUpdate($customer_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty)
     {
-        $sql = "SELECT customer_id, SUM(debit_amount - credit_amount) AS balance
-                    FROM cashbook_customer_ledger
-                    WHERE customer_id = ? AND book_id = ?
-                GROUP BY customer_id
-            ";
-
-        $res = prepared_statements($sql, 'ii', [$customer_id, $book_id]);
-        $row = $res->fetch_assoc();
-
-        $balance = $row['balance'] ?? 0;
-        
+        // get customer balance
+        $balance = getCustomerBalance($customer_id);
         // use balance to update the ledger
         $newBalance = $balance + $debit - $credit;
         $stmt = "INSERT INTO  cashbook_customer_ledger SET customer_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ?";
@@ -612,25 +735,51 @@
         return myObject($res->fetch_assoc());
     }
 
+    // function getCustomerBalance($customer_id)
+    // {
+    //     global $server;
+
+    //     $sql = $server->prepare("SELECT COALESCE( SUM(CASE
+    //                             WHEN type IN ('invoice','credit_sale')
+    //                             THEN debit_amount
+    //                             ELSE -credit_amount
+    //                         END
+    //                     ),0
+    //                 ) AS balance
+    //             FROM cashbook_customer_ledger
+    //             WHERE customer_id = ?
+    //         ");
+    //     $sql->bind_param('i',$customer_id);
+    //     $sql->execute();
+
+    //     return $sql->get_result()->fetch_assoc()['balance'];
+    // }
+
     function getCustomerBalance($customer_id)
     {
         global $server;
 
-        $sql = $server->prepare("
-            SELECT COALESCE( SUM(CASE
-                                WHEN type IN ('invoice','credit_sale')
-                                THEN debit_amount
-                                ELSE -credit_amount
-                            END
-                        ),0
-                    ) AS balance
-                FROM cashbook_customer_ledger
-                WHERE customer_id = ?
-            ");
-        $sql->bind_param('i',$customer_id);
-        $sql->execute();
+        $stmt = $server->prepare("
+            SELECT COALESCE(balance, 0) AS balance
+            FROM cashbook_customer_ledger
+            WHERE customer_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        ");
 
-        return $sql->get_result()->fetch_assoc()['balance'];
+        if (!$stmt) {
+            return 0;
+        }
+
+        $stmt->bind_param('i', $customer_id);
+        $stmt->execute();
+
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+
+        $stmt->close();
+
+        return $row ? (float)$row['balance'] : 0;
     }
 
     function insertCustomerLedgerInvoice($customer_id, $type,$amount,$invoice_id,$trans_id,$book_id,$invoice_no)

@@ -489,7 +489,7 @@
             'customer_id'   => 'int(11) NOT NULL',
             'book_id'       => 'int(11) NOT NULL',
             'item_id'       => 'int(11) NOT NULL',
-            'type'          => "enum('cash_sale','payment','credit_sale','invoice','invoice_return') NOT NULL",
+            'type'          => "enum('cash_sale','payment','credit_sale','invoice','invoice_return','invoice_payment','invoice_edit') NOT NULL",
             'debit_amount'  => 'decimal(10,2) DEFAULT 0',   // increases what customer owes
             'credit_amount' => 'decimal(10,2) DEFAULT 0',   // reduces what customer owes
             'transaction_id'  => 'int(11) NULL',
@@ -517,6 +517,7 @@
             'status'      => "ENUM('draft','sent','paid') DEFAULT 'draft'",
             'total'       => 'DECIMAL(10,2) DEFAULT 0',
             'paid_amount' => 'DECIMAL(10,2) DEFAULT 0',
+            'returned_amount' => 'DECIMAL(10,2) DEFAULT 0',
             'balance'     => 'decimal(10,2) DEFAULT 0',
             'user_id'     => 'int(11) NULL'
         ];
@@ -622,7 +623,20 @@
         ];
         create_table($table, $columns);
     }
-    
+
+    function cashbook_customer_items()
+    {
+        $table = 'cashbook_customer_items';
+
+        $columns = [
+            'customer_id' => 'int(11) NOT NULL',
+            'item_id'  => 'int(11) NOT NULL'
+        ];
+
+        create_table($table, $columns);
+    }
+
+    cashbook_customer_items();
     // functions to create
     cashbook_books();
     cashbook_users();

@@ -1,302 +1,964 @@
 <?php
-    require_once(__dir__.'/../assets/functions.php');
-    if(isVerified())
-    {
-        pageHeader('Stock');
-        $bsid = request('bkid');
-        $book = bookFind(encryptor('decrypt',$bsid));
-        ?>
-            <style>
-                .stock-card{
-                    height:140px;
-                    min-width:250px;
-                    border-radius:8px;
-                }
-            </style>
-            <div class="container-fluid stock-body">
-                <div class="row mx-1">
-                    <div class="col p-2 inline-block">
-                        <a href="../books/?bkid=<?=$bsid;?>" class="nav-link">Books</a><i class="fa fa-angle-right"></i>
-                        <a class="nav-link">Stock</a>
-                    </div>
-                </div>
-                <hr>
-                <div class="row mx-1">
-                    <div class="col p-2">
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <h3 class="p-2"><?=strToUpper($book->name);?> - STOCK</h3>
-                            </div>
-                            <div class="col p-2">
-                                <?php if(hasRole(['owner','partner'])):?>
-                                    <div class="col p-3">
-                                        <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add stock Item' data-section='item'><i class="fa fa-plus-circle"></i> Add Stock Item</button>
-                                    </div>
-                                <?php endif;?>
-                            </div>
-                        </div>
-                        <hr>
-                        <div class="p-2 row">
-                            <div class="col p-2">
-                                <?php
-                                    $sql = "SELECT  i.id, i.name,i.units, COALESCE(s.balance, 0) AS balance FROM cashbook_items i
-                                                LEFT JOIN  (SELECT cs.item_id, cs.balance FROM cashbook_stocks cs INNER JOIN (
-                                                        SELECT item_id, MAX(id) AS last_id FROM cashbook_stocks  WHERE book_id = ?
-                                                        GROUP BY item_id
-                                                    ) latest ON cs.id = latest.last_id) s ON s.item_id = i.id
-                                                WHERE i.book_id = ? ";
-                                    $res = prepared_statements($sql,'ii',[$book->id, $book->id]);
-                                
-                                    // loop data entry
-                                   while ($r = $res->fetch_assoc()): 
-                                        $borderClass = ($r['balance'] < 10)
-                                            ? 'border-danger'
-                                            : 'border-primary';
-                                ?>
-                                    <div class="p-2 border rounded-3 <?= $borderClass ?> m-1 float-left stock-card hover text-center"
-                                        data-item="<?= $r['id']; ?>"
-                                        data-title="<?= htmlspecialchars($r['name']); ?>">
+require_once(__DIR__ . '/../assets/functions.php');
 
-                                        <h4 class="p-2 border-bottom">
-                                            <?= htmlspecialchars($r['name']); ?>
-                                        </h4>
-                                        <small class="text-muted text-center">
-                                            Balance: <h5><?= number_format($r['balance'], 0)." ".$r['units']; ?></h5>
-                                        </small>
-                                    </div>
-                                <?php endwhile; ?>
-                            </div>
-                            <div class="col-md-3 border-left p-2">
-                                <h3 class="p-2 border-bottom">STOCK CHECK < 10 (qty)</h3>
-                                <?php
-                                    $query = "SELECT i.id,i.name,COALESCE(s.balance, 0) AS balance
-                                            FROM cashbook_items i
-                                            LEFT JOIN ( SELECT cs.book_id, cs.item_id, cs.balance
-                                                        FROM cashbook_stocks cs
-                                                        INNER JOIN (
-                                                            SELECT book_id, item_id, MAX(id) AS last_id
-                                                            FROM cashbook_stocks
-                                                            GROUP BY book_id, item_id
-                                                        ) latest
-                                                        ON cs.id = latest.last_id 
-                                                    ) s 
-                                                ON s.item_id = i.id
-                                                    AND s.book_id = i.book_id
-                                                    WHERE i.book_id = ?
-                                                    ORDER BY balance ASC";
-                                    $query = prepared_statements($query,'i',[$book->id]);
-                                ?>
-                                <table class="table table-bordered table-striped">
-                                    <thead>
-                                        <tr>
-                                            <th>Item</th>
-                                            <th>Balance</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php while($r = $query->fetch_assoc()): 
-                                        if($r['balance'] < 10):
-                                    ?>
-                                            <tr>
-                                                <td><?=$r['name'];?></td>
-                                                <td><?=$r['balance'];?></td>
-                                            </tr>
-                                    <?php endif; endwhile;?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-             <!-- side modal for a cash in -->
-            <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
-                <div class="side-modal-header">
-                    <h3 class="side-modal-title text-dark"></h3>
-                    <button type='button' class='side-modal-close'>&times;</button>
-                </div>
-                <div class="side-modal-content">
-                    
-                </div>
-            </div>
+if (isVerified()) {
 
-            <!-- central modal -->
-            <div class="p-0 bg-white central-modal absolute border shadow" id='central-modal'>
-                <div class="central-modal-header bg-success">
-                    <h3 class="central-modal-title"></h3>
-                    <button type='button' class='central-modal-close'>&times;</button>
-                </div>
-                <div class="central-modal-content">
-                    
-                </div>
-            </div>
-        <?php
-        pageFooter();
-        ?>
-            <script>
-                // click button to show the modal
-                $(document).on('click','.btn-click',function(){
-                    var title = $(this).data('title');
-                    title = title.toUpperCase();
-                    $('.side-modal-tall').show();
-                    $('.side-modal-title').html(title);
-                    // display data in the side modal
-                    var category = $(this).data('section');
-                    // console.log(category);
-                    fetchData(category);
-                });
+    pageHeader('Financial Reports');
 
-                function fetchData(sect)
-                {
-                    var book_id = "<?=encryptor('decrypt',request('bkid'));?>";
-                    if(sect !='')
-                    {
-                        $.ajax({
-                            url:'../books/save/index.php',
-                            data:{
-                                section:sect,
-                                book_id:book_id,
-                                action:'fetchForm'
-                            },
-                            beforesend:function(){
-                                $('.side-modal-content').html("<h3 class='text-center'>Loading...</h3>");
-                            },
-                            success:function(res){
-                                $('.side-modal-content').html(res);
-                            },
-                            error:function(err){
-                                $('.side-modal-content').html("<h3 class='text-center'>Error Loading data!!</h3>");
-                            }
-                        });
-                    }
-                }
+    $bsid = request('bkid');
+    $book = bookFind(encryptor('decrypt', $bsid));
 
-                // stock card click and details
-                $(document).on('click','.stock-card',function(){
-                    $('#central-modal').show();
-                    var title = $(this).data('title');
-                    var id = $(this).data('item');
-                    
-                    // fetch item details
-                   loadModalContent(id,title);
-                });
-
-                // load modal content
-                function loadModalContent(id,title)
-                {
-                    $('.central-modal-title').html(title);
-                    $('side-modal-tall').hide();
-
-                    // send request to backend
-                     $.ajax({
-                        url:'save/index.php',
-                        data:{
-                            action:'ItemDetails',
-                            item_id:id
-                        },
-                        beforeSend:()=>{
-                            $('.central-modal-content').html("<h3 class='text-center'>Loading...</h3>");
-                        },
-                        success:(res)=>{
-                            $('.central-modal-content').html(res);
-                        },
-                        error:(err)=>{
-                            $('.central-modal-content').html("<h3 class='text-center'>Error Loading Data!!</h3>");
-                        }
-                    });
-                }
-                // add or remove stock form
-                // 
-                $(document).on('click','.stock-control',function(){
-                    var id = $(this).data('id');
-                    var type = $(this).data('type');
-                    var title = type.toUpperCase();
-
-                    // display the model without content
-                    $('.side-modal-tall').show();
-                    $('.side-modal-title').html(title);
-
-                    loadForm(id,type);
-                });
-
-                function loadForm(id,type)
-                {
-                    $.ajax({
-                        url:'save/index.php',
-                        data:{
-                            type:type,
-                            id:id,
-                            action:type
-                        },
-                        beforesend:function(){
-                            $('.side-modal-content').html("<h3 class='text-center'>Loading...</h3>");
-                        },
-                        success:function(res){
-                            $('.side-modal-content').html(res);
-                        },
-                        error:function(err){
-                            $('.side-modal-content').html("<h3 class='text-center'>Error Loading data!!</h3>");
-                        }
-                    });
-                }
-
-                function submitSingleForm(formId, backendUrl) 
-                {
-                    const form = document.getElementById(formId);
-                    var title = $('#item_title').val();
-                    var id = $('#item_id').val();
-                    xdialog.startSpin();
-                    if (!form) {
-                        console.error("Form not found:", formId);
-                        return;
-                    }
-
-                    // Attach submit listener once
-                    form.addEventListener("submit", function(e) {
-                        e.preventDefault(); // prevent default page reload
-                        const formData = new FormData(form);
-                        fetch(backendUrl, {
-                            method: "POST",
-                            body: formData
-                        })
-                        .then(res => res.text()) // or .json() if backend returns JSON
-                        .then(response => {
-                            $('.side-modal-tall').hide();
-                            xdialog.stopSpin();
-                            loadModalContent(id,title);
-                            var ress = JSON.parse(response);
-                            xdialog.info(ress.message);
-                            // refresh the home page to capture all data
-                            refreshStockSection('stock-body');
-                        })
-                        .catch(err => {
-                            console.error("AJAX error:", err);
-                        });
-                    });
-                }
-                function refreshStockSection(section) {
-                    $('.stock-body').load(window.location.href + ' .stock-body > *');
-                }
-                // Call the function for your form
-                $(document).on('click','.saveIssueStock',function(){
-                    submitSingleForm("IssueStockForm", "save/index.php");
-                });
-
-                $(document).on('click','.saveNewStock',function(){
-                    submitSingleForm("AddStockForm", "save/index.php");
-                });
-
-                // saving item
-                $(document).on('click','.saveItem',function(){
-                    console.log("Item submitted");
-                    submitSingleForm("newItemForm", "save/index.php");
-                });
-                
-                
-            </script>
-        <?php
-    }else{
+    if (!$book) {
         redirect('../');
+        exit;
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Report filter data
+    |--------------------------------------------------------------------------
+    */
+
+    // Categories
+    $sql = "SELECT id, name
+        FROM cashbook_categories
+        WHERE book_id = ?
+        ORDER BY name ASC
+    ";
+    $cats = prepared_statements($sql, 'i', [$book->id]);
+
+    // Customers
+    $sql = "
+        SELECT id, name
+        FROM cashbook_customers
+        WHERE book_id = ?
+        ORDER BY name ASC
+    ";
+    $customers = prepared_statements($sql, 'i', [$book->id]);
+
+    // Available months
+    $sql = "
+        SELECT DISTINCT
+            YEAR(created_at) AS year,
+            MONTH(created_at) AS month
+        FROM cashbook_transactions
+        WHERE book_id = ?
+        ORDER BY year DESC, month DESC
+    ";
+    $months = prepared_statements($sql, 'i', [$book->id]);
+
+    $month_names = [
+        1 => 'January',
+        2 => 'February',
+        3 => 'March',
+        4 => 'April',
+        5 => 'May',
+        6 => 'June',
+        7 => 'July',
+        8 => 'August',
+        9 => 'September',
+        10 => 'October',
+        11 => 'November',
+        12 => 'December'
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Initial summary
+    |--------------------------------------------------------------------------
+    |
+    | This assumes:
+    | credit_amount = money coming in
+    | debit_amount  = money going out
+    |
+    */
+
+    $summary_sql = "SELECT COALESCE(SUM(credit_amount), 0) AS credit, COALESCE(SUM(debit_amount), 0) AS debit,
+            COUNT(*) AS transactions FROM cashbook_transactions WHERE book_id = ?";
+
+    $summary_res = prepared_statements($summary_sql, 'i',[$book->id]);
+    $summary = $summary_res->fetch_assoc();
+
+    $total_credit = (float)($summary['credit'] ?? 0);
+    $total_debit = (float)($summary['debit'] ?? 0);
+    $net = $total_credit - $total_debit;
+    $transaction_count = (int)($summary['transactions'] ?? 0);
+?>
+
+<div class="container-fluid py-3">
+
+    <!-- ==========================================================
+         HEADER
+    =========================================================== -->
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+
+        <div>
+            <div class="d-flex align-items-center gap-2">
+                <a href="../books/?bkid=<?= $bsid; ?>"
+                   class="text-decoration-none">
+                    <i class="fa fa-book"></i> Books
+                </a>
+
+                <i class="fa fa-angle-right text-muted"></i>
+
+                <span class="text-muted">
+                    Reports
+                </span>
+            </div>
+
+            <h3 class="mt-2 mb-0">
+                <i class="fa fa-chart-line me-2"></i>
+                Financial Report
+            </h3>
+
+            <small class="text-muted">
+                <?= htmlspecialchars($book->name ?? 'Cashbook'); ?>
+            </small>
+        </div>
+
+        <div class="d-flex gap-2 mt-2 mt-md-0">
+
+            <button type="button" class="btn btn-outline-secondary" id="btn-reset-filters">
+                <i class="fa fa-refresh"></i>
+                Reset
+            </button>
+
+            <button type="button"
+                    class="btn btn-outline-primary"
+                    id="btn-print-report">
+                <i class="fa fa-print"></i>
+                Print
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- ==========================================================
+         FINANCIAL SUMMARY
+    =========================================================== -->
+
+    <div class="row g-3 mb-4">
+
+        <!-- CASH IN -->
+        <div class="col-12 col-sm-6 col-xl-3">
+
+            <div class="card border-0 shadow-sm h-100">
+
+                <div class="card-body">
+
+                    <div class="d-flex justify-content-between">
+
+                        <div>
+                            <small class="text-muted">
+                                TOTAL CASH IN
+                            </small>
+
+                            <h4 class="mt-2 mb-0"
+                                id="summary-credit">
+                                <?= number_format($total_credit, 2); ?>
+                            </h4>
+                        </div>
+
+                        <div class="text-success fs-3">
+                            <i class="fa fa-arrow-down"></i>
+                        </div>
+
+                    </div>
+
+                    <small class="text-muted">
+                        Money received
+                    </small>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- CASH OUT -->
+        <div class="col-12 col-sm-6 col-xl-3">
+
+            <div class="card border-0 shadow-sm h-100">
+
+                <div class="card-body">
+
+                    <div class="d-flex justify-content-between">
+
+                        <div>
+                            <small class="text-muted">
+                                TOTAL CASH OUT
+                            </small>
+
+                            <h4 class="mt-2 mb-0"
+                                id="summary-debit">
+                                <?= number_format($total_debit, 2); ?>
+                            </h4>
+                        </div>
+
+                        <div class="text-danger fs-3">
+                            <i class="fa fa-arrow-up"></i>
+                        </div>
+
+                    </div>
+
+                    <small class="text-muted">
+                        Money spent
+                    </small>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- NET -->
+        <div class="col-12 col-sm-6 col-xl-3">
+
+            <div class="card border-0 shadow-sm h-100">
+
+                <div class="card-body">
+
+                    <div class="d-flex justify-content-between">
+
+                        <div>
+                            <small class="text-muted">
+                                NET MOVEMENT
+                            </small>
+
+                            <h4 class="mt-2 mb-0"
+                                id="summary-net">
+                                <?= number_format($net, 2); ?>
+                            </h4>
+                        </div>
+
+                        <div class="text-primary fs-3">
+                            <i class="fa fa-balance-scale"></i>
+                        </div>
+
+                    </div>
+
+                    <small class="text-muted">
+                        Cash in minus cash out
+                    </small>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- TRANSACTIONS -->
+        <div class="col-12 col-sm-6 col-xl-3">
+
+            <div class="card border-0 shadow-sm h-100">
+
+                <div class="card-body">
+
+                    <div class="d-flex justify-content-between">
+
+                        <div>
+                            <small class="text-muted">
+                                TRANSACTIONS
+                            </small>
+
+                            <h4 class="mt-2 mb-0"
+                                id="summary-count">
+                                <?= number_format($transaction_count); ?>
+                            </h4>
+                        </div>
+
+                        <div class="text-info fs-3">
+                            <i class="fa fa-list"></i>
+                        </div>
+
+                    </div>
+
+                    <small class="text-muted">
+                        Recorded transactions
+                    </small>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ==========================================================
+         FILTER PANEL
+    =========================================================== -->
+
+    <div class="card border-0 shadow-sm mb-4">
+
+        <div class="card-header bg-white">
+
+            <div class="d-flex justify-content-between align-items-center">
+
+                <div>
+                    <strong>
+                        <i class="fa fa-filter me-1"></i>
+                        Report Filters
+                    </strong>
+
+                    <div class="small text-muted">
+                        Narrow the report to exactly what you want to analyse.
+                    </div>
+                </div>
+
+                <span class="badge bg-light text-dark"
+                      id="filter-status">
+                    All transactions
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div class="card-body">
+
+            <div class="row g-2">
+
+                <!-- FROM -->
+                <div class="col-12 col-md-6 col-lg-2">
+
+                    <label class="form-label small fw-bold">
+                        From
+                    </label>
+
+                    <input type="date"
+                           id="filter-min-date"
+                           data-type="min_date"
+                           class="form-control filter-item">
+
+                </div>
+
+
+                <!-- TO -->
+                <div class="col-12 col-md-6 col-lg-2">
+
+                    <label class="form-label small fw-bold">
+                        To
+                    </label>
+
+                    <input type="date"
+                           id="filter-max-date"
+                           data-type="max_date"
+                           class="form-control filter-item"
+                           max="<?= date('Y-m-d'); ?>">
+
+                </div>
+
+
+                <!-- MONTH -->
+                <div class="col-12 col-md-6 col-lg-2">
+
+                    <label class="form-label small fw-bold">
+                        Month
+                    </label>
+
+                    <select id="filter-month"
+                            data-type="month"
+                            class="form-control filter-item">
+
+                        <option value="">
+                            All months
+                        </option>
+
+                        <?php while ($m = $months->fetch_assoc()): ?>
+
+                            <option value="<?= $m['year'] . '-' . str_pad($m['month'], 2, '0', STR_PAD_LEFT); ?>">
+                                <?= $month_names[(int)$m['month']] . ' ' . $m['year']; ?>
+                            </option>
+
+                        <?php endwhile; ?>
+
+                    </select>
+
+                </div>
+
+
+                <!-- TYPE -->
+                <div class="col-12 col-md-6 col-lg-2">
+
+                    <label class="form-label small fw-bold">
+                        Transaction
+                    </label>
+
+                    <select id="filter-type"
+                            data-type="type"
+                            class="form-control filter-item">
+
+                        <option value="">
+                            All types
+                        </option>
+
+                        <option value="credit">
+                            Cash In
+                        </option>
+
+                        <option value="debit">
+                            Cash Out
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <!-- CATEGORY -->
+                <div class="col-12 col-md-6 col-lg-2">
+
+                    <label class="form-label small fw-bold">
+                        Category
+                    </label>
+
+                    <select id="filter-category"
+                            data-type="category"
+                            class="form-control filter-item">
+
+                        <option value="">
+                            All categories
+                        </option>
+
+                        <?php while ($cat = $cats->fetch_assoc()): ?>
+
+                            <option value="<?= $cat['id']; ?>">
+                                <?= htmlspecialchars($cat['name']); ?>
+                            </option>
+
+                        <?php endwhile; ?>
+
+                    </select>
+
+                </div>
+
+
+                <!-- CUSTOMER -->
+                <div class="col-12 col-md-6 col-lg-2">
+
+                    <label class="form-label small fw-bold">
+                        Customer
+                    </label>
+
+                    <select id="filter-customer"
+                            data-type="customer"
+                            class="form-control filter-item">
+
+                        <option value="">
+                            All customers
+                        </option>
+
+                        <?php while ($customer = $customers->fetch_assoc()): ?>
+
+                            <option value="<?= $customer['id']; ?>">
+                                <?= htmlspecialchars($customer['name']); ?>
+                            </option>
+
+                        <?php endwhile; ?>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ==========================================================
+         REPORT BODY
+    =========================================================== -->
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white">
+            <div class="row align-items-center">
+                <div class="col">
+                    <strong>
+                        Transaction Statement
+                    </strong>
+                    <div class="small text-muted">
+                        Detailed financial activity
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <span class="badge bg-success-subtle text-success"
+                          id="credit-label">
+                        Credit: 0.00
+                    </span>
+                    <span class="badge bg-danger-subtle text-danger"
+                          id="debit-label">
+                        Debit: 0.00
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0" id="transactions-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="50">#</th>
+                            <th>Date</th>
+                            <th>Category</th>
+                            <th>Customer</th>
+                            <th>Details</th>
+                            <th class="text-end"> Credit</th>
+                            <th class="text-end"> Debit</th>
+                            <th width="80"> Action </th>
+                        </tr>
+                    </thead>
+                    <tbody class="transactions-tbody">
+                        <tr>
+                            <td colspan="9" class="text-center py-5">
+                                <div class="spinner-border spinner-border-sm"></div>
+                                <div class="mt-2 text-muted">
+                                    Loading transactions...
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot class="table-light">
+                         <tr>
+                            <th colspan="5"class="text-end"> TOTAL</th>
+                            <th class="text-end" id="table-credit"> 0.00</th>
+                            <th class="text-end"id="table-debit">0.00 </th>
+                            <th class="text-end" id="table-net"> 0.00</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ==========================================================
+     SIDE MODAL
+=========================================================== -->
+
+<div class="p-0 bg-white side-modal-tall absolute border shadow"id="side-modal-cashin">
+    <div class="side-modal-header bg-success">
+        <h3 class="side-modal-title text-white"></h3>
+        <button type="button"class="side-modal-close">&times;</button>
+    </div>
+    <div class="side-modal-content"></div>
+</div>
+
+
+<!-- ==========================================================
+     CENTRAL MODAL
+=========================================================== -->
+
+<div class="p-0 bg-white central-modal absolute border shadow"id="central-modal">
+    <div class="central-modal-header bg-success">
+        <h3 class="central-modal-title"></h3>
+        <button type="button"class="central-modal-close">&times;</button>
+    </div>
+    <div class="central-modal-content"></div>
+</div>
+
+
+<?php pageFooter(); ?>
+
+
+<script>
+
+$(function () {
+
+    const bookId = "<?= $book->id; ?>";
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Format money
+    |--------------------------------------------------------------------------
+    */
+
+    function money(value) {
+
+        value = parseFloat(value || 0);
+
+        return value.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Collect filters
+    |--------------------------------------------------------------------------
+    */
+
+    function getFilters() {
+
+        let filters = {
+            action: 'transactionFilter',
+            book_id: bookId
+        };
+
+        $('.filter-item').each(function () {
+            const key = $(this).data('type');
+            const value = $(this).val();
+
+            if (value !== '') {
+                filters[key] = value;
+            }
+
+        });
+
+        return filters;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Filter description
+    |--------------------------------------------------------------------------
+    */
+
+    function updateFilterStatus() {
+
+        let active = [];
+
+        $('.filter-item').each(function () {
+
+            const value = $(this).val();
+
+            if (value !== '') {
+                active.push(value);
+            }
+
+        });
+
+        $('#filter-status').text(
+            active.length
+                ? active.length + ' filter' + (active.length > 1 ? 's' : '') + ' active'
+                : 'All transactions'
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Load report
+    |--------------------------------------------------------------------------
+    */
+
+    function loadReport() {
+
+        const filters = getFilters();
+
+        updateFilterStatus();
+
+        $('.transactions-tbody').html(`
+            <tr>
+                <td colspan="9" class="text-center py-5">
+                    <div class="spinner-border"></div>
+                    <div class="mt-2 text-muted">
+                        Preparing report...
+                    </div>
+                </td>
+            </tr>
+        `);
+
+
+        $.ajax({
+
+            url: '../books/save/index.php',
+
+            type: 'POST',
+
+            data: filters,
+
+            success: function (res) {
+
+                $('.transactions-tbody').html(res);
+
+                calculateTableTotals();
+
+            },
+
+            error: function (xhr) {
+
+                console.error(xhr.responseText);
+
+                $('.transactions-tbody').html(`
+                    <tr>
+                        <td colspan="9"
+                            class="text-center text-danger py-5">
+
+                            <i class="fa fa-exclamation-triangle fa-2x"></i>
+
+                            <div class="mt-2">
+                                Failed to load report.
+                            </div>
+
+                        </td>
+                    </tr>
+                `);
+
+            }
+
+        });
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Calculate visible table totals
+    |--------------------------------------------------------------------------
+    |
+    | Assumes:
+    | column 6 = credit
+    | column 7 = debit
+    |
+    */
+
+    function calculateTableTotals() 
+    {
+
+        let credit = 0;
+        let debit = 0;
+        let count = 0;
+
+        $('.transactions-tbody tr').each(function () {
+
+            const cells = $(this).find('td');
+
+            if (cells.length < 7) {
+                return;
+            }
+
+            const c = parseFloat(
+                $(cells[5]).text().replace(/,/g, '')
+            ) || 0;
+
+            const d = parseFloat(
+                $(cells[6]).text().replace(/,/g, '')
+            ) || 0;
+
+            credit += c;
+            debit += d;
+            count++;
+
+        });
+
+
+        const net = credit - debit;
+
+        $('#table-credit').text(money(credit));
+        $('#table-debit').text(money(debit));
+        $('#table-net').text(money(net));
+
+        $('#credit-label').text(
+            'Credit: ' + money(credit)
+        );
+
+        $('#debit-label').text(
+            'Debit: ' + money(debit)
+        );
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Filters
+    |--------------------------------------------------------------------------
+    */
+
+    $(document).on(
+        'change',
+        '.filter-item',
+        function () {
+
+            loadReport();
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reset
+    |--------------------------------------------------------------------------
+    */
+
+    $('#btn-reset-filters').on('click', function () {
+
+        $('.filter-item').val('');
+
+        loadReport();
+
+    });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Print
+    |--------------------------------------------------------------------------
+    */
+
+    $('#btn-print-report').on('click', function () {
+
+        window.print();
+
+    });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Transaction modal
+    |--------------------------------------------------------------------------
+    */
+
+    $(document).on(
+        'click',
+        '.btn-click',
+        function () {
+
+            const title =
+                String($(this).data('title') || 'Details')
+                    .toUpperCase();
+
+            const section =
+                $(this).data('section');
+
+            const id =
+                $(this).data('id');
+
+
+            $('.side-modal-tall').show();
+
+            $('.side-modal-title').text(title);
+
+            $('.side-modal-content').html(`
+                <div class="text-center p-5">
+                    <div class="spinner-border"></div>
+                    <div class="mt-2">
+                        Loading...
+                    </div>
+                </div>
+            `);
+
+
+            $.ajax({
+
+                url: '../books/save/index.php',
+
+                type: 'POST',
+
+                data: {
+
+                    section: section,
+
+                    book_id: bookId,
+
+                    action: 'fetchForm',
+
+                    route_id: id
+
+                },
+
+                success: function (res) {
+
+                    $('.side-modal-content').html(res);
+
+                },
+
+                error: function () {
+
+                    $('.side-modal-content').html(`
+                        <div class="text-center text-danger p-5">
+                            Error loading information.
+                        </div>
+                    `);
+
+                }
+
+            });
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Initial load
+    |--------------------------------------------------------------------------
+    */
+
+    loadReport();
+
+});
+
+</script>
+
+
+<style>
+
+.report-summary-card {
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.report-summary-card:hover {
+    transform: translateY(-2px);
+}
+
+#transactions-table th {
+    white-space: nowrap;
+}
+
+#transactions-table td {
+    vertical-align: middle;
+}
+
+@media print {
+
+    .side-modal-tall,
+    .central-modal,
+    button,
+    .btn,
+    .card-header .badge,
+    .filter-item,
+    #btn-reset-filters,
+    #btn-print-report {
+        display: none !important;
+    }
+
+    .card {
+        box-shadow: none !important;
+        border: 0 !important;
+    }
+
+    body {
+        background: white !important;
+    }
+
+}
+
+</style>
+
+<?php
+} else {
+    redirect('../');
+}
 ?>

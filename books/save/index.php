@@ -1136,8 +1136,8 @@
                                     $total_balance = $invoice->balance - $amount;
 
                                     // update invoice
-                                    $update = "UPDATE cashbook_invoices SET paid_amount = ?, balance = ? WHERE id = ?";
-                                    prepared_statements($update,'ddi',[$total_paid,$total_balance,$invoice_id]);
+                                    $update = "UPDATE cashbook_invoices SET paid_amount = ?, balance = balance - ? WHERE id = ?";
+                                    prepared_statements($update,'ddi',[$total_paid,$total_paid,$invoice_id]);
                                 }
                                
                                  // credit cashins       
@@ -1661,10 +1661,12 @@
                         $sql = "
                             SELECT 
                                 t.*,
-                                c.name AS category_name,cc.name as customer_name
+                                c.name AS category_name,cc.name as customer_name,cco.amount as cashout
                                 FROM cashbook_transactions t
                                 LEFT JOIN cashbook_categories c ON c.id = t.category_id
                                 LEFT JOIN cashbook_customers cc ON cc.id = t.customer_id
+                                LEFT JOIN cashbook_cashouts cco ON cco.transaction_id = t.id
+                                LEFT JOIN cashbook_cashins cci ON cci.transaction_id = t.id
                         ";
 
                         if ($conditions) {
@@ -1672,6 +1674,8 @@
                         }
 
                         $sql .= " ORDER BY t.created_at ASC";
+
+                        // echo mysqli_error($server);
 
                         $stmt = $server->prepare($sql);
                         $stmt->bind_param($types, ...$params);
@@ -1686,7 +1690,8 @@
                             while ($row = $result->fetch_assoc()) 
                             {
                                 $credits[] = $row['credit_amount'];
-                                $debits[] = $row['debit_amount'];
+                                // $debits[] = (empty($row['credit_amount']) ||  $row['credit_amount'] == 0 ) ? $row['debit_amount'] : "";
+                                 $debits[] = ($row['cashout'] == $row['debit_amount']) ? $row['debit_amount'] : 0;
                                 ?>
                                     <tr class='transaction-details hover hover-hide-content'>
                                         <td></td>
@@ -1695,7 +1700,7 @@
                                         <td><?=$row['customer_name'];?></td>
                                         <td><?=$row['details'];?></td>
                                         <td class ="<?=$row['credit_amount'] > 0 ? " text-primary" : "";?>"><?=number_format($row['credit_amount'],0);?></td>
-                                        <td class ="<?=$row['debit_amount'] > 0 ? " text-danger" : "";?>"><?=number_format($row['debit_amount'],0);?></td>
+                                        <td class ="<?=$row['debit_amount'] > 0 ? " text-danger" : "";?>"><?=($row['credit_amount'] > 0 ) ? "" : (($row['cashout'] == $row['debit_amount']) ? number_format($row['debit_amount'],0) : "");?></td>
                                         <td>
                                             <?php if(hasRole(['owner','partner'])):?>
                                                 <span class="hover-display text-sms">

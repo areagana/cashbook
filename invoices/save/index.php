@@ -5,6 +5,8 @@
         if(isset($_REQUEST['action']) && !empty($_REQUEST['action']))
         {
             $action = request('action');
+            $user_id = auth()->id;
+
             switch($action)
             {
                 case 'Invoice-details':
@@ -12,7 +14,7 @@
 
                         // fetch transactions
                         $sql = "SELECT ci.*,cc.name as customer FROM cashbook_invoices ci 
-                            INNER JOIN cashbook_customers cc ON cc.id = ci.customer_id WHERE ci.id = ?";
+                                INNER JOIN cashbook_customers cc ON cc.id = ci.customer_id WHERE ci.id = ?";
                         $res = prepared_statements($sql,'i',[$id]);
                         $invoice = myObject($res->fetch_assoc());
                     ?>
@@ -29,6 +31,17 @@
                         <hr>
                         <div class="row mx-1">
                             <div class="col p-2">
+                                <div class="col p-2 table-responsive">
+                                    <?php
+                                        $stmt = "SELECT cii.*,ci.name as item,ci.units FROM cashbook_invoice_items cii 
+                                                    INNER JOIN cashbook_items ci ON ci.id = cii.item_id
+                                                    WHERE cii.invoice_id = ? ORDER BY id ASC";
+                                        $res = prepared_statements($stmt,'i',[$id]);
+                                        
+                                        $amounts = [];
+                                        $s = 1;
+                                    ?>
+                                </div>
                                 <form method="POST" id="newInvoiceItemForm">
                                     <input type="hidden" name="invoice_id" value="<?=$invoice->id;?>">
                                     <input type="hidden" name="form" value='newInvoiceItemSave'>
@@ -45,7 +58,18 @@
                                                 <th>Action</th>
                                             </tr>
                                         </thead>
-                                        <tbody class='invoiceItemsTbody'>                            
+                                        <tbody class='invoiceItemsTbody'>
+                                            <?php while($r = $res->fetch_assoc()): $amounts[] = $r['total'];?>
+                                            <tr class='invoice-item-row'>
+                                                <td><?=$r['item'];?></td>
+                                                <td><?=$r['quantity'];?> <?=$r['units'];?></td>
+                                                <td><?=number_format($r['unit_price'],0);?></td>
+                                                <td class ='amountClass'><?=number_format($r['total'],0);?></td>
+                                                <td>
+                                                    <button class="btn btn-outline-danger btn-flat btn-sm remove-invoice-item" data-id ="<?=$r['id'];?>"><i class="fa fa-minus"></i></button>
+                                                </td>
+                                            </tr>
+                                        <?php endwhile;?>                            
                                         </tbody>
                                         <tr>
                                             <th colspan='3'>TOTAL</th>
@@ -140,7 +164,7 @@
                             </table>
                             <hr>
                             <div class="p-2 h3">
-                                <center>  <strong>BALANCE: <?=$invoice->balance;?></strong></center>
+                                <center>  <strong>BALANCE: <?=number_format($invoice->balance,0);?></strong></center>
                             </div>
                             <hr>
                             <div class="row mx-1">
@@ -162,6 +186,7 @@
                                                 <th>Qty</th>
                                                 <th>Rate</th>
                                                 <th>Amount</th>
+                                                <th></th>
                                             </tr>
                                         </thead>
                                         <tbody class='invoiceItemsTbody'>                            
@@ -172,12 +197,16 @@
                                                 <td><?=$r['item'];?></td>
                                                 <td><?=$r['quantity'];?> <?=$r['units'];?></td>
                                                 <td><?=number_format($r['unit_price'],0);?></td>
-                                                <td><?=number_format($r['total'],0);?></td>
+                                                <td class='trTotal'><?=number_format($r['total'],0);?></td>
+                                                <td>
+                                                    <button class="btn btn-outline-danger btn-flat btn-sm remove-invoice-item" data-id ="<?=$r['id'];?>"><i class="fa fa-minus"></i></button>
+                                                </td>
                                             </tr>
                                         <?php endwhile;?>
                                         <tr class='h5'>
                                             <td colspan='4'>TOTAL</td>
                                             <td id='invoice_total'><?=number_format(array_sum($amounts),0);?></td>
+                                            <td></td>
                                         </tr>
                                     </table>
                                     <hr>
@@ -245,8 +274,8 @@
                         $invoice = invoiceFind($id);
                         ?>
                             <form id='invoiceReturnsForm' method="post">
-                                    <input type="hidden" name="form" value='newInvoiceReturnSave'>
-                                    <input type="hidden" name="action" value='SaveForm'>
+                                <input type="hidden" name="form" value='newInvoiceReturnSave'>
+                                <input type="hidden" name="action" value='SaveForm'>
                                 <div class="form-row">
                                     <div class="col p-2">INVOICE NO:</div>
                                     <div class="col p-2"><?=$invoice->invoice_no;?></div>
@@ -344,7 +373,7 @@
                                 $trans = "INSERT INTO cashbook_transactions SET customer_id = ?, details = ?, credit_amount = ?, user_id = ?,type=?,book_id = ?";
                                 $trans_id = prepared_statements($trans,'isdisi',[$invoice->customer_id,$invoice->invoice_no,$returnAMount,$auth->id,'invoice_return',$invoice->book_id]);
 
-                                // update ledger and clear invoice customer
+                                // update ledger and clear customer invoice
 
                                 $ctledger = "INSERT INTO cashbook_customer_ledger SET customer_id = ?, book_id = ?,type = ?,
                                 credit_amount = ?,transaction_id = ?,details = ?,balance = ?,user_id =?,invoice_id = ?";
@@ -357,6 +386,10 @@
                                     $returnAMount,$trans_id,$invoice->invoice_no,
                                     $newBalance,$auth->id,$invoice_id
                                 ]);
+
+                                // update invoice table to reflect the returned amount
+                                $updateInvoice = "UPDATE cashbook_invoices SET balance = balance - ?, returned_amount = returned_amount + ? WHERE id = ?";
+                                prepared_statements($updateInvoice,'ddi',[$returnAMount,$returnAMount,$invoice_id]);
 
                                 // item save statament
                                 $stmt = "INSERT INTO cashbook_invoice_return_items 
@@ -402,10 +435,54 @@
                     {
                         // track transaction edits
                         trackTransactionEdits($tid,'invoice-deletion');
-
                         // adjust customer ledger records
                         echo "Success";
                     }
+                    break;
+                case 'removeInvoiceItem':
+                        $id = request('id');
+
+                        // fetch item amount to adjust the invoice details
+                        $sql = "SELECT * FROM cashbook_invoice_items WHERE id = ?";
+                        $res = prepared_statements($sql,'i',[$id]);
+                        $row = $res->fetch_assoc();
+                        // print_r($row);
+
+                        if($row) 
+                        {
+                            $invoice_id = $row['invoice_id'];
+                            $invoice = invoiceFind($invoice_id);
+                            $amount = $row['total'];
+                            $customer_id = $invoice->customer_id;
+                            $book_id = $invoice->book_id;
+
+                            // Delete item
+                            if(removeInvoiceItem($id))
+                            {
+                                $stmt = "UPDATE cashbook_invoices i
+                                SET i.total = (
+                                    SELECT COALESCE(SUM(ii.total), 0)
+                                    FROM cashbook_invoice_items ii
+                                    WHERE ii.invoice_id = i.id
+                                )
+                                WHERE i.id = ?";
+                                prepared_statements($stmt, 'i', [$invoice_id]);
+
+                                // update customer ledger to capture the changes
+                                $query = "UPDATE cashbook_customer_ledger SET debit_amount = ?, invoice_amount = ? WHERE invoice_id = ?";
+                                prepared_statements($query,'iii',[$amount,$amount,$invoice_id]);
+
+                                $type = 'invoice_edit';
+                                $current_balance = getCustomerBalance($customer_id);
+                                $balance = $current_balance - $amount;
+
+                                // insert a new transaction updating customer balance for ledger,re-credit their account
+                                $insert = "INSERT INTO cashbook_customer_ledger SET customer_id = ?,credit_amount = ?, invoice_id = ?,book_id = ?, type = ?, details = ?,balance = ?,user_id = ?";
+                                prepared_statements($insert,'iiiissii',[$customer_id,$amount,$invoice_id,$book_id,$type,$invoice->invoice_no,$balance,$user_id]);
+                            }else{
+                                echo "Failed to remove item";
+                            }                            
+                        }
                     break;
             }
         }

@@ -55,6 +55,7 @@
                 <div class="col p-2 border rounded-3 main-display">
                     <div class="row mx-1">
                         <div class="col p-2 text-right">
+                            <a href="../report/?bkid=<?=encryptor('encrypt',$book->id);?>" class="btn btn-flat btn-outline-secondary right mx-2 hover">REPORT</a>
                             <button class="btn btn-flat btn-danger right mx-2 cash-out btn-click hover" data-title='add cashout' data-section='cashout'>CASH Out</button>
                             <button class="btn btn-flat btn-primary right mx-2 cash-in btn-click hover" data-title='add cashin' data-section='cashin'>CASH IN</button>
                         </div>
@@ -93,8 +94,9 @@
                                             AND DATE(created_at) = DATE_FORMAT(NOW(), '%Y-%m-%d')";
                                 $res = prepared_statements($stmt,'i',[$id]);
                                 $rw = $res->fetch_assoc();
+                                $cashin = $rw['cashin'];
                             ?>
-                            <div class="p-2 text-primary">CASHIN: <span class="right"><?=number_format($rw['cashin'],0);?></span></div>
+                            <div class="p-2 text-primary">CASHIN: <span class="right"><?=number_format($cashin,0);?></span></div>
                         </div>
                         <div class="col p-2 border m-1 book-dash border-danger">
                             <?php
@@ -104,16 +106,12 @@
                                             AND DATE(created_at) = DATE_FORMAT(NOW(), '%Y-%m-%d')";
                                 $ress = prepared_statements($stmtt,'i',[$id]);
                                 $rws = $ress->fetch_assoc();
+                                $cashout = $rws['cashout'];
                             ?>
-                            <div class="p-2 text-danger">CASHOUT: <span class="right"><?=number_format($rws['cashout'],0);?></span></div>
+                            <div class="p-2 text-danger">CASHOUT: <span class="right"><?=number_format($cashout,0);?></span></div>
                         </div>
                         <div class="col p-2 border m-1 book-dash border-dark">
-                            <?php
-                                $stmtt = "SELECT SUM(amount) as cashout FROM cashbook_cashouts WHERE book_id = ? AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01') AND created_at < DATE_FORMAT(NOW() + INTERVAL 1 MONTH, '%Y-%m-01')";
-                                $ress = prepared_statements($stmtt,'i',[$id]);
-                                $rws = $ress->fetch_assoc();
-                            ?>
-                            <div class="p-2"><strong>BALANCE:</strong> <span class="right"><strong><?= number_format(($bbf + $rw['cashin']-$rws['cashout']),0);?></span></strong></div>
+                            <div class="p-2"><strong>BALANCE:</strong> <span class="right"><strong><?= number_format(($bbf + $cashin-$cashout),0);?></span></strong></div>
                         </div>
                     </div>
                     <hr>
@@ -182,12 +180,12 @@
                             $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.created_at,ct.details,cu.name as customer FROM cashbook_transactions ct 
                                     LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id
                                     LEFT JOIn cashbook_customers cu ON cu.id = ct.customer_id
-                                WHERE ct.book_id = ? AND month(ct.created_at) = month(now()) ORDER BY ct.id desc";
+                                WHERE ct.book_id = ? AND DATE(ct.created_at) = DATE(now()) ORDER BY ct.id desc";
                             $res_ = prepared_statements($stmt_,'i',[$id]);
                             $t = 0;
                         ?>
                         <div class="col p-2 table-responsive transaction-table-wrapper">
-                            <h4 class='text-center'>RECENT TRANSACTIONS (CURRENT MONTH)</h4>
+                            <h4 class='text-center'>RECENT TRANSACTIONS (TODAY)</h4>
                             <table class="table table-sm table-striped">
                                 <thead>
                                     <tr>
@@ -209,8 +207,8 @@
                                         <td><?=$r['category'];?></td>
                                         <td><?=$r['customer'];?></td>
                                         <td><?=$r['details'];?></td>
-                                        <td class ="<?=$r['credits'] > 0 ? " text-primary" : "text-danger";?>"><?=number_format($r['credits'],0);?></td>
-                                        <td class ="<?=$r['credits'] > 0 ? " text-primary" : "text-danger";?>"><?=number_format($r['debits'],0);?></td>
+                                        <td class ="<?=$r['credits'] > 0 ? " text-primary" : "";?>"><?=number_format($r['credits'],0);?></td>
+                                        <td class ="<?=$r['debits'] > 0 ? " text-danger" : "";?>"><?=($r['credits'] == 0 || empty($r['credits'])) ? number_format($r['debits'],0) : "";?></td>
                                         <td>
                                             <?php if(hasRole(['owner','partner'])):?>
                                                 <span class="hover-display text-sms">
@@ -524,5 +522,32 @@
                 $('.inAmount-controlled').show();
             }
             
+        });
+
+        // lock invoice_id section if type is cash_sale
+        $(document).on('change', '#transaction_type', function()
+        {
+            const val = $(this).val();
+
+            // Transaction types that do not require an invoice
+            const noInvoiceTypes = [
+                'cash_sale',
+                'credit_sale',
+                'other_income'
+            ];
+
+            const invoiceField = $('#invoice_id');
+
+            if(noInvoiceTypes.includes(val))
+            {
+                invoiceField
+                    .prop('disabled', true)
+                    .val('')
+                    .trigger('change');
+            }
+            else
+            {
+                invoiceField.prop('disabled', false);
+            }
         });
     </script>
