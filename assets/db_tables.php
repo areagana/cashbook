@@ -283,7 +283,8 @@
             'transaction_id'=>'int(11) null',
             'user_id'=>'int(11) null',
             'quantity'=>'int(11) null',
-            'rate'=>'int(11) null'
+            'rate'=>'int(11) null',
+            'type'=>'varchar(255) null'
         ];
         $foreignKeys= [
             'book_id' => 'book_id', 'ref_table' => 'cashbook_books', 'ref_column' => 'id',
@@ -310,7 +311,8 @@
             'transaction_id'=>'int(11) null',
             'user_id'=>'int(11) null',
             'quantity'=>'int(11) null',
-            'rate'=>'int(11) null'
+            'rate'=>'int(11) null',
+            'type'=>'varchar(255) null'
         ];
          $foreignKeys= [
             'book_id' => 'book_id', 'ref_table' => 'cashbook_books', 'ref_column' => 'id',
@@ -351,7 +353,8 @@
             'details'=>'varchar(255) null',
             'balance'=>'float null',
             'route_manager_id'=>'int(11) null',
-            'user_id'=>'int(11) null'
+            'user_id'=>'int(11) null',
+            'invoice_id'=>'int(11) null'
         ];
         create_table($table,$columns);
     }
@@ -489,7 +492,7 @@
             'customer_id'   => 'int(11) NOT NULL',
             'book_id'       => 'int(11) NOT NULL',
             'item_id'       => 'int(11) NOT NULL',
-            'type'          => "enum('cash_sale','payment','credit_sale','invoice','invoice_return','invoice_payment','invoice_edit') NOT NULL",
+            'type'          => "enum('cash_sale','payment','credit_sale','invoice','invoice_return','invoice_payment','invoice_edit','borrowing','repayment') NOT NULL",
             'debit_amount'  => 'decimal(10,2) DEFAULT 0',   // increases what customer owes
             'credit_amount' => 'decimal(10,2) DEFAULT 0',   // reduces what customer owes
             'transaction_id'  => 'int(11) NULL',
@@ -636,7 +639,56 @@
         create_table($table, $columns);
     }
 
+    function cashbook_purchases()
+    {
+        $table = 'cashbook_purchases';
+
+        $columns = [
+            'item_id' => 'int(11) NOT NULL',
+            'quantity'  => 'int(11) NOT NULL',
+            'unit_price'  => 'decimal(10,2) NOT NULL',
+            'total'  => 'decimal(10,2) NOT NULL',
+            'book_id'  => 'int(11) NOT NULL',
+            'suplier_id'  => 'int(11) NULL',
+            'user_id'  => 'int(11) NOT NULL',
+            'transaction_id'  => 'int(11) NULL'
+
+        ];
+
+        create_table($table, $columns);
+    }
+
+    // supliers
+    function cashbook_supliers()
+    {
+        $table = 'cashbook_supliers';
+        $columns = [
+            'name' => 'varchar(255) NOT NULL',
+            'contact'  => 'varchar(255) NULL',
+            'address'  => 'varchar(255) NULL',
+            'book_id'  => 'int(11) NOT NULL',
+            'user_id'  => 'int(11) NOT NULL'
+        ];
+        create_table($table, $columns);
+    }
+
+    function cashbook_customer_balances()
+    {
+        $table = 'cashbook_customer_balances';
+        $columns = [
+            'customer_id' => 'int(11) NOT NULL',
+            'balance'  => 'decimal(10,2) NOT NULL',
+            'date'  => 'date NOT NULL',
+            'book_id'  => 'int(11) NOT NULL'
+        ];
+        create_table($table, $columns);
+    }
+
     cashbook_customer_items();
+    cashbook_purchases();
+    cashbook_supliers();
+    cashbook_customer_balances();
+
     // functions to create
     cashbook_books();
     cashbook_users();

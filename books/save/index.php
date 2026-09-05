@@ -1,4 +1,10 @@
 <?php
+    error_reporting(E_ALL);
+
+    // Turn on error display
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+
     require_once(__dir__.'/../../assets/functions.php');
     if(isVerified())
     {
@@ -491,7 +497,7 @@
                                                         <label for="customer_id">CUSTOMER:</label>
                                                     </div>
                                                     <?php
-                                                        $sql = "SELECT * FROM cashbook_customers WHERE book_id = ?";
+                                                        $sql = "SELECT * FROM cashbook_customers WHERE book_id = ? ORDER BY name ASC";
                                                         $res = prepared_statements($sql,'i',[$bkid]);
                                                     ?>
                                                     <div class="col p-2">
@@ -596,6 +602,19 @@
                                         </div>
                                         <div class="row mx-1">
                                             <div class="col-md-3 p-2">
+                                                <label for="type">TYPE:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <select name="expense_type" id="expense_type" class="form-control" required>
+                                                    <option value="" selected disabled>Select</option>
+                                                    <option value="purchase">Purchase</option>
+                                                    <option value="expense">Expense</option>
+                                                    <option value="borrowing">Borrowing</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="row mx-1">
+                                            <div class="col-md-3 p-2">
                                                 <label for="category_id">CATEGORY:</label>
                                             </div>
                                             <?php
@@ -611,21 +630,59 @@
                                                 </select>
                                             </div>
                                         </div>
-                                        <div class="row mx-1">
-                                            <div class="col-md-3 p-2">
-                                                <label for="customer_id">CUSTOMER:</label>
+                                        <div class="p-0 expense-customer hidden">
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="customer_id">CUSTOMER:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = "SELECT * FROM cashbook_customers WHERE book_id = ?  ORDER BY name ASC";
+                                                    $res = prepared_statements($sql,'i',[$bkid]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="customer_id" id="customer_id" class="form-control">
+                                                        <option hidden>Select</option>
+                                                        <?php while($rw = $res->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
                                             </div>
-                                            <?php
-                                                $sql = "SELECT * FROM cashbook_customers WHERE book_id = ?";
-                                                $res = prepared_statements($sql,'i',[$bkid]);
-                                            ?>
-                                            <div class="col p-2">
-                                                <select name="customer_id" id="customer_id" class="form-control">
-                                                    <option hidden>Select</option>
-                                                    <?php while($rw = $res->fetch_assoc()):?>
-                                                        <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
-                                                    <?php endwhile;?>
-                                                </select>
+                                        </div>
+                                        <div class="p-0 purchase-expense  hidden">
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="item_id">ITEM:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = "SELECT * FROM cashbook_items WHERE book_id = ?  ORDER BY name ASC";
+                                                    $res = prepared_statements($sql,'i',[$bkid]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="item_id" id="item_id" class="form-control">
+                                                        <option hidden>---Select---</option>
+                                                        <?php while($rw = $res->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="quantity">QUANTITY:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="quantity" id="quantity" class="form-control" placeholder='Qty....'>
+                                                </div>
+                                            </div>
+
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="purchase_rate">RATE:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="purchase_rate" id="purchase_rate" class="form-control" placeholder='Amount per unit....'>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="row mx-1">
@@ -1092,7 +1149,8 @@
                                 $debit = 0;
 
                                 // CASH SALE
-                                if($type === 'cash_sale'){
+                                if($type === 'cash_sale')
+                                {
                                     $credit = (float)$amount; // cash increases
                                     $creditable = $credit;
                                     $debit = $credit;
@@ -1120,10 +1178,10 @@
                                 // save the content
                                 $sql = "INSERT INTO cashbook_transactions  SET credit_amount = ?, debit_amount = ?, book_id = ?, details = ?, 
                                             category_id = ?,  paymode_id = ?, created_at = ?, user_id = ?,  type = ?,  customer_id = ?, 
-                                            item_id = ?,  quantity = ?";
+                                            item_id = ?,  quantity = ?, invoice_id = ?";
 
                                 $res = prepared_statements(
-                                    $sql,'ddisiisisiii',[$credit,$debit,$book_id, $details,$category_id,$payment_mode,$date,$user_id, $type,$customer_id,$item_id,$qty]
+                                    $sql,'ddisiisisiiii',[$credit,$debit,$book_id, $details,$category_id,$payment_mode,$date,$user_id, $type,$customer_id,$item_id,$qty,$invoice_id]
                                 );
 
                                 $trans_id = $server->insert_id;
@@ -1144,15 +1202,15 @@
                                 if($credit > 0)
                                 {
                                     // insert into cashins table
-                                    $stmt = "INSERT INTO  cashbook_cashins SET amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?";
-                                    prepared_statements($stmt,'iisiiisiii',[$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty]);
+                                    $stmt = "INSERT INTO  cashbook_cashins SET type = ?,customer_id = ?, amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?";
+                                    prepared_statements($stmt,'siiisiiisiii',[$type,$customer_id,$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty]);
                                 }
 
                                 // check if customer has been selected and update the ledger
                                 if(!empty($customer_id))
                                 {
                                     // update customer ledger
-                                    customerLedgerUpdate($customer_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty);
+                                    customerLedgerUpdate($customer_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
                                 }
                                 $_SESSION['success'] ='Data Saved';
                             break;
@@ -1168,18 +1226,29 @@
                                 $customer_id = request('customer_id');
                                 $item_id = request('item_id');
                                 $quantity = request('quantity');
+                                $type = request('transaction_type');
+                                $invoice_id = isset($_POST['invoice_id']) ? request('invoice_id') : "";
+                                $book_id = transactionFind($transid)->book_id;
 
-                                // track transaction edits
+                                // // track transaction edits
                                 trackTransactionEdits($transid,'edit');
 
                                 // save the content
-                                $sql = "UPDATE cashbook_transactions SET credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ?,customer_id=?,item_id = ?, quantity = ? WHERE id = ?";
-                                $res = prepared_statements($sql,'isiisiiiii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$item_id,$quantity,$transid]);
-
-                                $stmt = "UPDATE cashbook_cashins SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id = ?,item_id = ?, quantity = ? WHERE transaction_id = ?";
-                                prepared_statements($stmt,'iisisiiii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$item_id,$quantity,$transid]);
+                                $sql = "UPDATE cashbook_transactions SET type = ?, credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ?,customer_id=?,item_id = ?, quantity = ?,invoice_id = ? WHERE id = ?";
+                                $res = prepared_statements($sql,'sisiissiiiii',[$type,$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$item_id,$quantity,$invoice_id,$transid]);
+                                
+                                $stmt = "UPDATE cashbook_cashins SET type = ?,customer_id = ?, amount = ?, category_id = ?, details = ?,
+                                            paymode_id = ?,created_at = ?,user_id = ?,item_id = ?, quantity = ? 
+                                        WHERE transaction_id = ?";
+                                prepared_statements($stmt,'sidisisiiii',[$type,$customer_id,$amount,$category_id,$details,$payment_mode,$date,$user_id,$item_id,$quantity,$transid]);
 
                                 // would need to handle customer ledger records
+                                if(!empty($customer_id))
+                                {
+                                    // update customer ledger
+                                    customerLedgerUpdate($customer_id,$amount,0,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$quantity,$type);
+                                }
+
                                 $_SESSION['success'] = "Data Saved";
                             break;
                             
@@ -1191,21 +1260,44 @@
                                 $payment_mode = request('paymode_id');
                                 $date = request('created_at');
                                 $user_id = auth()->id;
-                                $type='debit';
+                                // $type='debit';
                                 $customer_id = request('customer_id');
+                                $type = request('expense_type');
+
+                                // get items for purchase if available
+                                $item_id = isset($_POST['item_id']) ? request('item_id') : "";
+                                $qty = isset($_POST['quantity']) ? request('quantity') : "";
+                                $purchase_rate = isset($_POST['purchase_rate']) ? request('purchase_rate') : "";
+                                $suplier_id = isset($_POST['suplier_id']) ? request('suplier_id') : "";
+
+                               
 
                                 // ssave the content
-                                $sql = "INSERT INTO cashbook_transactions SET debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?,customer_id=?";
-                                $res = prepared_statements($sql,'iisiisisi',[$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id]);
+                                $sql = "INSERT INTO cashbook_transactions SET item_id = ?, quantity = ?, rate=?, debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?,customer_id=?";
+                                $res = prepared_statements($sql,'iiiiisiisisi',[$item_id,$qty,$purchase_rate,$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id]);
                                 $trans_id = $server->insert_id;
 
-                                $stmt = "INSERT INTO  cashbook_cashouts SET amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ?,user_id=?";
-                                prepared_statements($stmt,'iisiiisi',[$amount,$category_id,$details,$book_id,$trans_id,$payment_mode,$date,$user_id]);
+                                 // check if the transaction is a purchase and save to purchases table
+                                if($type == 'purchase' && !empty($item_id) && !empty($qty) && !empty($purchase_rate))
+                                {
+                                    $stmt = "INSERT INTO cashbook_purchases SET transaction_id = ?, item_id = ?, quantity = ?, unit_price = ?, total = ?, book_id = ?, created_at = ?, user_id = ?";
+                                    prepared_statements($stmt,'iiiidisi',[$trans_id,$item_id,$qty,$purchase_rate,$amount,$book_id,$date,$user_id]);
+                                }
+
+                                // if its a customer borrowing, put the record on their page as a debit
+                                if($type == 'borrowing' && !empty($customer_id))
+                                {
+                                    // update customer ledger
+                                    customerLedgerUpdate($customer_id,0,$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
+                                }
+
+                                $stmt = "INSERT INTO  cashbook_cashouts SET item_id = ?, type=?,quantity=?,rate=?,amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ?,user_id=?";
+                                prepared_statements($stmt,'isiiiisiiisi',[$item_id,$type,$qty,$purchase_rate,$amount,$category_id,$details,$book_id,$trans_id,$payment_mode,$date,$user_id]);
                                 $_SESSION['success'] = 'Transaction Saved';
 
                             break;
-                        case 'editCashoutSave':
 
+                        case 'editCashoutSave':
                                 $details = request('cashout_details');
                                 $category_id = request('category_id');
                                 $amount = request('outamount');
@@ -1213,18 +1305,52 @@
                                 $transid = request('transaction_id');
                                 $date = request('created_at');
                                 $customer_id = request('customer_id');
+                                $type = request('expense_type');
+
+                                $item_id = isset($_POST['item_id']) ? request('item_id') : "";
+                                $qty = isset($_POST['quantity']) ? request('quantity') : "";
+                                $purchase_rate = isset($_POST['purchase_rate']) ? request('purchase_rate') : "";
+                                $suplier_id = isset($_POST['suplier_id']) ? request('suplier_id') : "";
+                                $book_id = transactionFind($transid)->book_id;
 
                                 // record transaction edits
                                 trackTransactionEdits($transid,'edit');
 
-                                // ssave the content
-                                $sql = "UPDATE cashbook_transactions SET debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=?,user_id = ?,customer_id=? WHERE id = ?";
-                                $res = prepared_statements($sql,'isiisiii',[$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$transid]);
+                                // save the content
+                                $sql = "UPDATE cashbook_transactions SET item_id = ?, quantity = ?, rate=?, type=?, debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=?,user_id = ?,customer_id=? WHERE id = ?";
+                                $res = prepared_statements($sql,'iiisisiisiii',[$item_id,$qty,$purchase_rate,$type,$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$transid]);
+                                
+                                // $_SESSION['success'] = $type.$customer_id;
+                                // if its a customer borrowing, put the record on their page as a debit
+                                if($type =='borrowing' && !empty($customer_id))
+                                {
+                                    // update customer ledger
+                                    customerLedgerUpdate($customer_id,0,$amount,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$qty,$type);
+                                }
 
-                                $stmt = "UPDATE cashbook_cashouts SET amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id =? WHERE transaction_id = ?";
-                                prepared_statements($stmt,'iisisii',[$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
+                                // check if the transaction is a purchase and save to purchases table
+                                if($type == 'purchase' && !empty($item_id) && !empty($qty) && !empty($purchase_rate))
+                                {
+                                    // fetch the purchase record for this transaction
+                                    $purchase_check = "SELECT * FROM cashbook_purchases WHERE transaction_id = ?";
+                                    $purchase = prepared_statements($purchase_check,'i',[$transid]);
+                                    
+                                    if($purchase->num_rows > 0)
+                                    {
+                                        // update the purchase record
+                                        $stmt = "UPDATE cashbook_purchases SET item_id = ?, quantity = ?, unit_price = ?, total = ?, book_id = ?, created_at = ?, user_id = ? WHERE transaction_id = ?";
+                                        prepared_statements($stmt,'iiidisi',[$item_id,$qty,$purchase_rate,$amount,$book_id,$date,$user_id,$transid]);
+                                    
+                                    }else{
+                                        // insert record if does not exixt
+                                        $stmt = "INSERT INTO cashbook_purchases SET transaction_id = ?, item_id = ?, quantity = ?, unit_price = ?, total = ?, book_id = ?, created_at = ?, user_id = ?";
+                                        prepared_statements($stmt,'iiiidisi',[$trans_id,$item_id,$qty,$purchase_rate,$amount,$book_id,$date,$user_id]);
+                                    }
+                                }
+                                // update cashouts table
+                                $stmt = "UPDATE cashbook_cashouts SET item_id = ?, type=?,quantity=?,rate=?, amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id =? WHERE transaction_id = ?";
+                                prepared_statements($stmt,'isiiiisisii',[$item_id,$type,$qty,$purchase_rate,$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
                                 $_SESSION['success'] = "Data Saved";
-
 
                             break;
 
@@ -1242,10 +1368,7 @@
                                 // update invoice number
                                 $update = "UPDATE cashbook_invoices SET invoice_no = ? WHERE id = ?";
                                 prepared_statements($update,'si',[$invoice_no,$invoice_id]);
-
-                                // find invoice to load its details
-                                $invoice = invoiceFind($invoice_id);
-                                echo json_encode($invoice);
+                                $_SESSION['success'] = "Invoice Created successfully";
                             break;
                             // save invoice items
                         case 'newInvoiceItemSave':
@@ -1287,8 +1410,8 @@
                             if($ress > 0) // if the invoice has been updated
                             {
                                 // enter transaction in the table to link to customer
-                                $trans = "INSERT INTO cashbook_transactions SET customer_id = ?, details = ?, debit_amount = ?,user_id = ?, book_id = ?, type = ? ";
-                                $trans_id = prepared_statements($trans,'isdiis',[$customer_id,$invoice->invoice_no,$amountt,$user_id,$book_id,'Invoice']);
+                                $trans = "INSERT INTO cashbook_transactions SET customer_id = ?, details = ?, debit_amount = ?,user_id = ?, book_id = ?, type = ?, invoice_id = ?,created_at = ?";
+                                $trans_id = prepared_statements($trans,'isdiisis',[$customer_id,$invoice->invoice_no,$amountt,$user_id,$book_id,'Invoice',$invoice_id,$invoice->created_at]);
 
                                 // update customer ledger section
                                 insertCustomerLedgerInvoice($customer_id, 'invoice',$amountt,$invoice_id,$trans_id,$book_id,$invoice_no);
@@ -1359,10 +1482,11 @@
                             break;
                     }
                     break;
+
                 case 'editTransaction':
-                    $type = request('type');
-                    $id = request('id');
-                    $transaction = transactionFind($id);
+                        $type = request('type');
+                        $id = request('id');
+                        $transaction = transactionFind($id);
                         switch($type)
                         {
                             case 'credit':
@@ -1377,6 +1501,21 @@
                                             </div>
                                             <div class="col p-2">
                                                 <input type="text" name="inamount" id="inamount" value="<?=$transaction->credit_amount;?>" class="form-control" required>
+                                            </div>
+                                        </div>
+                                         <div class="row mx-1">
+                                            <div class="col-md-3 p-2">
+                                                <label>TRANSACTION TYPE:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <select name="transaction_type"  id ='transaction_type' class="form-control" required>
+                                                    <option value="<?=$transaction->type ?? '';?>"><?=$transaction->type ?? '';?></option>
+                                                    <option hidden>--- Select ---</option>
+                                                    <option value="cash_sale">Cash Sale</option>
+                                                    <option value="payment">Customer Payment</option>
+                                                    <option value="credit_sale">Credit Sale</option>
+                                                    <option value="other_income">Other Income</option>
+                                                </select>
                                             </div>
                                         </div>
                                         <div class="row mx-1">
@@ -1413,7 +1552,7 @@
                                                 </select>
                                             </div>
                                         </div>
-                                        <div class="row mx-1">
+                                            <div class="row mx-1">
                                                 <div class="col-md-3 p-2">
                                                     <label for="customer_id">ITEM:</label>
                                                 </div>
@@ -1428,6 +1567,16 @@
                                                         <?php while($rw = $res->fetch_assoc()):?>
                                                             <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
                                                         <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="invoice_id">INVOICE:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <select name="invoice_id" id="invoice_id" class="form-control">
+                                                        <option value="<?=$transaction->invoice_id ?? '';?>"><?=$transaction->invoice_no ?? '';?></option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -1496,6 +1645,19 @@
                                         </div>
                                         <div class="row mx-1">
                                             <div class="col-md-3 p-2">
+                                                <label for="type">TYPE:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <select name="expense_type" id="expense_type" class="form-control" required>
+                                                    <option value="<?=$transaction->type;?>"><?=$transaction->type;?></option>
+                                                    <option value="purchase">Purchase</option>
+                                                    <option value="expense">Expense</option>
+                                                    <option value="borrowing">Borrowing</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="row mx-1">
+                                            <div class="col-md-3 p-2">
                                                 <label for="category_id">CATEGORY:</label>
                                             </div>
                                             <?php
@@ -1511,21 +1673,59 @@
                                                 </select>
                                             </div>
                                         </div>
-                                        <div class="row mx-1">
-                                            <div class="col-md-3 p-2">
-                                                <label for="customer_id">CUSTOMER:</label>
+                                        <div class="p-0 expense-customer">
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="customer_id">CUSTOMER:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = "SELECT * FROM cashbook_customers WHERE book_id = ?  ORDER BY name ASC";
+                                                    $res = prepared_statements($sql,'i',[$transaction->book_id]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="customer_id" id="customer_id" class="form-control">
+                                                        <option value="<?=$transaction->customer_id;?>"><?=$transaction->customer_name;?></option>
+                                                        <?php while($rw = $res->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
                                             </div>
-                                            <?php
-                                                $sql = "SELECT * FROM cashbook_customers WHERE book_id = ?";
-                                                $res = prepared_statements($sql,'i',[$transaction->book_id]);
-                                            ?>
-                                            <div class="col p-2">
-                                                <select name="customer_id" id="customer_id" class="form-control">
-                                                    <option hidden>Select</option>
-                                                    <?php while($rw = $res->fetch_assoc()):?>
-                                                        <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
-                                                    <?php endwhile;?>
-                                                </select>
+                                        </div>
+                                        <div class="p-0 purchase-expense">
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="item_id">ITEM:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = "SELECT * FROM cashbook_items WHERE book_id = ?  ORDER BY name ASC";
+                                                    $res = prepared_statements($sql,'i',[$transaction->book_id]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="item_id" id="item_id" class="form-control">
+                                                        <option value="<?=$transaction->item_id;?>"><?=$transaction->item_name;?></option>
+                                                        <?php while($rw = $res->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="quantity">QUANTITY:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="quantity" id="quantity"  value="<?=$transaction->quantity;?>" class="form-control" placeholder='Qty....'>
+                                                </div>
+                                            </div>
+
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="purchase_rate">RATE:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="purchase_rate" id="purchase_rate"  value="<?=$transaction->rate;?>" class="form-control" placeholder='Amount per unit....'>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="row mx-1">
@@ -1699,7 +1899,7 @@
                                         <td><?=$row['category_name'];?></td>
                                         <td><?=$row['customer_name'];?></td>
                                         <td><?=$row['details'];?></td>
-                                        <td class ="<?=$row['credit_amount'] > 0 ? " text-primary" : "";?>"><?=number_format($row['credit_amount'],0);?></td>
+                                        <td class ="<?=$row['credit_amount'] > 0 ? " text-primary" : "";?>"><?=($row['credit_amount'] > 0) ? number_format($row['credit_amount'],0) : "";?></td>
                                         <td class ="<?=$row['debit_amount'] > 0 ? " text-danger" : "";?>"><?=($row['credit_amount'] > 0 ) ? "" : (($row['cashout'] == $row['debit_amount']) ? number_format($row['debit_amount'],0) : "");?></td>
                                         <td>
                                             <?php if(hasRole(['owner','partner'])):?>

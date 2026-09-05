@@ -550,4 +550,27 @@
                 invoiceField.prop('disabled', false);
             }
         });
+
+        // lock and display some points of the form
+        $(document).on('change','#expense_type',function(){
+            var type = $(this).val();
+            if(type !='')
+            {
+                if(type == 'purchase')
+                {
+                    $('.expense-customer').hide();
+                    $('.purchase-expense').show();
+                    // $('#item_id').val('');
+                    // $('#quantity').val('');
+                    // $('#purchase_rate').val('');
+                }else if(type == 'expense'){
+                    $('.expense-customer').hide();
+                    $('.purchase-expense').hide();
+                }else{
+                    $('.expense-customer').show();
+                    // $('#customer_id').val('');
+                    $('.purchase-expense').hide();
+                }
+            }
+        });
     </script>
