@@ -6,7 +6,7 @@
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
     ?>
-            <div class="container">
+            <div class="container-fluid">
                 <div class="row mx-1">
                     <div class="col p-2 inline-block">
                         <a href="../books/?bkid=<?=$bsid;?>" class="nav-link">Books</a><i class="fa fa-angle-right"></i>
@@ -18,7 +18,7 @@
                 </div>
                 <hr>
                 <div class="row mx-1">
-                    <div class="col p-2">
+                    <div class="col p-2 border m-1 tale-responsive">
                         <div class="row mx-1">
                             <div class="col p-2">
                                 <h3 class="p-2"><?=strToUpper($book->name);?> - CUSTOMERS</h3>
@@ -60,10 +60,8 @@
                                         <tr>
                                             <th>#</th>
                                             <th>Name</th>
-                                            <th>Contact</th>
                                             <th>Route</th>
                                             <th>Manager</th>
-                                            <th>Items</th>
                                             <th class='text-right'>Account Status</th>
                                             <th class='text-right'>Action</th>
                                         </tr>
@@ -73,10 +71,8 @@
                                             <tr class='hover hover-hide-content'>
                                                 <td><?=$s++;?></td>
                                                 <td><?=$r['name'];?></td>
-                                                <td><?=$r['contact'];?></td>
                                                 <td><?=$r['route'];?></td>
                                                 <td><?=$r['route_manager'];?></td>
-                                                <td><?=$r['items'];?></td>
                                                 <td class='text-right'><?=number_format($r['balance'],0);?></td>
                                                 <td class='text-right'>
                                                     <?php if(hasRole(['owner','partner','staff'])):?>
@@ -94,6 +90,36 @@
                                         <?php endwhile;?>
                                     </tbody>
                                 </table>
+                        </div>
+                    </div>
+                    <div class="col-md-4 p-2 border m-1 table-responsive">
+                        <h4 class="p-2 border-bottom">Customer Balances</h4>
+                        <div class="p-2">
+                            <?php
+                                $customersSql = "SELECT ccb.customer_id, cc.name AS customer_name, ccb.balance FROM cashbook_customer_balances ccb
+                                        INNER JOIN cashbook_customers cc ON cc.id = ccb.customer_id
+                                        WHERE ccb.book_id = ? AND ccb.balance > 0
+                                        ORDER BY ccb.balance DESC";
+                                $customersResult = prepared_statements($customersSql, 'i', [$book->id]);
+                            ?>
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Customer</th>
+                                        <th class='text-right'>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php $count = 1; ?>
+                                    <?php while ($customer = $customersResult->fetch_assoc()): ?>
+                                        <tr>
+                                            <td><?= $count++; ?></td>
+                                            <td><?= $customer['customer_name']; ?></td>
+                                            <td class='text-right'><?=number_format($customer['balance'], 0); ?></td>
+                                        </tr>
+                                    <?php endwhile; ?>
+                            </table>
                         </div>
                     </div>
                 </div>

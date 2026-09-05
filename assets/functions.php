@@ -533,13 +533,15 @@
 
             // use balance to update the ledger
             $newBalance = $balance + $debit - $credit;
-            $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
+            // $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
 
             $update_sql = "UPDATE cashbook_customer_ledger SET type = ?, customer_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ? WHERE transaction_id = ?";
             prepared_statements($update_sql,'siddsiisiiidi',[$type,$customer_id,$credit,$debit,$details,$book_id,$payment_mode,$date,$user_id,$item_id,$qty,$newBalance,$trans_id]);
 
             // update customer balance
             saveCustomerBalance($customer_id,$newBalance,$date);
+            $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
+            $_SESSION['success'] = "Data updated successfully.";
         
         }else {
             // get customer balance
@@ -549,11 +551,12 @@
             $newBalance = $balance + $debit - $credit;
 
             // Insert new transaction
-            $stmt = "INSERT INTO  cashbook_customer_ledger SET type=?, customer_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ?";
+            $stmt = "INSERT INTO  cashbook_customer_ledger SET type = ?, customer_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ?";
             prepared_statements($stmt,'siddsiiisiiid',[$type,$customer_id,$credit,$debit,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$newBalance]);  
 
             // update customer balance
             saveCustomerBalance($customer_id,$newBalance,$date);
+            $_SESSION['success'] = "Data saved successfully.";
         }
     }
 
@@ -764,6 +767,13 @@
         return myObject($res->fetch_assoc());
     }
 
+    function customerFind($id)
+    {
+        $stmt = "SELECT * FROM cashbook_customers WHERE id = ?";
+        $res = prepared_statements($stmt,'i',[$id]);
+        return myObject($res->fetch_assoc());
+    }
+
     function getCustomerBalance($customer_id)
     {
         global $server;
@@ -843,15 +853,16 @@
         //   check if the customer  exists in the cashbook_customer_balances table
         $check_stmt = "SELECT * FROM cashbook_customer_balances WHERE customer_id = ?";
         $check = prepared_statements($check_stmt,'i',[$customer_id]);
-
+        $book_id = customerFind($customer_id)->book_id;
+        
         if($check->num_rows > 0)
         {
             $stmt = "UPDATE cashbook_customer_balances SET balance = ?,date = ? WHERE customer_id = ?";
             return prepared_statements($stmt,'dis',[$balance,$date,$customer_id]);
         }else
         {
-            $stmt = "INSERT INTO cashbook_customer_balances SET customer_id = ?, balance = ?,date = ?";
-            return prepared_statements($stmt,'ids',[$customer_id,$balance,$date]);
+            $stmt = "INSERT INTO cashbook_customer_balances SET customer_id = ?, balance = ?,date = ?,book_id = ?";
+            return prepared_statements($stmt,'idsi',[$customer_id,$balance,$date,$book_id]);
         }
     }
 ?>

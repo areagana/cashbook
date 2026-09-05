@@ -1212,7 +1212,7 @@
                                     // update customer ledger
                                     customerLedgerUpdate($customer_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
                                 }
-                                $_SESSION['success'] ='Data Saved';
+                                $_SESSION['success'] ='cashin save side';
                             break;
 
                         case 'editCashinSave':
@@ -1237,19 +1237,23 @@
                                 $sql = "UPDATE cashbook_transactions SET type = ?, credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ?,customer_id=?,item_id = ?, quantity = ?,invoice_id = ? WHERE id = ?";
                                 $res = prepared_statements($sql,'sisiissiiiii',[$type,$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$item_id,$quantity,$invoice_id,$transid]);
                                 
-                                $stmt = "UPDATE cashbook_cashins SET type = ?,customer_id = ?, amount = ?, category_id = ?, details = ?,
+                                // Chcek type to enter this transaction
+                                if($type === 'cash_sale' || $type === 'payment' || $type === 'other_income')
+                                {
+                                    $stmt = "UPDATE cashbook_cashins SET type = ?,customer_id = ?, amount = ?, category_id = ?, details = ?,
                                             paymode_id = ?,created_at = ?,user_id = ?,item_id = ?, quantity = ? 
                                         WHERE transaction_id = ?";
-                                prepared_statements($stmt,'sidisisiiii',[$type,$customer_id,$amount,$category_id,$details,$payment_mode,$date,$user_id,$item_id,$quantity,$transid]);
+                                    prepared_statements($stmt,'sidisisiiii',[$type,$customer_id,$amount,$category_id,$details,$payment_mode,$date,$user_id,$item_id,$quantity,$transid]);
+                                }
 
                                 // would need to handle customer ledger records
                                 if(!empty($customer_id))
                                 {
                                     // update customer ledger
                                     customerLedgerUpdate($customer_id,$amount,0,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$quantity,$type);
+                                }else{
+                                    $_SESSION['success'] = 'cashin save edit';
                                 }
-
-                                $_SESSION['success'] = "Data Saved";
                             break;
                             
                         case 'newCashoutSave':
@@ -1260,7 +1264,6 @@
                                 $payment_mode = request('paymode_id');
                                 $date = request('created_at');
                                 $user_id = auth()->id;
-                                // $type='debit';
                                 $customer_id = request('customer_id');
                                 $type = request('expense_type');
 
@@ -1269,8 +1272,6 @@
                                 $qty = isset($_POST['quantity']) ? request('quantity') : "";
                                 $purchase_rate = isset($_POST['purchase_rate']) ? request('purchase_rate') : "";
                                 $suplier_id = isset($_POST['suplier_id']) ? request('suplier_id') : "";
-
-                               
 
                                 // ssave the content
                                 $sql = "INSERT INTO cashbook_transactions SET item_id = ?, quantity = ?, rate=?, debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?,customer_id=?";
@@ -1298,6 +1299,7 @@
                             break;
 
                         case 'editCashoutSave':
+
                                 $details = request('cashout_details');
                                 $category_id = request('category_id');
                                 $amount = request('outamount');
@@ -1320,13 +1322,6 @@
                                 $sql = "UPDATE cashbook_transactions SET item_id = ?, quantity = ?, rate=?, type=?, debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=?,user_id = ?,customer_id=? WHERE id = ?";
                                 $res = prepared_statements($sql,'iiisisiisiii',[$item_id,$qty,$purchase_rate,$type,$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$transid]);
                                 
-                                // $_SESSION['success'] = $type.$customer_id;
-                                // if its a customer borrowing, put the record on their page as a debit
-                                if($type =='borrowing' && !empty($customer_id))
-                                {
-                                    // update customer ledger
-                                    customerLedgerUpdate($customer_id,0,$amount,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$qty,$type);
-                                }
 
                                 // check if the transaction is a purchase and save to purchases table
                                 if($type == 'purchase' && !empty($item_id) && !empty($qty) && !empty($purchase_rate))
@@ -1347,10 +1342,18 @@
                                         prepared_statements($stmt,'iiiidisi',[$trans_id,$item_id,$qty,$purchase_rate,$amount,$book_id,$date,$user_id]);
                                     }
                                 }
+    
+                                // enter borrowing records
+                                if(($type =='borrowing' || $type == 'credit_sale') && !empty($customer_id))
+                                {
+                                    // update customer ledger
+                                    customerLedgerUpdate($customer_id,0,$amount,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$qty,$type);
+                                }
+
                                 // update cashouts table
                                 $stmt = "UPDATE cashbook_cashouts SET item_id = ?, type=?,quantity=?,rate=?, amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id =? WHERE transaction_id = ?";
                                 prepared_statements($stmt,'isiiiisisii',[$item_id,$type,$qty,$purchase_rate,$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
-                                $_SESSION['success'] = "Data Saved";
+                                $_SESSION['success'] = "checked";
 
                             break;
 
