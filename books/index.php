@@ -31,17 +31,16 @@
                 }
             </style>
             <div class="row mx-1">
-                <div class="col-md-1">
-                    <a href="../" class="nav-link"><i class="fa fa-arrow-left"></i> Back</a>
-                </div>
                 <div class="col-md-3 p-2">
                     <h2 class="p-0 text-left"><?=$book->name;?></h2>
                 </div>
                 <div class="col-md-3 p-3">
-                    <a href='../stock/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-primary"><i class="fa fa-stock"></i> Book Stock</a>
+                    <a href='../dashboard/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-primary"><i class="fa fa-stock"></i> DASHBOARD</a>
+                    <a href='../report/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-secondary"><i class="fa fa-stock"></i> REPORT</a>
                 </div>
                 <?php if(hasRole(['owner','partner'])):?>
                         <div class="col p-3">
+                            <a href='../stock/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-primary"><i class="fa fa-stock"></i> Book Stock</a>
                             <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add category' data-section='category'><i class="fa fa-plus-circle"></i> Category</button>
                             <button class="btn btn-sm btn-flat btn-outline-primary btn-click" data-title='add customer' data-section='customer'><i class="fa fa-plus-circle"></i> Customer</button>
                             <button class="btn btn-sm btn-flat btn-outline-info btn-click" data-title='add member' data-section='member'><i class="fa fa-plus-circle"></i> Members</button>

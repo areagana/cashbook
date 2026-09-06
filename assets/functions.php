@@ -662,7 +662,8 @@
     function sideBar()
     {
         global $book;
-        $book = bookFind(encryptor('decrypt',$_SESSION['book_id'])) ?? bookFind(encryptor('decrypt',$_REQUEST['bkid']));
+        $book_id = (isset($_REQUEST['bkid']) || isset($_REQUEST['bsid'])) ? encryptor('decrypt',$_REQUEST['bkid'] ?? $_REQUEST['bsid']) : encryptor('decrypt',$_SESSION['book_id']);
+        $book = $book ?? bookFind($book_id);
         ?>
             <aside id="sidebar">
                 <div class="sidebar-header">

@@ -111,14 +111,21 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php $count = 1; ?>
-                                    <?php while ($customer = $customersResult->fetch_assoc()): ?>
+                                    <?php $count = 1; $bal = 0; ?>
+                                    <?php while ($customer = $customersResult->fetch_assoc()): $bal += $customer['balance']; ?>
                                         <tr>
                                             <td><?= $count++; ?></td>
                                             <td><?= $customer['customer_name']; ?></td>
                                             <td class='text-right'><?=number_format($customer['balance'], 0); ?></td>
                                         </tr>
                                     <?php endwhile; ?>
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <th colspan="2" class='text-right'>Total Balance:</th>
+                                        <th class='text-right'><?= number_format($bal, 0); ?></th>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     </div>
