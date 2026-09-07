@@ -1,10 +1,5 @@
 <?php
     error_reporting(E_ALL);
-
-    // Turn on error display
-    ini_set('display_errors', 1);
-    ini_set('display_startup_errors', 1);
-
     require_once(__dir__.'/../../assets/functions.php');
     if(isVerified())
     {
@@ -1206,6 +1201,12 @@
                                     prepared_statements($stmt,'siiisiiisiii',[$type,$customer_id,$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty]);
                                 }
 
+                                // update stock item records
+                                if(!empty($item_id))
+                                {
+                                    stockOut($item_id,$qty);
+                                }
+
                                 // check if customer has been selected and update the ledger
                                 if(!empty($customer_id))
                                 {
@@ -1244,6 +1245,12 @@
                                             paymode_id = ?,created_at = ?,user_id = ?,item_id = ?, quantity = ? 
                                         WHERE transaction_id = ?";
                                     prepared_statements($stmt,'sidisisiiii',[$type,$customer_id,$amount,$category_id,$details,$payment_mode,$date,$user_id,$item_id,$quantity,$transid]);
+                                }
+
+                                // update stock item records
+                                if(!empty($item_id))
+                                {
+                                    stockOut($item_id,$quantity);
                                 }
 
                                 // would need to handle customer ledger records

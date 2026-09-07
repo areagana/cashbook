@@ -111,7 +111,7 @@
                         <div class="row mx-1">
                             <?php
                                 // fetch stock records from the database based on the item
-                                $sql = "SELECT * FROM cashbook_stocks WHERE item_id = ? ORDER BY id desc";
+                                $sql = "SELECT * FROM cashbook_stocks WHERE item_id = ? ORDER BY id";
                                 $res = prepared_statements($sql,'i',[$item->id]);
                                 $balance
                             ?>
@@ -122,7 +122,8 @@
                                             <th>#</th>
                                             <th>Date</th>
                                             <th>Type</th>
-                                            <th>Qty</th>
+                                            <th>Qty In</th>
+                                            <th>Qty Out</th>
                                             <th>Balance</th>
                                             <th>Action</th>
                                         </tr>
@@ -131,11 +132,15 @@
                                     <?php while($r = $res->fetch_assoc()):?>
                                         <tr>
                                             <td><?=++$s;?></td>
-                                            <td><?=$r['created_at'];?></td>
+                                            <td><?=date_format(date_create($r['created_at']),"d-m-Y");?></td>
                                             <td><?=$r['transaction_type'];?></td>
-                                            <td><?=$r['quantity'];?></td>
+                                            <td><?=($r['quantity_in'] > 0) ? $r['quantity_in'] : "";?></td>
+                                            <td><?=($r['quantity_out'] > 0) ? $r['quantity_out'] : "";?></td>
                                             <td><?=$r['balance'];?></td>
-                                            <td></td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-info btn-flat"><i class="fa fa-edit"></i></button>
+                                                <button class="btn btn-sm btn-outline-danger btn-flat"><i class="fa fa-trash"></i></button>
+                                            </td>
                                         </tr>
                                     <?php endwhile;?>
                                     </tbody>
@@ -145,7 +150,7 @@
                                 <h3 class="p-2 border-bottom text-center">STOCK BALANCE</h3>
                                 <h3 class="balance-info text-center">
                                     <?php
-                                        $query = "SELECT balance FROM cashbook_stocks WHERE item_id = ? ORDER BY id desc LIMIT 1";
+                                        $query = "SELECT balance FROM cashbook_item_stock_balances WHERE item_id = ? ORDER BY item_id desc";
                                         $rs = prepared_statements($query,'i',[$item->id]);
                                         $row = $rs->fetch_assoc();
                                         echo isset($row['balance']) ? number_format($row['balance'],0)." ".$item->units : 0 ." ".$item->units;
@@ -228,9 +233,11 @@
                                 $unitCost = request('unit_cost');
                                 $type  = request('type');
                                 $user_id = auth()->id;
+                                
+                                stockIn($itid,$qty);
                                 // call save data function
-                                $response = json_encode(insertStockTransaction($bkid,$itid,$type,$qty,$user_id));
-                                echo $response;
+                                // $response = json_encode(insertStockTransaction($bkid,$itid,$type,$qty,$user_id));
+                                // echo $response;
                             break;
                         case 'IssueStockForm':
                                 $bkid = request('book_id');
@@ -238,9 +245,10 @@
                                 $qty = request('quantity');
                                 $type  = request('type');
                                 $user_id = auth()->id;
+                                stockOut($itid,$qty);
                                 // call save data function
-                                $response = json_encode(insertStockTransaction($bkid,$itid,$type,$qty,$user_id));
-                                echo $response;
+                                // $response = json_encode(insertStockTransaction($bkid,$itid,$type,$qty,$user_id));
+                                // echo $response;
                             break;
                         case 'newItemSave':
                                 $book_id = request('book_id');

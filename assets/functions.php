@@ -866,4 +866,72 @@
             return prepared_statements($stmt,'idsi',[$customer_id,$balance,$date,$book_id]);
         }
     }
+
+    function stockIn($item_id,$qty,$trans_id = false)
+    {
+        global $server;
+        $user_id = auth()->id;
+
+        // get stock balance for the Item
+        $bal = getItemStockBalance($item_id);
+        $type = 'stock_in';
+        $newBalance = $qty + $bal;
+        $trans_id = $trans_id ?? "";
+
+        // get book_id from item book
+        $book_id = itemFind($item_id)->book_id;
+
+        // insert record
+        $stmt = "INSERT INTO cashbook_stocks SET item_id = ?, book_id = ?, transaction_type = ?, quantity_in = ?, balance = ?, reference = ?, user_id = ?";
+        prepared_statements($stmt,'iisiiii',[$item_id,$book_id,$type,$qty,$newBalance,$trans_id,$user_id]);
+        updateStockItemBalance($item_id,$newBalance);
+    }
+
+    function stockOut($item_id,$qty,$trans_id = false)
+    {
+        global $server;
+        $user_id = auth()->id;
+
+        $bal = getItemStockBalance($item_id);
+        $type = 'stock_out';
+        $newBalance = $bal - $qty;
+        $trans_id = $trans_id ?? "";
+
+        // get book_id from item book
+        $book_id = itemFind($item_id)->book_id;
+        // insert record
+        $stmt = "INSERT INTO cashbook_stocks SET item_id = ?, book_id = ?, transaction_type = ?, quantity_out = ?, balance = ?, reference = ?, user_id = ?";
+        prepared_statements($stmt,'iisiiii',[$item_id,$book_id,$type,$qty,$newBalance,$trans_id,$user_id]);
+
+        updateStockItemBalance($item_id,$newBalance);
+    }
+
+    function getItemStockBalance($item_id)
+    {
+        global $server;
+        // get stock balance for the Item
+        $query = mysqli_query($server,"SELECT balance FROM cashbook_stocks WHERE item_id = '{$item_id}' ORDER BY id desc LIMIT 1");
+        $row = $query->fetch_assoc();
+        $bal = $row['balance'];
+
+        return $bal ?? 0;
+    }
+
+    // function to update stock item balance in table
+    function updateStockItemBalance($item_id,$balance)
+    {
+        global $server;
+        $book_id = itemFind($item_id)->book_id;
+
+        // check if the item is present in the table
+        $check = mysqli_query($server,"SELECT * FROM cashbook_item_stock_balances WHERE item_id = '{$item_id}'");
+        if($check->num_rows > 0)
+        {
+            $stmt = "UPDATE cashbook_item_stock_balances SET balance = ? WHERE item_id = ?";
+            prepared_statements($stmt,'ii',[$balance,$item_id]);
+        }else{
+            $stmt = "INSERT INTO cashbook_item_stock_balances SET item_id = ?, book_id = ?, balance = ?";
+            prepared_statements($stmt,'iii',[$item_id,$book_id,$balance]);
+        }
+    }
 ?>

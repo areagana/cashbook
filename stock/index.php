@@ -131,7 +131,7 @@
                 </div>
             </div>
         <?php
-        pageFooter();
+            pageFooter();
         ?>
             <script>
                 // click button to show the modal

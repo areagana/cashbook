@@ -459,12 +459,24 @@
             'item_id'=>'int(11) null',
             'suplier_id'=>'int(11) null',
             'transaction_type'=> "ENUM('stock_in','stock_out') NOT NULL",
-            'quantity'        => 'DECIMAL(10,2) NOT NULL',
+            'quantity_in'        => 'DECIMAL(10,2) NOT NULL',
+            'quantity_out'        => 'DECIMAL(10,2) NOT NULL',
             'balance'         => 'DECIMAL(10,2) NOT NULL',
             'unit_cost'       => 'DECIMAL(10,2) NULL',
             'total_cost'      => 'DECIMAL(12,2) NULL',
             'reference'       => 'varchar(100) NULL',
             'user_id'         => 'int(11) NULL'
+        ];
+        create_table($table,$columns);
+    }
+
+    function cashbook_item_stock_balances()
+    {
+        $table ='cashbook_item_stock_balances';
+        $columns =[
+            'book_id'   =>'int(11) NOT  null',
+            'item_id'   =>'int(11) NOT null',
+            'balance'  => 'DECIMAL(10,2) NOT NULL',
         ];
         create_table($table,$columns);
     }
@@ -684,6 +696,7 @@
         create_table($table, $columns);
     }
 
+    cashbook_item_stock_balances();
     cashbook_customer_items();
     cashbook_purchases();
     cashbook_supliers();
