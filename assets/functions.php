@@ -219,11 +219,12 @@
     function transactionFind($id)
     {
         global $server;
-        $stmt = "SELECT ct.*,c.name as category,p.name as paymode,i.name as item_name,cust.name as customer_name,ci.id as invoice_id,ci.invoice_no FROM cashbook_transactions ct 
+        $stmt = "SELECT ct.*,c.name as category,p.name as paymode,i.name as item_name,cust.name as customer_name,ci.id as invoice_id,ci.invoice_no,cred.name as creditor_name FROM cashbook_transactions ct 
                     LEFT JOIN cashbook_categories c ON c.id = ct.category_id
                     LEFT JOIN cashbook_paymodes p ON p.id = ct.paymode_id
                     LEFT JOIN cashbook_items i ON i.id = ct.item_id
                     LEFT JOIN cashbook_customers cust ON cust.id = ct.customer_id
+                    LEFT JOIN cashbook_creditors cred ON cred.id = ct.creditor_id
                     LEFT JOIN cashbook_invoices ci ON ci.id = ct.invoice_id
                 WHERE ct.id = ?";
         $data = prepared_statements($stmt,'i',[$id]);
@@ -560,13 +561,54 @@
         }
     }
 
+    // customer ledger update function
+    function creditorLedgerUpdate($creditor_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type = false)
+    {
+        // check if the transaction already exists to avoid incrementing balance twice
+        $check_sql = "SELECT * FROM cashbook_creditor_ledger WHERE transaction_id = ?";
+        $check_res = prepared_statements($check_sql, 'i', [$trans_id]);
+        
+        if ($check_res->num_rows > 0) 
+        {
+            // Transaction already exists, update it
+            $balance = getCreditorBalanceBeforeTransaction($creditor_id, $trans_id);
+
+            // use balance to update the ledger
+            $newBalance = $balance + $credit - $debit;
+            // $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
+
+            $update_sql = "UPDATE cashbook_creditor_ledger SET type = ?, creditor_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ? WHERE transaction_id = ?";
+            prepared_statements($update_sql,'siddsiisiiidi',[$type,$creditor_id,$credit,$debit,$details,$book_id,$payment_mode,$date,$user_id,$item_id,$qty,$newBalance,$trans_id]);
+
+            // update creditor balance
+            saveCreditorBalance($creditor_id,$newBalance,$date);
+            $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
+            $_SESSION['success'] = "Data updated successfully.";
+        
+        }else {
+            // get creditor balance
+            $balance = getCreditorBalance($creditor_id);
+           
+            // use balance to update the ledger
+            $newBalance = $balance + $credit - $debit;
+            $_SESSIO['success'] = "Checking ledger update";
+            // Insert new transaction
+            $stmt = "INSERT INTO  cashbook_creditor_ledger SET type = ?, creditor_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ?";
+            prepared_statements($stmt,'siddsiiisiiid',[$type,$creditor_id,$credit,$debit,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$newBalance]);  
+
+            // update creditor balance
+            saveCreditorBalance($creditor_id,$newBalance,$date);
+            $_SESSION['success'] = "Data saved successfully.";
+        }
+    }
+
     // set book function
     function setBook($book)
     {
         $_SESSION['book_id'] = encryptor('encrypt',$book->id);
     }
 
-     //header and footer functions
+    //header and footer functions
     function pageHeader($header = false)
     {
         ?>
@@ -691,6 +733,12 @@
                             <span>Customers</span>
                         </a>
                     </li>
+                    <li class='sidebar-item'>
+                        <a href="../creditors/?bsid=<?=encryptor('encrypt',$book->id);?>" class ='sidebar-link'>
+                            <i class="fa fa-user"></i>
+                            <span>Creditors</span>
+                        </a>
+                    </li>
 
                     <li class='sidebar-item'>
                         <a href="../stock/?bkid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
@@ -702,6 +750,12 @@
                         <a href="../items/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
                             <i class="fa fa-box"></i>
                             <span>Items</span>
+                        </a>
+                    </li>
+                    <li class='sidebar-purchases'>
+                        <a href="../purchases/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
+                            <i class="fa fa-box"></i>
+                            <span>Purchases</span>
                         </a>
                     </li>
                     <li class='sidebar-item'>
@@ -775,6 +829,13 @@
         return myObject($res->fetch_assoc());
     }
 
+    function creditorFind($id)
+    {
+        $stmt = "SELECT * FROM cashbook_creditors WHERE id = ?";
+        $res = prepared_statements($stmt,'i',[$id]);
+        return myObject($res->fetch_assoc());
+    }
+
     function getCustomerBalance($customer_id)
     {
         global $server;
@@ -802,6 +863,33 @@
         return $row ? (float)$row['balance'] : 0;
     }
 
+    function getCreditorBalance($creditor_id)
+    {
+        global $server;
+
+        $stmt = $server->prepare("
+            SELECT COALESCE(balance, 0) AS balance
+            FROM cashbook_creditor_ledger
+            WHERE creditor_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+
+        if (!$stmt) {
+            return 0;
+        }
+
+        $stmt->bind_param('i', $creditor_id);
+        $stmt->execute();
+
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+
+        $stmt->close();
+
+        return $row ? (float)$row['balance'] : 0;
+    }
+
     function getCustomerBalanceBeforeTransaction($customer_id, $transaction_id)
     {
         global $server;
@@ -819,6 +907,33 @@
         }
 
         $stmt->bind_param('ii', $customer_id, $transaction_id);
+        $stmt->execute();
+
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+
+        $stmt->close();
+
+        return $row ? (float)$row['balance'] : 0;
+    }
+
+    function getCreditorBalanceBeforeTransaction($creditor_id, $transaction_id)
+    {
+        global $server;
+
+        $stmt = $server->prepare("SELECT COALESCE(balance, 0) AS balance
+                FROM cashbook_creditor_ledger
+                    WHERE customer_id = ? AND id < (
+                        SELECT id FROM cashbook_creditor_ledger WHERE transaction_id = ? LIMIT 1
+                    )
+                ORDER BY id DESC LIMIT 1
+            ");
+
+        if (!$stmt) {
+            return 0;
+        }
+
+        $stmt->bind_param('ii', $creditor_id, $transaction_id);
         $stmt->execute();
 
         $result = $stmt->get_result();
@@ -864,6 +979,25 @@
         {
             $stmt = "INSERT INTO cashbook_customer_balances SET customer_id = ?, balance = ?,date = ?,book_id = ?";
             return prepared_statements($stmt,'idsi',[$customer_id,$balance,$date,$book_id]);
+        }
+    }
+
+    function saveCreditorBalance($creditor_id,$balance,$date)
+    {
+        global $server;
+        //   check if the customer  exists in the cashbook_customer_balances table
+        $check_stmt = "SELECT * FROM cashbook_creditor_balances WHERE creditor_id = ?";
+        $check = prepared_statements($check_stmt,'i',[$creditor_id]);
+        $book_id = creditorFind($creditor_id)->book_id;
+        
+        if($check->num_rows > 0)
+        {
+            $stmt = "UPDATE cashbook_creditor_balances SET balance = ?,date = ? WHERE creditor_id = ?";
+            return prepared_statements($stmt,'dis',[$balance,$date,$creditor_id]);
+        }else
+        {
+            $stmt = "INSERT INTO cashbook_creditor_balances SET creditor_id = ?, balance = ?,date = ?,book_id = ?";
+            return prepared_statements($stmt,'idsi',[$creditor_id,$balance,$date,$book_id]);
         }
     }
 

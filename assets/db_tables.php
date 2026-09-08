@@ -278,6 +278,7 @@
             'item_id'=>'int(11) null',
             'paymode_id'=>'int(11) null',
             'customer_id'=>'int(11) null',
+            'creditor_id'=>'int(11) null',
             'amount'=>'float null',
             'details'=>'varchar(255) null',
             'transaction_id'=>'int(11) null',
@@ -306,6 +307,7 @@
             'paymode_id'=>'int(11) null',
             'book_id'=>'int(11) null',
             'customer_id'=>'int(11) null',
+            'creditor_id'=>'int(11) null',
             'amount'=>'float null',
             'details'=>'varchar(255) null',
             'transaction_id'=>'int(11) null',
@@ -346,6 +348,7 @@
             'item_id'=>'int(11) null',
             'paymode_id'=>'int(11) null',
             'customer_id'=>'int(11) null',
+            'creditor_id'=>'int(11) null',
             'quantity'=>'int(11) null',
             'rate'=>'int(11) null',
             'credit_amount'=>'float null',
@@ -394,6 +397,19 @@
             'route_manager_id'=>'int(11) null',
             'user_id'=>'int(11) null',
             'route_id' =>'int(11) null'
+        ];
+        create_table($table,$columns);
+    }
+
+    function cashbook_creditors()
+    {
+        $table ='cashbook_creditors';
+        $columns =[
+            'name'=>'varchar(255) null',
+            'book_id'=>'int(11) null',
+            'contact'=>'varchar(255) null',
+            'address'=>'varchar(255) null',
+            'user_id'=>'int(11) null'
         ];
         create_table($table,$columns);
     }
@@ -504,7 +520,31 @@
             'customer_id'   => 'int(11) NOT NULL',
             'book_id'       => 'int(11) NOT NULL',
             'item_id'       => 'int(11) NOT NULL',
-            'type'          => "enum('cash_sale','payment','credit_sale','invoice','invoice_return','invoice_payment','invoice_edit','borrowing','repayment') NOT NULL",
+            'type'          => "enum('cash_sale','payment','credit_sale','invoice','invoice_return','invoice_payment','invoice_edit','borrowing','repayment','creditorInjection') NOT NULL",
+            'debit_amount'  => 'decimal(10,2) DEFAULT 0',   // increases what customer owes
+            'credit_amount' => 'decimal(10,2) DEFAULT 0',   // reduces what customer owes
+            'transaction_id'  => 'int(11) NULL',
+            'paymode_id'   => 'int(11) NULL',
+            'quantity'   => 'int(11) NULL',
+            'details'   => 'text NULL',
+            'balance'       => 'decimal(10,2) DEFAULT 0',
+            'user_id'       => 'int(11) NULL',
+            'invoice_id'       => 'int(11) NULL',
+            'invoice_amount'       => 'decimal (10,2) DEFAULT 0'
+        ];
+
+        create_table($table, $columns);
+    }
+
+    function cashbook_creditor_ledger()
+    {
+        $table = 'cashbook_creditor_ledger';
+
+        $columns = [
+            'creditor_id'   => 'int(11) NOT NULL',
+            'book_id'       => 'int(11) NOT NULL',
+            'item_id'       => 'int(11) NOT NULL',
+            'type'          => "enum('cash_sale','payment','credit_sale','invoice','invoice_return','invoice_payment','invoice_edit','borrowing','repayment','creditorInjection') NOT NULL",
             'debit_amount'  => 'decimal(10,2) DEFAULT 0',   // increases what customer owes
             'credit_amount' => 'decimal(10,2) DEFAULT 0',   // reduces what customer owes
             'transaction_id'  => 'int(11) NULL',
@@ -696,6 +736,21 @@
         create_table($table, $columns);
     }
 
+    function cashbook_creditor_balances()
+    {
+        $table = 'cashbook_creditor_balances';
+        $columns = [
+            'creditor_id' => 'int(11) NOT NULL',
+            'balance'  => 'decimal(10,2) NOT NULL',
+            'date'  => 'date NOT NULL',
+            'book_id'  => 'int(11) NOT NULL'
+        ];
+        create_table($table, $columns);
+    }
+
+    cashbook_creditor_ledger();
+    cashbook_creditor_balances();
+    cashbook_creditors();
     cashbook_item_stock_balances();
     cashbook_customer_items();
     cashbook_purchases();

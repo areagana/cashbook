@@ -484,6 +484,11 @@
                     customer.setAttribute("required", true);
                     paymode.setAttribute("required", true);
                 }
+
+                if(type == 'creditorInjection')
+                {
+                    $('.income-creditor').show();
+                }
             }
         });
 
@@ -559,15 +564,15 @@
                 {
                     $('.expense-customer').hide();
                     $('.purchase-expense').show();
-                    // $('#item_id').val('');
-                    // $('#quantity').val('');
-                    // $('#purchase_rate').val('');
                 }else if(type == 'expense'){
                     $('.expense-customer').hide();
                     $('.purchase-expense').hide();
+                }else if(type == 'creditorPayment'){
+                    $('.expense-customer').hide();
+                    $('.purchase-expense').hide();
+                    $('.expense-creditor').show();
                 }else{
                     $('.expense-customer').show();
-                    // $('#customer_id').val('');
                     $('.purchase-expense').hide();
                 }
             }
