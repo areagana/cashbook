@@ -127,6 +127,7 @@
                         $id = request('creditor_id');
                         $Creditor = creditorFind($id);
                         $bkid = $Creditor->book_id;
+                        $bal = getCreditorBalance($id);
 
                         ?>
                             <form id='newCreditorForm' method="post">
@@ -156,6 +157,14 @@
                                     </div>
                                     <div class="col p-2">
                                         <input type="text" name="address" value="<?=$Creditor->address;?>" id="address" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="row mx-1">
+                                    <div class="col-md-3 p-2">
+                                        <label for="credit_balance">BALANCE B/F:</label>
+                                    </div>
+                                    <div class="col p-2">
+                                        <input type="text" name="credit_balance" id="credit_balance" value="<?=$bal;?>" class="form-control">
                                     </div>
                                 </div>
                                 <div class="roww mx-1">

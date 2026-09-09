@@ -34,22 +34,12 @@
                         <hr>
                         <div class="p-2">
                             <?php
-                                $sql = "SELECT c.*,COALESCE(l.balance,0) AS balance FROM cashbook_creditors c
-                                            LEFT JOIN (
-                                                    SELECT cl.creditor_id, cl.balance
-                                                    FROM cashbook_creditor_ledger cl
-                                                    INNER JOIN (
-                                                        SELECT creditor_id, MAX(id) as max_id
-                                                        FROM cashbook_creditor_ledger
-                                                        GROUP BY creditor_id
-                                                    ) latest
-                                                    ON latest.max_id = cl.id
-                                                ) l
-                                            ON l.creditor_id = c.id
-                                        WHERE c.book_id = ? GROUP BY c.id, l.balance
-                                        ORDER BY l.balance DESC, c.name ASC";
+                                $sql = "SELECT c.*, COALESCE(cb.balance, 0) AS balance FROM cashbook_creditors c
+                                    LEFT JOIN cashbook_creditor_balances cb ON cb.creditor_id = c.id
+                                    WHERE c.book_id = ?
+                                    ORDER BY cb.balance DESC, c.name ASC";
 
-                                $res = prepared_statements($sql,'i',[$book->id]);
+                                $res = prepared_statements($sql, 'i', [$book->id]);
                                 $s =1;
                             ?>
                                 <table class="table table-sm table-striped dataTable" id='dataTable'>

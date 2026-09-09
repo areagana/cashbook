@@ -39,13 +39,10 @@
                         <div class="p-2 row">
                             <div class="col p-2">
                                 <?php
-                                    $sql = "SELECT  i.id, i.name,i.units, COALESCE(s.balance, 0) AS balance FROM cashbook_items i
-                                                LEFT JOIN  (SELECT cs.item_id, cs.balance FROM cashbook_stocks cs INNER JOIN (
-                                                        SELECT item_id, MAX(id) AS last_id FROM cashbook_stocks  WHERE book_id = ?
-                                                        GROUP BY item_id
-                                                    ) latest ON cs.id = latest.last_id) s ON s.item_id = i.id
-                                                WHERE i.book_id = ? ";
-                                    $res = prepared_statements($sql,'ii',[$book->id, $book->id]);
+                                    $sql = "SELECT i.id,i.name,i.units,COALESCE(sb.balance, 0) AS balance FROM cashbook_items i
+                                            LEFT JOIN cashbook_item_stock_balances sb ON sb.item_id = i.id
+                                            WHERE i.book_id = ?";
+                                    $res = prepared_statements($sql,"i",[$book->id]);
                                 
                                     // loop data entry
                                    while ($r = $res->fetch_assoc()): 
@@ -69,22 +66,14 @@
                             <div class="col-md-3 border-left p-2">
                                 <h3 class="p-2 border-bottom">STOCK CHECK < 10 (qty)</h3>
                                 <?php
-                                    $query = "SELECT i.id,i.name,COALESCE(s.balance, 0) AS balance
-                                            FROM cashbook_items i
-                                            LEFT JOIN ( SELECT cs.book_id, cs.item_id, cs.balance
-                                                        FROM cashbook_stocks cs
-                                                        INNER JOIN (
-                                                            SELECT book_id, item_id, MAX(id) AS last_id
-                                                            FROM cashbook_stocks
-                                                            GROUP BY book_id, item_id
-                                                        ) latest
-                                                        ON cs.id = latest.last_id 
-                                                    ) s 
-                                                ON s.item_id = i.id
-                                                    AND s.book_id = i.book_id
-                                                    WHERE i.book_id = ?
-                                                    ORDER BY balance ASC";
-                                    $query = prepared_statements($query,'i',[$book->id]);
+                                    $query = "SELECT  i.id, i.name,COALESCE(sb.balance, 0) AS balance
+                                                FROM cashbook_items i
+                                                LEFT JOIN cashbook_item_stock_balances sb ON sb.item_id = i.id
+                                                AND sb.book_id = i.book_id
+                                                WHERE i.book_id = ?
+                                                ORDER BY balance ASC";
+
+                                    $query = prepared_statements($query, 'i', [$book->id]);
                                 ?>
                                 <table class="table table-bordered table-striped">
                                     <thead>
@@ -277,6 +266,17 @@
                 function refreshStockSection(section) {
                     $('.stock-body').load(window.location.href + ' .stock-body > *');
                 }
+
+                function refreshStockSection(section) {
+                    $.get(window.location.href, function(response) {
+                        const $response = $('<div>').html(response);
+                        const $newContent = $response.find(section).html();
+
+                        if ($newContent !== undefined) {
+                            $(section).html($newContent);
+                        }
+                    });
+                }
                 // Call the function for your form
                 $(document).on('click','.saveIssueStock',function(){
                     submitSingleForm("IssueStockForm", "save/index.php");
@@ -290,6 +290,32 @@
                 $(document).on('click','.saveItem',function(){
                     console.log("Item submitted");
                     submitSingleForm("newItemForm", "save/index.php");
+                });
+
+                // delete stock record
+                $(document).on('click','.delete-stock-record',function(){
+                    var recordId = $(this).data('id');
+                    xdialog.confirm("Are you sure you want to delete this stock record?", function(confirmed) {
+                        if (confirmed) {
+                            $.ajax({
+                                url: 'save/index.php',
+                                method: 'POST',
+                                data: {
+                                    action: 'deleteStockRecord',
+                                    record_id: recordId
+                                },
+                                success: function(response) {
+                                    var ress = JSON.parse(response);
+                                    window.location.reload(); // Reload the page to reflect changes
+                                    xdialog.info(ress.message);                                 
+                                },
+                                error: function(err) {
+                                    console.error("Error deleting stock record:", err);
+                                    xdialog.info("Error deleting stock record.");
+                                }
+                            });
+                        }
+                    });
                 });
                 
                 

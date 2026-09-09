@@ -277,6 +277,14 @@
                                                     <input type="text" name="address" id="address" class="form-control">
                                                 </div>
                                             </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="credit_balance">BALANCE B/F:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="credit_balance" id="credit_balance" class="form-control">
+                                                </div>
+                                            </div>
                                             <div class="roww mx-1">
                                                 <div class="col p-2">
                                                     <button class="btn btn-flat btn-primary right saveCreditor">Save</button>
@@ -1018,7 +1026,6 @@
                     
                 case 'SaveForm':
                     $form = request('form');
-                    
                     switch($form)
                     {
                         case 'newCategorySave':
@@ -1181,7 +1188,10 @@
                                     $res = prepared_statements($sql,'sssiiii',[$name,$address,$contact,$book_id,$route_id,$manager,$user_id]);
                                     $customer_id = $server->insert_id;
                                 }
-                                
+
+                                // update creditor balance
+
+
                                 if($res) // prevent duplicate entries
                                 {
                                     $route = "INSERT INTO cashbook_customer_route (customer_id, route_id)
@@ -1202,6 +1212,8 @@
                                 $contact = request('contact');
                                 $user_id = auth()->id;
                                 $creditor_id = request('creditor_id') ?? "";
+                                $bbf = request('credit_balance') ?? 0;
+                                $balance = $bbf;
 
                                 // save the content                                
                                 if(!empty($creditor_id))
@@ -1213,9 +1225,8 @@
                                     $res = prepared_statements($sql,'sssii',[$name,$address,$contact,$book_id,$user_id]);
                                     $creditor_id = $server->insert_id;
                                 }
-
+                                
                                 // update creditor balance records
-                                $balance = getCreditorBalance($creditor_id);
                                 $date = date('Y-m-d');
                                 saveCreditorBalance($creditor_id,$balance,$date);
 
@@ -1314,7 +1325,7 @@
                                 // update stock item records
                                 if(!empty($item_id) && $qty > 0 && $type != 'creditorInjection')
                                 {
-                                    stockOut($item_id,$qty);
+                                    stockOut($item_id,$qty,$trans_id);
                                 }
 
                                 // check if customer has been selected and update the ledger
@@ -1347,8 +1358,12 @@
                                 $quantity = request('quantity');
                                 $type = request('transaction_type');
                                 $invoice_id = isset($_POST['invoice_id']) ? request('invoice_id') : "";
-                                $book_id = transactionFind($transid)->book_id;
                                 $creditor_id = request('creditor_id') ?? "";
+                                $transaction = transactionFind($transid);
+                                $book_id = $transaction->book_id;
+                                $old_item_id = $transaction->item_id;
+                                $old_quantity = (float) $transaction->quantity;
+                                $old_type = $transaction->type;
 
                                 // // track transaction edits
                                 trackTransactionEdits($transid,'edit');
@@ -1366,10 +1381,19 @@
                                     prepared_statements($stmt,'sidisisiiii',[$type,$customer_id,$amount,$category_id,$details,$payment_mode,$date,$user_id,$item_id,$quantity,$transid]);
                                 }
 
-                                // update stock item records
-                                if(!empty($item_id))
+                                if ($type === 'cash_sale' || $type === 'payment' || $type === 'other_income') 
                                 {
-                                    stockOut($item_id,$quantity);
+                                    // If the old transaction had a stock item,
+                                    // first restore its previous stock movement.
+                                    if (!empty($old_item_id) && $old_quantity > 0) {
+                                        restoreStockOut($old_item_id, $old_quantity);
+                                    }
+
+                                    // Apply the new stock-out
+                                    if (!empty($item_id) && $quantity > 0) 
+                                    {
+                                        stockOut($item_id, $quantity, $transid);
+                                    }
                                 }
 
                                 // would need to handle customer ledger records
@@ -1709,7 +1733,7 @@
                                                 </div>
                                                 <?php
                                                     $sql = "SELECT * FROM cashbook_creditors WHERE book_id = ?  ORDER BY name ASC";
-                                                    $res = prepared_statements($sql,'i',[$bkid]);
+                                                    $res = prepared_statements($sql,'i',[$transaction->book_id]);
                                                 ?>
                                                 <div class="col p-2">
                                                     <select name="creditor_id" id="creditor_id" class="form-control">

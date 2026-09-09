@@ -91,20 +91,20 @@
                                                     <td><?=number_format($r['balance'],0);?></td>
                                                 </tr>
                                             <?php endwhile;?>
+                                                <tr>
+                                                    <th colspan='3'>BALANCE</th>
+                                                    <th></th>
+                                                    <th></th>
+                                                    <th></th>
+                                                    <th></th>
+                                                    <th></th>
+                                                    <th><?=number_format($balance_,0);?></th>
+                                                </tr>
                                         <?php else:?>
                                             <tr>
                                                 <td colspan='8'><center>No Transactions found</center></td>
                                             </tr>
                                         <?php endif;?>
-                                        <tr>
-                                            <th colspan='3'>BALANCE</th>
-                                            <th></th>
-                                            <th></th>
-                                            <th></th>
-                                            <th></th>
-                                            <th></th>
-                                            <th><?=number_format($balance_,0);?></th>
-                                        </tr>
                                     </tbody>
                                 </table>
                             </div>

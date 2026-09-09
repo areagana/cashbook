@@ -108,7 +108,7 @@
                             </div>
                         </div>
                         <hr>
-                        <div class="row mx-1">
+                        <div class="row mx-1 stock-statement">
                             <?php
                                 // fetch stock records from the database based on the item
                                 $sql = "SELECT * FROM cashbook_stocks WHERE item_id = ? ORDER BY id";
@@ -139,14 +139,14 @@
                                             <td><?=$r['balance'];?></td>
                                             <td>
                                                 <button class="btn btn-sm btn-outline-info btn-flat"><i class="fa fa-edit"></i></button>
-                                                <button class="btn btn-sm btn-outline-danger btn-flat"><i class="fa fa-trash"></i></button>
+                                                <button class="btn btn-sm btn-outline-danger btn-flat delete-stock-record" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
                                             </td>
                                         </tr>
                                     <?php endwhile;?>
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="col-md-3 p-2 border-left">
+                            <div class="col-md-3 p-2 border-left stock-balance">
                                 <h3 class="p-2 border-bottom text-center">STOCK BALANCE</h3>
                                 <h3 class="balance-info text-center">
                                     <?php
@@ -160,7 +160,7 @@
                         </div>
 
                     <?php
-                break;
+                    break;
                 case 'stock_in':
                     $item = itemFind(request('id'));
                     ?>
@@ -265,6 +265,38 @@
                      }
 
                     break;
+
+                case 'deleteStockRecord':
+                        $id = request('record_id');
+
+                        // select record to check if it exists
+                        $sql = "SELECT * FROM cashbook_stocks WHERE id = ?";
+                        $res = prepared_statements($sql,'i',[$id]);
+                        $row = $res->fetch_assoc();
+                        $qtyIn = $row['quantity_in'];
+                        $qtyOut = $row['quantity_out'];
+                        $type = $row['transaction_type'];
+                        $item_id = $row['item_id'];
+
+                        //fetch current stock balance and add the deleted qty back to the stock balance
+                        $balance = getItemStockBalance($item_id);
+
+                        // check type and record based on value
+                        if($type == 'stock_in')
+                        {
+                            $new_balance = $balance - $qtyIn;
+                            updateStockItemBalance($item_id,$new_balance);
+                        }else
+                        {
+                            $new_balance = $balance + $qtyOut;
+                            updateStockItemBalance($item_id,$new_balance);
+                        }
+                        
+                        $sql = "DELETE FROM cashbook_stocks WHERE id = ?";
+                        prepared_statements($sql,'i',[$id]);
+                        echo json_encode(['message'=>'Record Deleted']);
+                    break;
+
             }
         }
     }else{

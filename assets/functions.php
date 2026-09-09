@@ -1001,43 +1001,530 @@
         }
     }
 
-    function stockIn($item_id,$qty,$trans_id = false)
+    // function stockIn($item_id,$qty,$trans_id = false)
+    // {
+    //     global $server;
+    //     $user_id = auth()->id;
+
+    //     // get stock balance for the Item
+    //     $bal = getItemStockBalance($item_id);
+    //     $type = 'stock_in';
+    //     $newBalance = $qty + $bal;
+    //     $trans_id = $trans_id ?? "";
+
+    //     // get book_id from item book
+    //     $book_id = itemFind($item_id)->book_id;
+
+    //     // insert record
+    //     if(!empty($trans_id))
+    //     {
+    //         $check = mysqli_query($server,"SELECT * FROM cashbook_stocks WHERE reference = '{$trans_id}' AND transaction_type = 'stock_in'");
+    //         $row = $check->fetch_assoc();
+    //         if($check->num_rows > 0)
+    //         {
+    //             // update the record instead of inserting a new one
+    //             $stmt = "UPDATE cashbook_stocks SET quantity_in = ?, balance = ?, user_id = ? WHERE id = ?";
+    //             prepared_statements($stmt,'iisi',[$qty,$newBalance,$user_id,$row['id']]);
+    //         }else{
+    //             $stmt = "INSERT INTO cashbook_stocks SET item_id = ?, book_id = ?, transaction_type = ?, quantity_in = ?, balance = ?, reference = ?, user_id = ?";
+    //             prepared_statements($stmt,'iisiiii',[$item_id,$book_id,$type,$qty,$newBalance,$trans_id,$user_id]);
+    //         }
+    //     }
+    //     updateStockItemBalance($item_id,$newBalance);
+    // }
+
+    function stockIn($item_id, $qty, $trans_id = false)
     {
         global $server;
+
         $user_id = auth()->id;
+        $qty = (float) $qty;
 
-        // get stock balance for the Item
-        $bal = getItemStockBalance($item_id);
+        if ($item_id <= 0 || $qty <= 0) {
+            return false;
+        }
+
+        // Get item
+        $item = itemFind($item_id);
+
+        if (!$item) {
+            return false;
+        }
+
+        $book_id = $item->book_id;
         $type = 'stock_in';
-        $newBalance = $qty + $bal;
-        $trans_id = $trans_id ?? "";
 
-        // get book_id from item book
-        $book_id = itemFind($item_id)->book_id;
+        // Normalize transaction/reference
+        $reference = !empty($trans_id) ? $trans_id : null;
 
-        // insert record
-        $stmt = "INSERT INTO cashbook_stocks SET item_id = ?, book_id = ?, transaction_type = ?, quantity_in = ?, balance = ?, reference = ?, user_id = ?";
-        prepared_statements($stmt,'iisiiii',[$item_id,$book_id,$type,$qty,$newBalance,$trans_id,$user_id]);
-        updateStockItemBalance($item_id,$newBalance);
+        /*
+        =====================================================
+        START DATABASE TRANSACTION
+        =====================================================
+        */
+
+        mysqli_begin_transaction($server);
+
+        try {
+
+            /*
+            =====================================================
+            GET CURRENT STOCK BALANCE
+            =====================================================
+            */
+
+            $bal = (float) getItemStockBalance($item_id);
+
+            /*
+            =====================================================
+            CHECK WHETHER THIS TRANSACTION ALREADY EXISTS
+            =====================================================
+            */
+
+            $existing = null;
+
+            if ($reference !== null) {
+
+                $stmt = "
+                    SELECT id, quantity_in
+                    FROM cashbook_stocks
+                    WHERE reference = ?
+                    AND transaction_type = ?
+                    AND item_id = ?
+                    AND book_id = ?
+                    LIMIT 1
+                ";
+
+                $result = prepared_statements(
+                    $stmt,
+                    'ssii',
+                    [$reference, $type, $item_id, $book_id]
+                );
+
+                if ($result && $result->num_rows > 0) {
+                    $existing = $result->fetch_assoc();
+                }
+            }
+
+            /*
+            =====================================================
+            UPDATE EXISTING STOCK-IN
+            =====================================================
+            */
+
+            if ($existing) {
+
+                $oldQty = (float) $existing['quantity_in'];
+
+                /*
+                * Remove the old quantity first,
+                * then add the new quantity.
+                */
+                $newBalance = $bal - $oldQty + $qty;
+
+                $stmt = "
+                    UPDATE cashbook_stocks
+                    SET
+                        quantity_in = ?,
+                        balance = ?,
+                        user_id = ?
+                    WHERE id = ?
+                ";
+
+                $result = prepared_statements(
+                    $stmt,
+                    'ddii',
+                    [$qty, $newBalance, $user_id, $existing['id']]
+                );
+
+                if (!$result) {
+                    throw new Exception("Failed to update stock record.");
+                }
+
+            }
+
+            /*
+            =====================================================
+            INSERT NEW STOCK-IN
+            =====================================================
+            */
+
+            else {
+
+                $newBalance = $bal + $qty;
+
+                $stmt = "
+                    INSERT INTO cashbook_stocks
+                    (
+                        item_id,
+                        book_id,
+                        transaction_type,
+                        quantity_in,
+                        balance,
+                        reference,
+                        user_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ";
+
+                $result = prepared_statements(
+                    $stmt,
+                    'iisddsi',
+                    [
+                        $item_id,
+                        $book_id,
+                        $type,
+                        $qty,
+                        $newBalance,
+                        $reference,
+                        $user_id
+                    ]
+                );
+
+                if (!$result) {
+                    throw new Exception("Failed to insert stock record.");
+                }
+            }
+
+            /*
+            =====================================================
+            UPDATE CURRENT ITEM BALANCE
+            =====================================================
+            */
+
+            $balanceUpdated = updateStockItemBalance(
+                $item_id,
+                $newBalance
+            );
+
+            if ($balanceUpdated === false) {
+                throw new Exception("Failed to update stock balance.");
+            }
+
+            /*
+            =====================================================
+            COMMIT
+            =====================================================
+            */
+
+            mysqli_commit($server);
+
+            return true;
+
+        } catch (Throwable $e) {
+
+            /*
+            =====================================================
+            ROLLBACK EVERYTHING
+            =====================================================
+            */
+
+            mysqli_rollback($server);
+
+            error_log(
+                "stockIn() failed: " . $e->getMessage()
+            );
+
+            return false;
+        }
     }
 
-    function stockOut($item_id,$qty,$trans_id = false)
+    // function stockOut($item_id,$qty,$trans_id = false)
+    // {
+    //     global $server;
+    //     $user_id = auth()->id;
+
+    //     $bal = getItemStockBalance($item_id);
+    //     $type = 'stock_out';
+    //     $newBalance = $bal - $qty;
+    //     $trans_id = $trans_id ?? "";
+
+    //     // get book_id from item book
+    //     $book_id = itemFind($item_id)->book_id;
+    //     // insert record
+    //     $stmt = "INSERT INTO cashbook_stocks SET item_id = ?, book_id = ?, transaction_type = ?, quantity_out = ?, balance = ?, reference = ?, user_id = ?";
+    //     prepared_statements($stmt,'iisiiii',[$item_id,$book_id,$type,$qty,$newBalance,$trans_id,$user_id]);
+
+    //     updateStockItemBalance($item_id,$newBalance);
+    // }
+    function stockOut($item_id, $qty, $trans_id = false)
     {
         global $server;
+
         $user_id = auth()->id;
+        $qty = (float) $qty;
 
-        $bal = getItemStockBalance($item_id);
+        if ($item_id <= 0 || $qty <= 0) {
+            return false;
+        }
+
+        // Get item
+        $item = itemFind($item_id);
+
+        if (!$item) {
+            return false;
+        }
+
+        $book_id = $item->book_id;
         $type = 'stock_out';
-        $newBalance = $bal - $qty;
-        $trans_id = $trans_id ?? "";
 
-        // get book_id from item book
-        $book_id = itemFind($item_id)->book_id;
-        // insert record
-        $stmt = "INSERT INTO cashbook_stocks SET item_id = ?, book_id = ?, transaction_type = ?, quantity_out = ?, balance = ?, reference = ?, user_id = ?";
-        prepared_statements($stmt,'iisiiii',[$item_id,$book_id,$type,$qty,$newBalance,$trans_id,$user_id]);
+        // Normalize reference
+        $reference = !empty($trans_id) ? $trans_id : null;
 
-        updateStockItemBalance($item_id,$newBalance);
+        /*
+        =====================================================
+        START TRANSACTION
+        =====================================================
+        */
+
+        mysqli_begin_transaction($server);
+
+        try {
+
+            /*
+            =====================================================
+            GET CURRENT BALANCE
+            =====================================================
+            */
+
+            $bal = (float) getItemStockBalance($item_id);
+
+            /*
+            =====================================================
+            CHECK FOR EXISTING STOCK-OUT
+            =====================================================
+            */
+
+            $existing = null;
+
+            if ($reference !== null) {
+
+                $stmt = "
+                    SELECT id, quantity_out
+                    FROM cashbook_stocks
+                    WHERE reference = ?
+                    AND transaction_type = ?
+                    AND item_id = ?
+                    AND book_id = ?
+                    LIMIT 1
+                ";
+
+                $result = prepared_statements(
+                    $stmt,
+                    'ssii',
+                    [
+                        $reference,
+                        $type,
+                        $item_id,
+                        $book_id
+                    ]
+                );
+
+                if ($result && $result->num_rows > 0) {
+                    $existing = $result->fetch_assoc();
+                }
+            }
+
+            /*
+            =====================================================
+            UPDATE EXISTING STOCK-OUT
+            =====================================================
+            */
+
+            if ($existing) {
+
+                $oldQty = (float) $existing['quantity_out'];
+
+                /*
+                * Restore the old quantity first,
+                * then subtract the new quantity.
+                */
+                $newBalance = $bal + $oldQty - $qty;
+
+                /*
+                * Prevent negative stock
+                */
+                if ($newBalance < 0) {
+                    throw new Exception("Insufficient stock.");
+                }
+
+                $stmt = "
+                    UPDATE cashbook_stocks
+                    SET
+                        quantity_out = ?,
+                        balance = ?,
+                        user_id = ?
+                    WHERE id = ?
+                ";
+
+                $result = prepared_statements(
+                    $stmt,
+                    'ddii',
+                    [
+                        $qty,
+                        $newBalance,
+                        $user_id,
+                        $existing['id']
+                    ]
+                );
+
+                if (!$result) {
+                    throw new Exception("Failed to update stock-out record.");
+                }
+
+            }
+
+            /*
+            =====================================================
+            INSERT NEW STOCK-OUT
+            =====================================================
+            */
+
+            else {
+
+                /*
+                * Check available stock before removing it.
+                */
+                if ($qty > $bal) {
+                    throw new Exception(
+                        "Insufficient stock. Available: {$bal}, requested: {$qty}"
+                    );
+                }
+
+                $newBalance = $bal - $qty;
+
+                $stmt = "
+                    INSERT INTO cashbook_stocks
+                    (
+                        item_id,
+                        book_id,
+                        transaction_type,
+                        quantity_out,
+                        balance,
+                        reference,
+                        user_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ";
+
+                $result = prepared_statements(
+                    $stmt,
+                    'iisddsi',
+                    [
+                        $item_id,
+                        $book_id,
+                        $type,
+                        $qty,
+                        $newBalance,
+                        $reference,
+                        $user_id
+                    ]
+                );
+
+                if (!$result) {
+                    throw new Exception("Failed to insert stock-out record.");
+                }
+            }
+
+            /*
+            =====================================================
+            UPDATE CURRENT ITEM BALANCE
+            =====================================================
+            */
+
+            $balanceUpdated = updateStockItemBalance(
+                $item_id,
+                $newBalance
+            );
+
+            if ($balanceUpdated === false) {
+                throw new Exception("Failed to update stock balance.");
+            }
+
+            /*
+            =====================================================
+            COMMIT
+            =====================================================
+            */
+
+            mysqli_commit($server);
+
+            return true;
+
+        } catch (Throwable $e) {
+
+            /*
+            =====================================================
+            ROLLBACK
+            =====================================================
+            */
+
+            mysqli_rollback($server);
+
+            error_log(
+                "stockOut() failed: " . $e->getMessage()
+            );
+
+            return false;
+        }
+    }
+
+    function restoreStockOut($item_id, $qty)
+    {
+        global $server;
+
+        $qty = (float) $qty;
+
+        if ($item_id <= 0 || $qty <= 0) {
+            return false;
+        }
+
+        // Get the item
+        $item = itemFind($item_id);
+
+        if (!$item) {
+            return false;
+        }
+
+        /*
+        =====================================================
+        GET CURRENT STOCK BALANCE
+        =====================================================
+        */
+
+        $currentBalance = (float) getItemStockBalance($item_id);
+
+        /*
+        =====================================================
+        RESTORE THE PREVIOUS STOCK-OUT
+        =====================================================
+        
+        Example:
+        
+        Current balance = 80
+        Previous stock-out = 20
+        
+        Restored balance = 80 + 20 = 100
+        */
+
+        $newBalance = $currentBalance + $qty;
+
+        /*
+        =====================================================
+        UPDATE CURRENT STOCK BALANCE
+        =====================================================
+        */
+
+        $updated = updateStockItemBalance(
+            $item_id,
+            $newBalance
+        );
+
+        if ($updated === false) {
+            return false;
+        }
+
+        return true;
     }
 
     function getItemStockBalance($item_id)
