@@ -982,56 +982,134 @@
         }
     }
 
-    function saveCreditorBalance($creditor_id,$balance,$date)
+    function saveCreditorBalance($creditor_id, $balance, $date)
     {
         global $server;
-        //   check if the customer  exists in the cashbook_customer_balances table
-        $check_stmt = "SELECT * FROM cashbook_creditor_balances WHERE creditor_id = ?";
-        $check = prepared_statements($check_stmt,'i',[$creditor_id]);
-        $book_id = creditorFind($creditor_id)->book_id;
-        
-        if($check->num_rows > 0)
-        {
-            $stmt = "UPDATE cashbook_creditor_balances SET balance = ?,date = ? WHERE creditor_id = ?";
-            return prepared_statements($stmt,'dis',[$balance,$date,$creditor_id]);
-        }else
-        {
-            $stmt = "INSERT INTO cashbook_creditor_balances SET creditor_id = ?, balance = ?,date = ?,book_id = ?";
-            return prepared_statements($stmt,'idsi',[$creditor_id,$balance,$date,$book_id]);
+
+        $balance = (float) $balance;
+
+        // Get creditor
+        $creditor = creditorFind($creditor_id);
+
+        if (!$creditor) {
+            return false;
         }
+
+        $book_id = $creditor->book_id;
+
+        /*
+        =====================================================
+        1. UPDATE / INSERT CURRENT CREDITOR BALANCE
+        =====================================================
+        */
+
+        $check_stmt = "
+            SELECT id
+            FROM cashbook_creditor_balances
+            WHERE creditor_id = ?
+            AND book_id = ?
+            LIMIT 1
+        ";
+
+        $check = prepared_statements(
+            $check_stmt,
+            'ii',
+            [$creditor_id, $book_id]
+        );
+
+        if (!$check) {
+            return false;
+        }
+
+        if ($check->num_rows > 0) {
+
+            $stmt = "
+                UPDATE cashbook_creditor_balances
+                SET
+                    balance = ?,
+                    date = ?
+                WHERE creditor_id = ?
+                AND book_id = ?
+            ";
+
+            $result = prepared_statements(
+                $stmt,
+                'dsii',
+                [
+                    $balance,
+                    $date,
+                    $creditor_id,
+                    $book_id
+                ]
+            );
+
+        } else {
+
+            $stmt = "
+                INSERT INTO cashbook_creditor_balances
+                (
+                    creditor_id,
+                    balance,
+                    date,
+                    book_id
+                )
+                VALUES (?, ?, ?, ?)
+            ";
+
+            $result = prepared_statements(
+                $stmt,
+                'idsi',
+                [
+                    $creditor_id,
+                    $balance,
+                    $date,
+                    $book_id
+                ]
+            );
+        }
+
+        if (!$result) {
+            return false;
+        }
+
+        /*
+        =====================================================
+        2. UPDATE THE LATEST CREDITOR LEDGER BALANCE
+        =====================================================
+        */
+
+        $ledger_stmt = "
+            UPDATE cashbook_creditor_ledger
+            SET balance = ?
+            WHERE id = (
+                SELECT id
+                FROM (
+                    SELECT id
+                    FROM cashbook_creditor_ledger
+                    WHERE creditor_id = ?
+                    AND book_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                ) AS latest
+            )
+        ";
+
+        $ledger_result = prepared_statements(
+            $ledger_stmt,
+            'dii',
+            [
+                $balance,
+                $creditor_id,
+                $book_id
+            ]
+        );
+
+        if (!$ledger_result) {
+            return false;
+        }
+
+        return true;
     }
-
-    // function stockIn($item_id,$qty,$trans_id = false)
-    // {
-    //     global $server;
-    //     $user_id = auth()->id;
-
-    //     // get stock balance for the Item
-    //     $bal = getItemStockBalance($item_id);
-    //     $type = 'stock_in';
-    //     $newBalance = $qty + $bal;
-    //     $trans_id = $trans_id ?? "";
-
-    //     // get book_id from item book
-    //     $book_id = itemFind($item_id)->book_id;
-
-    //     // insert record
-    //     if(!empty($trans_id))
-    //     {
-    //         $check = mysqli_query($server,"SELECT * FROM cashbook_stocks WHERE reference = '{$trans_id}' AND transaction_type = 'stock_in'");
-    //         $row = $check->fetch_assoc();
-    //         if($check->num_rows > 0)
-    //         {
-    //             // update the record instead of inserting a new one
-    //             $stmt = "UPDATE cashbook_stocks SET quantity_in = ?, balance = ?, user_id = ? WHERE id = ?";
-    //             prepared_statements($stmt,'iisi',[$qty,$newBalance,$user_id,$row['id']]);
-    //         }else{
-    //             $stmt = "INSERT INTO cashbook_stocks SET item_id = ?, book_id = ?, transaction_type = ?, quantity_in = ?, balance = ?, reference = ?, user_id = ?";
-    //             prepared_statements($stmt,'iisiiii',[$item_id,$book_id,$type,$qty,$newBalance,$trans_id,$user_id]);
-    //         }
-    //     }
-    //     updateStockItemBalance($item_id,$newBalance);
-    // }
 
     function stockIn($item_id, $qty, $trans_id = false)
     {
@@ -1229,24 +1307,6 @@
         }
     }
 
-    // function stockOut($item_id,$qty,$trans_id = false)
-    // {
-    //     global $server;
-    //     $user_id = auth()->id;
-
-    //     $bal = getItemStockBalance($item_id);
-    //     $type = 'stock_out';
-    //     $newBalance = $bal - $qty;
-    //     $trans_id = $trans_id ?? "";
-
-    //     // get book_id from item book
-    //     $book_id = itemFind($item_id)->book_id;
-    //     // insert record
-    //     $stmt = "INSERT INTO cashbook_stocks SET item_id = ?, book_id = ?, transaction_type = ?, quantity_out = ?, balance = ?, reference = ?, user_id = ?";
-    //     prepared_statements($stmt,'iisiiii',[$item_id,$book_id,$type,$qty,$newBalance,$trans_id,$user_id]);
-
-    //     updateStockItemBalance($item_id,$newBalance);
-    // }
     function stockOut($item_id, $qty, $trans_id = false)
     {
         global $server;

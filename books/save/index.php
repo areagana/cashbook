@@ -1226,9 +1226,24 @@
                                     $creditor_id = $server->insert_id;
                                 }
                                 
-                                // update creditor balance records
-                                $date = date('Y-m-d');
-                                saveCreditorBalance($creditor_id,$balance,$date);
+                                if($balance > 0)
+                                {
+                                    $check = "SELECT * FROM cashbook_creditor_ledger WHERE creditor_id = ?";
+                                    $res = prepared_statements($check,'i',[$creditor_id]);
+                                    
+                                    if($res->num_rows > 0) // update the balance
+                                    {
+                                        $date = date('Y-m-d');
+                                        saveCreditorBalance($creditor_id,$balance,$date);
+                                    }else{ // insert initial creditor transaction in the ledger
+                                        $stmt = "INSERT INTO  cashbook_creditor_ledger SET creditor_id = ?, credit_amount = ?, details = ?,book_id = ?,created_at=?,user_id=?,balance = ?";
+                                        prepared_statements($stmt,'idsisid',[$creditor_id,$credit,$details,$book_id,$date,$user_id,$balance]);
+                                        
+                                        $date = date('Y-m-d');
+                                        saveCreditorBalance($creditor_id,$balance,$date);  
+                                    }
+                                }
+                                $_SESSION['success'] = 'Record saved';
 
                             break;
                         case 'newCashinSave':
@@ -2085,7 +2100,7 @@
                             $sql .= " WHERE " . implode(" AND ", $conditions);
                         }
 
-                        $sql .= " ORDER BY t.created_at ASC";
+                        $sql .= " ORDER BY t.id ASC";
 
                         // echo mysqli_error($server);
 
