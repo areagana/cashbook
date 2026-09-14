@@ -1351,7 +1351,7 @@
                                 }
 
                                 // check if creditor has been selected and update the ledger
-                                if(!empty($creditor_id))
+                                if($creditor_id > 0)
                                 {
                                     // update customer ledger
                                     creditorLedgerUpdate($creditor_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);

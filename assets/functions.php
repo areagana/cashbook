@@ -564,6 +564,13 @@
     // customer ledger update function
     function creditorLedgerUpdate($creditor_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type = false)
     {
+        $creditor_id = (int) $creditor_id;
+
+        // A creditor ledger entry must belong to a real creditor
+        if ($creditor_id <= 0) {
+            return false;
+        }
+        
         // check if the transaction already exists to avoid incrementing balance twice
         $check_sql = "SELECT * FROM cashbook_creditor_ledger WHERE transaction_id = ?";
         $check_res = prepared_statements($check_sql, 'i', [$trans_id]);

@@ -346,11 +346,6 @@ if (isVerified())
         }
 ?>
 
-        <style>
-            :root{--cb-primary:#0f766e;--cb-dark:#0f172a;--cb-muted:#64748b;--cb-border:#e2e8f0;--cb-bg:#f8fafc;}
-            .cb-dashboard{background:var(--cb-bg);min-height:100vh;padding:10px 0 35px}.cb-card{background:#fff;border:1px solid var(--cb-border);border-radius:18px;box-shadow:0 6px 24px rgba(15,23,42,.05)}
-            .cb-hero{background:linear-gradient(135deg,#0f172a,#0f766e);color:#fff;border-radius:20px;padding:25px;margin-bottom:18px}.cb-hero h2{margin:0;font-weight:700}.cb-hero p{margin:6px 0 0;opacity:.8}.metric-card{padding:18px;height:100%}.metric-icon{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;background:#f1f5f9;color:var(--cb-primary)}.metric-label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--cb-muted);font-weight:700}.metric-value{font-size:25px;font-weight:800;color:var(--cb-dark);margin-top:5px}.metric-sub{font-size:12px;color:var(--cb-muted);margin-top:6px}.section-title{font-size:16px;font-weight:800;color:var(--cb-dark);margin:0}.section-sub{font-size:12px;color:var(--cb-muted)}.chart-box{height:310px}.mini-chart{height:260px}.table>thead th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--cb-muted);border-top:0}.badge-cb{padding:7px 10px;border-radius:20px;background:#f1f5f9;color:#334155;font-size:11px}.quick-btn{border:1px solid var(--cb-border);background:#fff;border-radius:12px;padding:11px 14px;color:var(--cb-dark);font-weight:600;text-decoration:none;display:inline-block;margin:3px}.quick-btn:hover{background:#f8fafc;color:var(--cb-primary)}.amount-in{color:#15803d;font-weight:700}.amount-out{color:#dc2626;font-weight:700}.balance-positive{color:#15803d}.balance-negative{color:#dc2626}.category-row{padding:11px 0;border-bottom:1px solid var(--cb-border)}.category-row:last-child{border-bottom:0}.progress{height:7px;border-radius:20px}.empty-state{padding:35px;text-align:center;color:var(--cb-muted)}
-        </style>
 
         <div class="container-fluid cb-dashboard">
             <div class="container-fluid px-lg-4">
