@@ -582,14 +582,12 @@
 
             // use balance to update the ledger
             $newBalance = $balance + $credit - $debit;
-            // $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
 
             $update_sql = "UPDATE cashbook_creditor_ledger SET type = ?, creditor_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ? WHERE transaction_id = ?";
             prepared_statements($update_sql,'siddsiisiiidi',[$type,$creditor_id,$credit,$debit,$details,$book_id,$payment_mode,$date,$user_id,$item_id,$qty,$newBalance,$trans_id]);
 
             // update creditor balance
             saveCreditorBalance($creditor_id,$newBalance,$date);
-            $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
             $_SESSION['success'] = "Data updated successfully.";
         
         }else {
@@ -708,114 +706,334 @@
         <?php
     }
 
+
+
     function sideBar()
     {
         global $book;
-        $book_id = (isset($_REQUEST['bkid']) || isset($_REQUEST['bsid'])) ? encryptor('decrypt',$_REQUEST['bkid'] ?? $_REQUEST['bsid']) : encryptor('decrypt',$_SESSION['book_id']);
+
+        /*
+        ==========================================================
+        GET BOOK ID
+        ==========================================================
+        */
+
+        $encryptedBookId =
+            $_REQUEST['bkid']
+            ?? $_REQUEST['bsid']
+            ?? $_SESSION['book_id']
+            ?? null;
+
+        if (empty($encryptedBookId)) {
+            return;
+        }
+
+        $book_id = encryptor(
+            'decrypt',
+            $encryptedBookId
+        );
+
+        /*
+        ==========================================================
+        FIND BOOK
+        ==========================================================
+        */
+
         $book = $book ?? bookFind($book_id);
+
+        if (!$book) {
+            return;
+        }
+
+        /*
+        ==========================================================
+        ENCRYPT BOOK ID ONCE
+        ==========================================================
+        */
+
+        $bsid = encryptor(
+            'encrypt',
+            $book->id
+        );
+
+        /*
+        ==========================================================
+        SIDEBAR
+        ==========================================================
+        */
         ?>
-            <aside id="sidebar">
-                <div class="sidebar-header">
-                    <button id="toggle-btn" type="button" class='p-2'>
-                        <i class="fa fa-bars"></i>
-                    </button>
-                    <div class="sidebar-logo h3">
-                        <a href="#" class="sidebar-link">
-                            <span>CASHBOOK</span>
-                        </a>
-                    </div>
-                </div>
 
-                <ul class="sidebar-nav">
-                    <li class='sidebar-item'>
-                        <a href="../" class ='sidebar-link'>
-                            <i class="fa fa-home"></i>
-                            <span>Dashboard</span>
-                        </a>
-                    </li>
+        <!-- =====================================================
+            MOBILE MENU BUTTON
+            ===================================================== -->
 
-                    <li class='sidebar-item'>
-                        <a href="../customers/?bsid=<?=encryptor('encrypt',$book->id);?>" class ='sidebar-link'>
-                            <i class="fa fa-user"></i>
-                            <span>Customers</span>
-                        </a>
-                    </li>
-                    <li class='sidebar-item'>
-                        <a href="../creditors/?bsid=<?=encryptor('encrypt',$book->id);?>" class ='sidebar-link'>
-                            <i class="fa fa-user"></i>
-                            <span>Creditors</span>
-                        </a>
-                    </li>
+        <button
+            id="mobile-menu-btn"
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded="false"
+        >
+            <i class="fa fa-bars"></i>
+        </button>
 
-                    <li class='sidebar-item'>
-                        <a href="../stock/?bkid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
-                            <i class="fa fa-box"></i>
-                            <span>Stock</span>
-                        </a>
-                    </li>
-                    <li class='sidebar-item'>
-                        <a href="../items/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
-                            <i class="fa fa-box"></i>
-                            <span>Items</span>
-                        </a>
-                    </li>
-                    <li class='sidebar-purchases'>
-                        <a href="../purchases/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
-                            <i class="fa fa-box"></i>
-                            <span>Purchases</span>
-                        </a>
-                    </li>
-                    <li class='sidebar-item'>
-                        <a href="../members/?bkid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
-                            <i class="fa fa-users"></i>
-                            <span>Users</span>
-                        </a>
-                        <!-- <ul id="usersMenu" class="collapse">
-                            <li><a href="../members/?bkid=<?//=encryptor('encrypt',$book->id);?>">View Users</a></li>
-                            <li><a href="#">Add User</a></li>
-                        </ul> -->
-                    </li>
-                    <li class='sidebar-item'>
-                        <a href="../category/?bkid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
-                            <i class="fa fa-box"></i>
-                            <span>Categories</span>
-                        </a>
-                    </li>
-                    <li class='sidebar-item'>
-                        <a href="../modes/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
-                            <i class="fa fa-handshake"></i>
-                            <span>Pay Modes</span>
-                        </a>
-                    </li>
-                    <li class='sidebar-item'>
-                        <a href="../invoices/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
-                            <!-- data-toggle="collapse" data-target="#Invoices-menu" -->
-                            <i class="fa fa-undo"></i>
-                            <span>Invoices</span>
-                        </a>
-                    </li>
-                    <li class='sidebar-item'>
-                        <a href="../routes/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link has-dropdown collapsed'>
-                            <i class="fa fa-redo"></i>
-                            <span>Routes</span>
-                        </a>
-                    </li>
-                    <li class='sidebar-item'>
-                        <a href="../route_managers/?bsid=<?=encryptor('encrypt',$book->id);?>" class='sidebar-link'>
-                            <i class="fa fa-redo"></i>
-                            <span>Route Managers</span>
-                        </a>
-                    </li>
-                </ul>
 
-                <div class="sidebar-footer">
-                    <a href="../?logout=1">
-                        <i class="fa fa-sign-out-alt"></i>
-                        <span>Logout</span>
+        <!-- =====================================================
+            MOBILE OVERLAY
+            ===================================================== -->
+
+        <div id="sidebar-overlay"></div>
+
+
+        <!-- =====================================================
+            SIDEBAR
+            ===================================================== -->
+
+        <aside id="sidebar" class="expand">
+
+            <!-- =================================================
+                HEADER
+                ================================================= -->
+
+            <div class="sidebar-header">
+
+                <!-- Desktop toggle -->
+                <button
+                    id="toggle-btn"
+                    type="button"
+                    aria-label="Toggle navigation"
+                    aria-expanded="true"
+                >
+                    <i class="fa fa-bars"></i>
+                </button>
+
+
+                <!-- Logo -->
+                <div class="sidebar-logo">
+
+                    <a href="../">
+                        <span>CASHBOOK</span>
                     </a>
+
                 </div>
 
-            </aside>
+
+                <!-- Mobile close -->
+                <button
+                    id="mobile-close-btn"
+                    type="button"
+                    aria-label="Close navigation"
+                >
+                    <i class="fa fa-times"></i>
+                </button>
+
+            </div>
+
+
+            <!-- =================================================
+                NAVIGATION
+                ================================================= -->
+
+            <ul class="sidebar-nav">
+
+                <!-- Dashboard -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-home"></i>
+
+                        <span>Dashboard</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Customers -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../customers/?bsid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-user"></i>
+
+                        <span>Customers</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Creditors -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../creditors/?bsid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-user"></i>
+
+                        <span>Creditors</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Stock -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../stock/?bkid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-box"></i>
+
+                        <span>Stock</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Items -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../items/?bsid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-box"></i>
+
+                        <span>Items</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Purchases -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../purchases/?bsid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-shopping-cart"></i>
+
+                        <span>Purchases</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Members -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../members/?bkid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-users"></i>
+
+                        <span>Users</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Categories -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../category/?bkid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-tags"></i>
+
+                        <span>Categories</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Pay Modes -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../modes/?bsid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-handshake"></i>
+
+                        <span>Pay Modes</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Invoices -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../invoices/?bsid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-file-invoice"></i>
+
+                        <span>Invoices</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Routes -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../routes/?bsid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-route"></i>
+
+                        <span>Routes</span>
+                    </a>
+
+                </li>
+
+
+                <!-- Route Managers -->
+                <li class="sidebar-item">
+
+                    <a
+                        href="../route_managers/?bsid=<?= $bsid; ?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-users-cog"></i>
+
+                        <span>Route Managers</span>
+                    </a>
+
+                </li>
+
+            </ul>
+
+
+            <!-- =================================================
+                FOOTER
+                ================================================= -->
+
+            <div class="sidebar-footer">
+
+                <a href="../?logout=1">
+
+                    <i class="fa fa-sign-out-alt"></i>
+
+                    <span>Logout</span>
+
+                </a>
+
+            </div>
+
+        </aside>
         <?php
     }
 
@@ -1621,5 +1839,66 @@
             $stmt = "INSERT INTO cashbook_item_stock_balances SET item_id = ?, book_id = ?, balance = ?";
             prepared_statements($stmt,'iii',[$item_id,$book_id,$balance]);
         }
+    }
+
+    function rebuildCreditorBalance($creditor_id, $book_id = null)
+    {
+        global $server;
+
+        $creditor_id = (int)$creditor_id;
+
+        if ($book_id === null) {
+
+            $sql = "
+                SELECT
+                    COALESCE(SUM(credit_amount), 0) -
+                    COALESCE(SUM(debit_amount), 0) AS balance
+                FROM cashbook_creditor_ledger
+                WHERE creditor_id = ?
+            ";
+
+            $res = prepared_statements(
+                $sql,
+                'i',
+                [$creditor_id]
+            );
+
+        } else {
+
+            $book_id = (int)$book_id;
+
+            $sql = "
+                SELECT
+                    COALESCE(SUM(credit_amount), 0) -
+                    COALESCE(SUM(debit_amount), 0) AS balance
+                FROM cashbook_creditor_ledger
+                WHERE creditor_id = ?
+                AND book_id = ?
+            ";
+
+            $res = prepared_statements(
+                $sql,
+                'ii',
+                [$creditor_id, $book_id]
+            );
+        }
+
+        $row = $res->fetch_assoc();
+
+        $balance = (float)($row['balance'] ?? 0);
+
+        /*
+        ----------------------------------------------------------
+        Update the creditor balance table
+        ----------------------------------------------------------
+        */
+
+        saveCreditorBalance(
+            $creditor_id,
+            $balance,
+            date('Y-m-d H:i:s')
+        );
+
+        return $balance;
     }
 ?>

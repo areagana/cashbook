@@ -66,6 +66,7 @@
                                                 <th>Credit</th>
                                                 <th>Debit</th>
                                                 <th>Balance</th>
+                                                <th>Action</th>
                                             </tr>
                                         </thead>
                                             <tbody>
@@ -88,6 +89,10 @@
                                                         <td><?=(!empty($r['credit_amount'])) ? number_format($r['credit_amount'],0) : '';?></td>
                                                         <td><?=(!empty($r['debit_amount'])) ? number_format($r['debit_amount'],0) : '';?></td>
                                                         <td><?=number_format($r['balance'],0);?></td>
+                                                        <td>
+                                                            <button class="btn btn-sm btn-flat btn-outline-info transfer-credit" data-id ='<?=$r['id'];?>' data-trans_id ='<?=$r['transaction_id'];?>' title = 'Transfer'><i class="fa fa-share"></i></button>
+                                                            <button class="btn btn-sm btn-flat btn-outline-danger delete-credit" title = 'Delete' data-id ='<?=$r['id'];?>' data-trans_id ='<?=$r['transaction_id'];?>'><i class="fa fa-trash"></i></button>
+                                                        </td>
                                                     </tr>
                                                 <?php endwhile;?>
                                                     <tr>
@@ -98,6 +103,7 @@
                                                         <th></th>
                                                         <th></th>
                                                         <th><?=number_format($balance_,0);?></th>
+                                                        <th></th>
                                                     </tr>
                                             <?php else:?>
                                                 <tr>
@@ -258,6 +264,222 @@
                         }
                         $_SESSION['success'] = "Data saved";
                         redirect(back());
+                    break;
+
+                case 'fetchCreditors':
+                    $trans = request('trans_id');
+                    $transaction = transactionFind($trans);
+                    $book_id = $transaction->book_id;
+
+                    // fetch creditors
+                    $stmt = "SELECT * FROM cashbook_creditors WHERE book_id = ?";
+                    $res = prepared_statements($stmt,'i',[$book_id]);
+
+                    echo "<option value=''>-- select --</option>";
+                    while($r = $res->fetch_assoc())
+                    {
+                        ?>
+                            <option value="<?=$r['id'];?>"><?=$r['name'];?></option>
+                        <?php
+                    }
+
+                    break;
+
+                case 'transferTrans':
+                        $creditor_id = (int)request('creditor_id');
+                        $trans_id    = (int)request('trans_id');
+                        $id          = (int)request('id');
+
+                        /*
+                        ==========================================================
+                        VALIDATE INPUT
+                        ==========================================================
+                        */
+
+                        if ($creditor_id <= 0 || $trans_id <= 0 || $id <= 0) {
+
+                            $_SESSION['error'] = "Invalid transfer information";
+                            break;
+                        }
+
+                        /*
+                        ==========================================================
+                        FIND CREDITOR LEDGER RECORD
+                        ==========================================================
+                        */
+
+                        $sql = "
+                            SELECT *
+                            FROM cashbook_creditor_ledger
+                            WHERE id = ?
+                            LIMIT 1
+                        ";
+
+                        $res = prepared_statements(
+                            $sql,
+                            'i',
+                            [$id]
+                        );
+
+                        if (!$res || $res->num_rows === 0) {
+
+                            $_SESSION['error'] =
+                                "Creditor transaction could not be found";
+
+                            break;
+                        }
+
+                        $row = myObject($res->fetch_assoc());
+
+                        $old_creditor_id = (int)$row->creditor_id;
+                        $book_id         = (int)$row->book_id;
+
+                        /*
+                        ==========================================================
+                        DON'T TRANSFER TO THE SAME CREDITOR
+                        ==========================================================
+                        */
+
+                        if ($old_creditor_id === $creditor_id) {
+
+                            $_SESSION['error'] =
+                                "The transaction already belongs to this creditor";
+
+                            break;
+                        }
+
+                        /*
+                        ==========================================================
+                        VERIFY TRANSACTION
+                        ==========================================================
+                        */
+
+                        $transaction = transactionFind($trans_id);
+
+                        if (!$transaction) {
+
+                            $_SESSION['error'] =
+                                "Transaction could not be found";
+
+                            break;
+                        }
+
+                        /*
+                        ==========================================================
+                        START DATABASE TRANSACTION
+                        ==========================================================
+                        */
+
+                        mysqli_begin_transaction($server);
+
+                        try {
+
+                            /*
+                            ======================================================
+                            1. TRANSFER CREDITOR LEDGER RECORD
+                            ======================================================
+                            */
+
+                            $sql = "
+                                UPDATE cashbook_creditor_ledger
+                                SET creditor_id = ?
+                                WHERE id = ?
+                                AND book_id = ?
+                            ";
+
+                            $res = prepared_statements(
+                                $sql,
+                                'iii',
+                                [
+                                    $creditor_id,
+                                    $id,
+                                    $book_id
+                                ]
+                            );
+
+                            if ($res === false) {
+                                throw new Exception(
+                                    "Failed to transfer creditor ledger"
+                                );
+                            }
+
+                            /*
+                            ======================================================
+                            2. UPDATE MAIN CASHBOOK TRANSACTION
+                            ======================================================
+                            */
+
+                            $sql = "
+                                UPDATE cashbook_transactions
+                                SET creditor_id = ?
+                                WHERE id = ?
+                                AND book_id = ?
+                            ";
+
+                            $res = prepared_statements(
+                                $sql,
+                                'iii',
+                                [
+                                    $creditor_id,
+                                    $trans_id,
+                                    $book_id
+                                ]
+                            );
+
+                            if ($res === false) {
+                                throw new Exception(
+                                    "Failed to update main transaction creditor"
+                                );
+                            }
+
+                            /*
+                            ======================================================
+                            3. REBUILD OLD CREDITOR BALANCE
+                            ======================================================
+                            */
+
+                            $oldBalance = rebuildCreditorBalance(
+                                $old_creditor_id,
+                                $book_id
+                            );
+
+                            /*
+                            ======================================================
+                            4. REBUILD NEW CREDITOR BALANCE
+                            ======================================================
+                            */
+
+                            $newBalance = rebuildCreditorBalance(
+                                $creditor_id,
+                                $book_id
+                            );
+
+                            /*
+                            ======================================================
+                            5. COMMIT EVERYTHING
+                            ======================================================
+                            */
+
+                            mysqli_commit($server);
+
+                            $_SESSION['success'] =
+                                "Transaction successfully transferred";
+
+                        } catch (Throwable $e) {
+
+                            /*
+                            ======================================================
+                            ROLLBACK
+                            ======================================================
+                            */
+
+                            mysqli_rollback($server);
+
+                            $_SESSION['error'] =
+                                "Error transferring transaction: "
+                                . $e->getMessage();
+                        }
+
                     break;
             }
         }

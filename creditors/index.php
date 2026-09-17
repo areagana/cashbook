@@ -311,6 +311,61 @@
                     });
                 });
 
+                // transfer credit transaction to another creditor
+                $(document).on('click','.transfer-credit',function(){
+                    var id = $(this).data('id');
+                    var transid = $(this).data('trans_id');
+
+                    // fetch creditors from the database
+                    $.ajax({
+                        url:'save/index.php',
+                        data:{
+                            action:'fetchCreditors',
+                            trans_id: transid
+                        },
+                        beforeSend:function(){
+                            xdialog.startSpin();
+                        },
+                        success:function(res){
+                            xdialog.stopSpin();
+
+                            var options = "<div class='p-2'>"+
+                                "<h4>Select Creditor to transfer to:</h4>"+
+                                "<select id='creditorId' class='form-control mb-2'>"+
+                                    res + // options come from server
+                                "</select>"+
+                            "</div>";
+
+                            xdialog.confirm(options,function(){
+                                var creditor_id = $('#creditorId').val();
+                                $.ajax({
+                                    url:'save/index.php',
+                                    method:'POST',
+                                    data:{
+                                        creditor_id:creditor_id,
+                                        trans_id:transid,
+                                        id:id,
+                                        action:'transferTrans'
+                                    },
+                                    beforeSend:function(){
+                                        xdialog.startSpin();
+                                    },
+                                    success:function(res){
+                                        xdialog.stopSpin();
+                                        xdialog.info('Transaction completed successfully');
+                                    },
+                                    error:function(){
+                                        xdialog.error("Error completing transaction");
+                                    }
+                                });
+                            });
+                        },
+                        error:function(err){
+                            xdialog.error("Error fetching creditors!!!!");
+                        }
+                    });                    
+                });
+
             </script>
         <?php
     }else{
