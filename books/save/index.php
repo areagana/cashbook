@@ -1021,6 +1021,127 @@
                                     </form>
                                     <?php
                                 break;
+                            case 'purchase':
+                                    ?>
+                                        <form id='newPurchaseForm' method="post">
+                                                <input type="hidden" name="book_id" value="<?=$bkid;?>">
+                                                <input type="hidden" name="form" value='newPurchaseSave'>
+                                                <input type="hidden" name="action" value='SaveForm'>
+                                                <div class="row mx-1">
+                                                    <div class="col-md-3 p-2">
+                                                        <label for = "purchase_type">TRANSACTION TYPE:</label>
+                                                    </div>
+                                                    <div class="col p-2">
+                                                        <select name="purchase_type"  id ='purchase_type' class="form-control" required>
+                                                            <option value="" disabled selected>Select</option>
+                                                            <option value="cash_purchase">Cash Purchase</option>
+                                                            <option value="credit_purchase">Credit Purchase</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="customer_id">ITEM:</label>
+                                                </div>
+                                                <?php
+                                                    $sql = "SELECT * FROM cashbook_items WHERE book_id = ?";
+                                                    $res = prepared_statements($sql,'i',[$bkid]);
+                                                ?>
+                                                <div class="col p-2">
+                                                    <select name="item_id" id="item_id" class="form-control search-select">
+                                                        <option value="" selected disabled>Select</option>
+                                                        <?php while($rw = $res->fetch_assoc()):?>
+                                                            <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                        <?php endwhile;?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="purchase_quantity">QUANTITY:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="quantity" id="purchase_quantity" class="form-control" autocomplete='off' placeholder='Qty'>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="purchase_rate">RATE:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="rate" id="purchase_rate" class="form-control" autocomplete='off' placeholder='Rate'>
+                                                </div>
+                                            </div>
+                                            <div class="row mx-1">
+                                                <div class="col-md-3 p-2">
+                                                    <label for="purchase_amount">AMOUNT:</label>
+                                                </div>
+                                                <div class="col p-2">
+                                                    <input type="text" name="amount" id="purchase_amount" class="form-control" placeholder='Amount..' required>
+                                                </div>
+                                            </div>
+                                            <div class="p-2">
+                                                <div class="p-0 purchase-creditor hidden">
+                                                    <div class="row mx-1">
+                                                        <div class="col-md-3 p-2">
+                                                            <label for="creditor_id">CREDITOR:</label>
+                                                        </div>
+                                                        <?php
+                                                            $sql = "SELECT * FROM cashbook_creditors WHERE book_id = ?  ORDER BY name ASC";
+                                                            $res = prepared_statements($sql,'i',[$bkid]);
+                                                        ?>
+                                                        <div class="col p-2">
+                                                            <select name="creditor_id" id="creditor_id" class="form-control">
+                                                                <option hidden>Select</option>
+                                                                <?php while($rw = $res->fetch_assoc()):?>
+                                                                    <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                                <?php endwhile;?>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="row mx-1">
+                                                    <div class="col-md-3 p-2">
+                                                        <label for="paymode_id">PAYMENT MODE:</label>
+                                                    </div>
+                                                    <?php
+                                                        $sql = "SELECT * FROM cashbook_paymodes WHERE book_id = ?";
+                                                        $res = prepared_statements($sql,'i',[$bkid]);
+                                                    ?>
+                                                    <div class="col p-2">
+                                                        <select name="paymode_id" id="paymode_id" class="form-control search-select">
+                                                            <option value="" selected disabled>Select</option>
+                                                            <?php while($rw = $res->fetch_assoc()):?>
+                                                                <option value="<?=$rw['id'];?>"><?=$rw['name'];?></option>
+                                                            <?php endwhile;?>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="row mx-1">
+                                                    <div class="col-md-3 p-2">
+                                                        <label for="details">DETAILS:</label>
+                                                    </div>
+                                                    <div class="col p-2">
+                                                        <input type="text" name="details" id="details" class="form-control" placeholder='Details'>
+                                                    </div>
+                                                </div>
+                                                <div class="row mx-1">
+                                                    <div class="col-md-3 p-2">
+                                                        <label for="created_at">DATE:</label>
+                                                    </div>
+                                                    <div class="col p-2">
+                                                        <input type="datetime-local" name="created_at" id="created_at" value="<?= date('Y-m-d\TH:i') ?>" class="form-control" required>
+                                                    </div>
+                                                </div>
+                                                <div class="roww mx-1">
+                                                    <div class="col p-2">
+                                                        <button type='submit' class="btn btn-flat btn-primary right savePurchase">Save</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    <?php
+                                break;
                         }
                     break;
                     
@@ -1668,6 +1789,51 @@
                                     prepared_statements($sql,'ssii',[$name,$details,$user_id,$route_id]);
                                 }                                
                                 
+                            break;
+                        case 'newPurchaseSave':
+                                $item_id = request('item_id');
+                                $type = request('purchase_type');
+                                $qty = request('quantity');
+                                $rate = request('rate');
+                                $amount = request('amount');
+                                $creditor_id = request('creditor_id') ?? "";
+                                $mode = request('pay_mode');
+                                $details = request('details');
+                                $date = request('created_at');
+                                $book_id = request('book_id');
+                                $category_id = request('category_id') ?? "";
+                                $credit = $amount;
+                                $debit = 0;
+
+                                // enter purchase transaction
+                                $sql = "INSERT INTO cashbook_transactions SET item_id = ?, quantity = ?, rate=?, debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?,customer_id=?";
+                                $res = prepared_statements($sql,'iiiiisiisisi',[$item_id,$qty,$rate,$amount,$book_id,$details,$category_id,$mode,$date,$user_id,$type,$customer_id]);
+                                $trans_id = $server->insert_id;
+
+                                if($type == 'cash_purchase')
+                                {
+                                    $credit = $debit = $amount;
+
+                                    // affect cash flow statement
+                                    $stmt = "INSERT INTO  cashbook_cashouts SET item_id = ?, type=?,quantity=?,rate=?,amount = ?, category_id = ?, details = ?,book_id = ?,transaction_id = ?,paymode_id = ?,created_at = ?,user_id=?";
+                                    prepared_statements($stmt,'isiiiisiiisi',[$item_id,$type,$qty,$rate,$amount,$category_id,$details,$book_id,$trans_id,$mode,$date,$user_id]);
+                                    
+                                }elseif($type =='credit_purchase')
+                                { 
+                                    $credit = $amount;
+                                    $debit = 0;
+                                    // does not affect cashflow statement // affects creditor statement
+                                    CreditorLedgerUpdate($creditor_id,$credit,$debit,$category_id,$details,$book_id,$mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
+                                }
+                                
+                                // affect stock
+                                stockIn($item_id, $qty, $trans_id);
+                                
+                                // save purchase
+                                $stmt = "INSERT INTO cashbook_purchases SET transaction_id = ?, item_id = ?, quantity = ?, unit_price = ?, total = ?, book_id = ?, created_at = ?, user_id = ?,creditor_id = ?,type = ?";
+                                prepared_statements($stmt,'iiiidisiis',[$trans_id,$item_id,$qty,$rate,$amount,$book_id,$date,$user_id,$creditor_id,$type]);
+
+                                $_SESSION['success'] = "Data saved";
                             break;
                     }
                     break;

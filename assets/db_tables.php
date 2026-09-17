@@ -697,13 +697,15 @@
 
         $columns = [
             'item_id' => 'int(11) NOT NULL',
-            'quantity'  => 'int(11) NOT NULL',
+            'quantity'  => 'decimal(10,2) NOT NULL',
             'unit_price'  => 'decimal(10,2) NOT NULL',
             'total'  => 'decimal(10,2) NOT NULL',
             'book_id'  => 'int(11) NOT NULL',
             'suplier_id'  => 'int(11) NULL',
+            'creditor_id'  => 'int(11) NULL',
             'user_id'  => 'int(11) NOT NULL',
-            'transaction_id'  => 'int(11) NULL'
+            'transaction_id'  => 'int(11) NULL',
+            'type'  => 'varchar(255) null'
 
         ];
 

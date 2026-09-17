@@ -754,7 +754,7 @@
                                         <?=customerMoney($r['cashout']);?>
                                     </td>
 
-                                    <td class="text-right <?=($r['balance'] > 0 ? 'text-warning' : 'text-success');?>">
+                                    <td class="text-right <?=($r['balance'] > 0 ? 'text-primary' : 'text-success');?>">
 
                                         <strong>
                                             <?=customerMoney($r['balance']);?>
@@ -836,7 +836,7 @@
                                     <?=customerMoney($cashOut);?>
                                 </td>
 
-                                <td class="text-right text-warning">
+                                <td class="text-right text-primary">
                                     <?=customerMoney($outstandingBalance);?>
                                 </td>
 
@@ -921,7 +921,7 @@
                                         <?=htmlspecialchars($customer['customer_name']);?>
                                     </td>
 
-                                    <td class="text-right text-warning">
+                                    <td class="text-right text-primary">
 
                                         <strong>
                                             <?=customerMoney($customer['balance']);?>
@@ -945,14 +945,11 @@
                                     Total Outstanding:
                                 </th>
 
-                                <th class="text-right text-warning">
+                                <th class="text-right text-primary">
                                     <?=customerMoney($balanceTotal);?>
                                 </th>
-
                             </tr>
-
                         </tfoot>
-
                     </table>
 
                 </div>

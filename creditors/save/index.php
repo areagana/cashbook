@@ -13,7 +13,7 @@
                         // fetch transactions
                         $sql = "SELECT ccl.*,ci.name as item_name,ci.units,pm.name as paymode_name FROM cashbook_creditor_ledger ccl
                                     LEFT JOIN cashbook_items ci ON ccl.item_id = ci.id
-                                    INNER JOIN cashbook_transactions ct2 ON ccl.transaction_id = ct2.id
+                                    LEFT JOIN cashbook_transactions ct2 ON ccl.transaction_id = ct2.id
                                     LEFT JOIN cashbook_paymodes pm ON ccl.paymode_id = pm.id
                                 WHERE ccl.creditor_id = ? ORDER BY ccl.transaction_id ASC";
                         $res = prepared_statements($sql,'i',[$id]);
