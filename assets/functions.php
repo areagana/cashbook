@@ -767,12 +767,7 @@
             MOBILE MENU BUTTON
             ===================================================== -->
 
-        <button
-            id="mobile-menu-btn"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded="false"
-        >
+        <button id="mobile-menu-btn" type="button" aria-label="Open navigation" aria-expanded="false">
             <i class="fa fa-bars"></i>
         </button>
 
@@ -797,23 +792,16 @@
             <div class="sidebar-header">
 
                 <!-- Desktop toggle -->
-                <button
-                    id="toggle-btn"
-                    type="button"
-                    aria-label="Toggle navigation"
-                    aria-expanded="true"
-                >
+                <button id="toggle-btn" type="button" aria-label="Toggle navigation" aria-expanded="true">
                     <i class="fa fa-bars"></i>
                 </button>
 
 
                 <!-- Logo -->
                 <div class="sidebar-logo">
-
                     <a href="../">
                         <span>CASHBOOK</span>
                     </a>
-
                 </div>
 
 
@@ -825,7 +813,6 @@
                 >
                     <i class="fa fa-times"></i>
                 </button>
-
             </div>
 
 
@@ -834,31 +821,20 @@
                 ================================================= -->
 
             <ul class="sidebar-nav">
-
                 <!-- Dashboard -->
                 <li class="sidebar-item">
-
-                    <a
-                        href="../"
-                        class="sidebar-link"
-                    >
+                    <a href="../" class="sidebar-link">
                         <i class="fa fa-home"></i>
-
                         <span>Dashboard</span>
                     </a>
-
                 </li>
 
 
                 <!-- Customers -->
                 <li class="sidebar-item">
 
-                    <a
-                        href="../customers/?bsid=<?= $bsid; ?>"
-                        class="sidebar-link"
-                    >
+                    <a href="../customers/?bsid=<?= $bsid; ?>" class="sidebar-link" >
                         <i class="fa fa-user"></i>
-
                         <span>Customers</span>
                     </a>
 
