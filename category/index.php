@@ -461,26 +461,20 @@
 
                                             <span class="hover-display text-sms">
 
-                                                <button
-                                                    class="btn btn-sm btn-outline-info edit-category text-muted btn-click"
-                                                    data-title="Edit category"
-                                                    data-section="edit-category"
-                                                    data-id="<?=$r['id'];?>">
+                                                <button  class="btn btn-sm btn-outline-info edit-category text-muted btn-click" data-title="Edit category" data-section="edit-category" data-id="<?=$r['id'];?>">
                                                     <i class="fa fa-edit"></i>
                                                 </button>
-
-                                                <button
-                                                    class="btn btn-sm btn-outline-danger delete-category"
-                                                    data-id="<?=$r['id'];?>">
+                                                <button  class="btn btn-sm btn-outline-primary view-category text-muted" data-title="category details" data-section="view-category" data-id="<?=$r['id'];?>">
+                                                    <i class="fa fa-eye"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger delete-category" data-id="<?=$r['id'];?>">
                                                     <i class="fa fa-trash"></i>
                                                 </button>
 
                                             </span>
 
                                         <?php endif;?>
-
                                     </td>
-
                                 </tr>
 
                             <?php endforeach;?>
@@ -600,7 +594,9 @@
                                                     data-id="<?=$r['id'];?>">
                                                     <i class="fa fa-edit"></i>
                                                 </button>
-
+                                                <button  class="btn btn-sm btn-outline-primary view-category text-muted" data-title="category details" data-section="view-category" data-id="<?=$r['id'];?>">
+                                                    <i class="fa fa-eye"></i>
+                                                </button>
                                                 <button
                                                     class="btn btn-sm btn-outline-danger delete-category"
                                                     data-id="<?=$r['id'];?>">
@@ -642,6 +638,26 @@
     </div>
 
     <div class="side-modal-content"></div>
+
+</div>
+<!-- EXISTING CENTRAL MODAL -->
+<div
+    class="p-0 bg-white central-modal absolute border shadow"
+    id="central-modal">
+
+    <div class="central-modal-header bg-success">
+
+        <h3 class="central-modal-title"></h3>
+
+        <button
+            type="button"
+            class="central-modal-close">
+            &times;
+        </button>
+
+    </div>
+
+    <div class="central-modal-content"></div>
 
 </div>
 
@@ -975,6 +991,37 @@
 
         });
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | VIEW CUSTOMER
+    |--------------------------------------------------------------------------
+    */
+
+    $(document).on('click','.view-category',function(){
+
+        $('#central-modal').show();
+        var title = $(this).data('title') + " Transactions";
+        $('.central-modal-title').html(title);
+        var id = $(this).data('id');
+        $.ajax({
+            url:'save/index.php',
+            data:{
+                category_id:id,
+                action:'category-details'
+            },
+            beforeSend:function(){
+                $('.central-modal-content').html("<center><h3>Loading...</h3></center>");
+            },
+            success:function(res){
+                $('.central-modal-content').html(res);
+            },
+            error:function(){
+                $('.central-modal-content').html("<center><h3>!!! Error Loading data</h3></center>");
+            }
+        });
+
+    });
 </script>
 
 <?php

@@ -1877,4 +1877,179 @@
 
         return $balance;
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CASHBOOK REPORT FILTER BUILDER
+    |--------------------------------------------------------------------------
+    |
+    | Builds the WHERE clause and prepared-statement bindings used by:
+    |
+    | - transactionFilter
+    | - Excel export
+    | - PDF export
+    |
+    */
+
+    function buildCashbookReportFilters($book_id, $filters = [])
+    {
+        $where = [];
+        $params = [];
+        $types = '';
+
+        /*
+        |--------------------------------------------------------------------------
+        | BOOK
+        |--------------------------------------------------------------------------
+        */
+
+        $where[] = "ct.book_id = ?";
+        $types .= 'i';
+        $params[] = (int)$book_id;
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | DATE FROM
+        |--------------------------------------------------------------------------
+        */
+
+        if (!empty($filters['min_date'])) {
+
+            $where[] = "DATE(ct.created_at) >= ?";
+            $types .= 's';
+            $params[] = $filters['min_date'];
+
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | DATE TO
+        |--------------------------------------------------------------------------
+        */
+
+        if (!empty($filters['max_date'])) {
+
+            $where[] = "DATE(ct.created_at) <= ?";
+            $types .= 's';
+            $params[] = $filters['max_date'];
+
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | MONTH
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            !empty($filters['month']) &&
+            is_numeric($filters['month'])
+        ) {
+
+            $where[] = "MONTH(ct.created_at) = ?";
+            $types .= 'i';
+            $params[] = (int)$filters['month'];
+
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | YEAR
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            !empty($filters['year']) &&
+            is_numeric($filters['year'])
+        ) {
+
+            $where[] = "YEAR(ct.created_at) = ?";
+            $types .= 'i';
+            $params[] = (int)$filters['year'];
+
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | TYPE
+        |--------------------------------------------------------------------------
+        */
+
+        if (!empty($filters['type'])) {
+
+            if ($filters['type'] === 'credit') {
+
+                $where[] = "COALESCE(ct.credit_amount,0) > 0";
+
+            } elseif ($filters['type'] === 'debit') {
+
+                $where[] = "COALESCE(ct.debit_amount,0) > 0";
+
+            }
+
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | CATEGORY
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            !empty($filters['category']) &&
+            is_numeric($filters['category'])
+        ) {
+
+            $where[] = "ct.category_id = ?";
+            $types .= 'i';
+            $params[] = (int)$filters['category'];
+
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | CUSTOMER
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            !empty($filters['customer']) &&
+            is_numeric($filters['customer'])
+        ) {
+
+            $where[] = "ct.customer_id = ?";
+            $types .= 'i';
+            $params[] = (int)$filters['customer'];
+
+        }
+
+        if (
+            !empty($filters['item']) &&
+            is_numeric($filters['item'])
+        ) {
+
+            $where[] = "ct.item_id = ?";
+            $types .= 'i';
+            $params[] = (int)$filters['item'];
+
+        }
+
+
+        return [
+
+            'where'  => implode(' AND ', $where),
+
+            'types'  => $types,
+
+            'params' => $params
+
+        ];
+    }
 ?>

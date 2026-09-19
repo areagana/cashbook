@@ -1,8 +1,19 @@
 <?php
     error_reporting(E_ALL);
     require_once(__dir__.'/../../assets/functions.php');
+    require_once(__DIR__ . '/../../assets/fpdf/fpdf.php');
+    require_once(__DIR__ . '/../../assets/vendor/autoload.php');
+
+    use PhpOffice\PhpSpreadsheet\Spreadsheet;
+    use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+    use PhpOffice\PhpSpreadsheet\Style\Alignment;
+    use PhpOffice\PhpSpreadsheet\Style\Border;
+    use PhpOffice\PhpSpreadsheet\Style\Fill;
+    use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+
     if(isVerified())
     {
+        
         if(isset($_POST['saveNewBook']))
         {
             $name = request('book_title');
@@ -2249,15 +2260,22 @@
                             $types       .= "i";
                         }
 
+                        /* Customer filter */
+                        if (!empty($_POST['item'])) {
+                            $conditions[] = "t.item_id = ?";
+                            $params[]     = $_POST['item'];
+                            $types       .= "i";
+                        }
+
                         // $conditions[] = "month(t.created_at) = month(now())"; // default filter
 
-                        $sql = "
-                            SELECT 
-                                t.*,
+                        $sql = "SELECT 
+                                t.*,ci.name as item_name,
                                 c.name AS category_name,cc.name as customer_name,cco.amount as cashout
                                 FROM cashbook_transactions t
                                 LEFT JOIN cashbook_categories c ON c.id = t.category_id
                                 LEFT JOIN cashbook_customers cc ON cc.id = t.customer_id
+                                LEFT JOIN cashbook_items ci ON ci.id = t.item_id
                                 LEFT JOIN cashbook_cashouts cco ON cco.transaction_id = t.id
                                 LEFT JOIN cashbook_cashins cci ON cci.transaction_id = t.id
                         ";
@@ -2287,9 +2305,9 @@
                                  $debits[] = ($row['cashout'] == $row['debit_amount']) ? $row['debit_amount'] : 0;
                                 ?>
                                     <tr class='transaction-details hover hover-hide-content'>
-                                        <td></td>
                                         <td><?=date('d-m-Y', strtotime($row['created_at']));?></td>
                                         <td><?=$row['category_name'];?></td>
+                                        <td><?=$row['item_name'];?></td>
                                         <td><?=$row['customer_name'];?></td>
                                         <td><?=$row['details'];?></td>
                                         <td class ="<?=$row['credit_amount'] > 0 ? " text-primary" : "";?>"><?=($row['credit_amount'] > 0) ? number_format($row['credit_amount'],0) : "";?></td>
@@ -2317,7 +2335,7 @@
                         else:
                             ?>
                                 <tr>
-                                    <td colspan='7'><center>No results found!</center></td>
+                                    <td colspan='8'><center>No results found!</center></td>
                                 </tr>
                             <?php
                         endif;
@@ -2337,10 +2355,1319 @@
                     endwhile;
 
                     break;
+                case 'exportTransactionReport':
 
+                        /*
+                        |--------------------------------------------------------------------------
+                        | EXCEL / PDF EXPORT
+                        |--------------------------------------------------------------------------
+                        */
+
+                        $book_id = (int)request('book_id');
+                        $format = strtolower(request('format'));
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | FILTERS
+                        |--------------------------------------------------------------------------
+                        */
+
+                        $filters = [
+                            'min_date' => request('min_date'),
+                            'max_date' => request('max_date'),
+                            'month'    => request('month'),
+                            'year'     => request('year'),
+                            'type'     => request('type'),
+                            'category' => request('category'),
+                            'customer' => request('customer'),
+                            'item'     => request('item'),
+                        ];
+
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | FILTER SQL
+                        |--------------------------------------------------------------------------
+                        */
+
+                        $filterData = buildCashbookReportFilters($book_id,$filters);
+
+                        $where = $filterData['where'];
+                        $types =  $filterData['types'];
+                        $params =  $filterData['params'];
+
+                        $book = bookFind($book_id);
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | TRANSACTIONS
+                        |--------------------------------------------------------------------------
+                        */
+
+                        $sql = "SELECT ct.id, ct.created_at, ct.type, ct.details, ct.item_id,  ct.credit_amount,  ct.debit_amount,
+                                    COALESCE(cc.name,'') AS category_name,
+                                    COALESCE(cu.name,'') AS customer_name,
+                                    COALESCE(pm.name,'') AS paymode_name,
+                                    COALESCE(ci.name,'') AS item_name
+                                FROM cashbook_transactions ct
+                                LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id
+                                LEFT JOIN cashbook_customers cu ON cu.id = ct.customer_id
+                                LEFT JOIN cashbook_paymodes pm  ON pm.id = ct.paymode_id
+                                LEFT JOIN cashbook_items ci  ON ci.id = ct.item_id
+                                WHERE {$where}
+
+                                AND (
+                                        (
+                                        ct.credit_amount > 0
+                                        AND EXISTS (
+                                            SELECT 1
+                                            FROM cashbook_cashins ci
+                                            WHERE ci.transaction_id = ct.id
+                                        )
+                                    )
+                                    OR
+                                    (
+                                        ct.debit_amount > 0
+                                        AND EXISTS (
+                                            SELECT 1
+                                            FROM cashbook_cashouts co
+                                            WHERE co.transaction_id = ct.id
+                                        )
+                                    )
+                                )
+                                ORDER BY ct.id, ct.created_at ASC
+                        ";
+
+                        $res =prepared_statements($sql,$types,$params);
+                        if (!$res) {
+                            die(
+                                "Failed to load report transactions."
+                            );
+                        }
+
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | LOAD ALL DATA FIRST
+                        |--------------------------------------------------------------------------
+                        */
+
+                        $transactions = [];
+
+                        $cashin = 0;
+                        $cashout = 0;
+                        $runningBalance = 0;
+
+                        while ($r = $res->fetch_assoc()) 
+                        {
+
+                            $credit = (float)($r['credit_amount'] ?? 0);
+                            $debit = ($r['debit_amount'] == $r['credit_amount']) ? 0 : (float)$r['debit_amount'];
+                            $cashin += $credit;
+                            $cashout += $debit;
+                            $runningBalance += $credit - $debit;
+                            $r['running_balance'] =  $runningBalance;
+
+                            $transactions[] = $r;
+                        }
+
+                        $transactionCount = count($transactions);
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | EXPORT EXCEL
+                        |--------------------------------------------------------------------------
+                        */
+
+                        if ($format === 'excel') 
+                        {
+                            $spreadsheet = new Spreadsheet();
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | SUMMARY SHEET
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $summary = $spreadsheet->getActiveSheet();
+                            $summary->setTitle('Summary');
+                            $summary->mergeCells(
+                                'A1:D1'
+                            );
+
+                            $summary->setCellValue('A1',strtoupper($book->name ?? 'BUSINESS'));
+                            $summary->mergeCells('A2:D2' );
+                            $summary->setCellValue('A2','TRANSACTION REPORT');
+
+                            $summary->setCellValue('A4','Generated');
+                            $summary->setCellValue('B4',date('d-m-Y H:i'));
+                            $summary->setCellValue('A6','Cash In');
+                            $summary->setCellValue('B6',$cashin);
+                            $summary->setCellValue('A7','Cash Out');
+                            $summary->setCellValue('B7',$cashout);
+                            $summary->setCellValue('A8','Net Balance');
+
+                            $summary->setCellValue(
+                                'B8',
+                                $cashin - $cashout
+                            );
+
+
+                            $summary->setCellValue(
+                                'A9',
+                                'Transactions'
+                            );
+
+                            $summary->setCellValue(
+                                'B9',
+                                $transactionCount
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | FILTER SUMMARY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $summary->setCellValue(
+                                'A11',
+                                'REPORT FILTERS'
+                            );
+
+
+                            $filterRow = 12;
+
+
+                            $filterLabels = [
+                                'min_date' => 'Date From',
+                                'max_date' => 'Date To',
+                                'month'    => 'Month',
+                                'year'     => 'Year',
+                                'type'     => 'Type',
+                                'category' => 'Category',
+                                'customer' => 'Customer',
+                                'item' => 'Item'
+
+                            ];
+
+
+                            foreach ($filterLabels as $key => $label) 
+                            {
+                                if (isset($filters[$key]) && $filters[$key] !== '' && $filters[$key] !== null) 
+                                {
+                                    $summary->setCellValue('A' . $filterRow, $label);
+                                    $summary->setCellValue('B' . $filterRow, $filters[$key]);
+                                    $filterRow++;
+                                }
+                            }
+
+                            foreach(range('A','C') as $col)
+                            {
+                                $summary->getColumnDimension($col)->setAutoSize(true);
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | SUMMARY STYLING
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $summary->getStyle('A1:D2')->getFont()->setBold(true);
+
+                            $summary->getStyle('A1:D2')->getAlignment()
+                                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+
+                            $summary->getStyle('A6:B9')->getBorders()
+                                    ->getAllBorders()
+                                    ->setBorderStyle(
+                                        Border::BORDER_THIN
+                                    );
+
+                            $summary->getStyle('A6:A9')->getFont()->setBold(true);
+                            $summary->getColumnDimension('A') ->setWidth(25);
+                            $summary->getColumnDimension('B') ->setWidth(30);
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TRANSACTIONS SHEET
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet = $spreadsheet->createSheet();
+
+                            $sheet->setTitle('Transactions');
+                            $sheet->mergeCells('A1:I1');
+                            $sheet->setCellValue('A1',strtoupper($book->name ?? 'BUSINESS'));
+                            $sheet->mergeCells('A2:I2');
+                            $sheet->setCellValue('A2','TRANSACTION STATEMENT');
+                            $sheet->mergeCells( 'A3:I3');
+
+                            $sheet->setCellValue( 'A3','Generated: ' .date('d-m-Y H:i'));
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | HEADERS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $headers = [
+                                'No.',
+                                'Date',
+                                'Transaction ID',
+                                'Category',
+                                'Item',
+                                'Customer',
+                                'Details',
+                                'Payment Mode',
+                                'Cash In',
+                                'Cash Out',
+                                'Balance'
+                            ];
+
+
+                            $column = 'A';
+                            foreach ($headers as $header) {
+
+                                $sheet->setCellValue(
+                                    $column . '5',
+                                    $header
+                                );
+                                $column++;
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | HEADER STYLE
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet->getStyle(
+                                'A5:K5'
+                            )->getFont()->setBold(true);
+
+
+                            $sheet->getStyle(
+                                'A5:K5'
+                            )->getAlignment()
+                            ->setHorizontal(
+                                Alignment::HORIZONTAL_CENTER
+                            );
+
+
+                            $sheet->getStyle(
+                                'A5:K5'
+                            )->getBorders()
+                            ->getAllBorders()
+                            ->setBorderStyle(
+                                Border::BORDER_THIN
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | DATA
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $row = 6;
+                            $number = 1;
+
+
+                            foreach ($transactions as $transaction) {
+
+                                $sheet->setCellValue('A' . $row,$number);
+                                $sheet->setCellValue(
+                                    'B' . $row,
+                                    !empty($transaction['created_at'])
+                                        ? date(
+                                            'd-m-Y H:i',
+                                            strtotime(
+                                                $transaction['created_at']
+                                            )
+                                        )
+                                        : ''
+                                );
+
+
+                                $sheet->setCellValue(
+                                    'C' . $row,
+                                    $transaction['id']
+                                );
+
+
+                                $sheet->setCellValue(
+                                    'D' . $row,
+                                    $transaction['category_name']
+                                );
+                                $sheet->setCellValue(
+                                    'E' . $row,
+                                    $transaction['item_name']
+                                );
+
+                                $sheet->setCellValue(
+                                    'F' . $row,
+                                    $transaction['customer_name']
+                                );
+
+                                $sheet->setCellValue(
+                                    'G' . $row,
+                                    $transaction['details']
+                                );
+
+                                $sheet->setCellValue(
+                                    'H' . $row,
+                                    $transaction['paymode_name']
+                                );
+
+                                $sheet->setCellValue(
+                                    'I' . $row,
+                                    (float)$transaction['credit_amount']
+                                );
+                                $debitt = ($transaction['debit_amount'] == $transaction['credit_amount']) ? 0 : $transaction['debit_amount'];
+                                $runningBalance = $transaction['credit_amount'] - $debitt;
+                                $sheet->setCellValue('J' . $row, (float)$debitt);
+                                $sheet->setCellValue('K' . $row,(float)$runningBalance);
+
+
+                                $row++;
+                                $number++;
+
+                            }
+
+                            foreach(range('A','K') as $col){
+                                $sheet->getColumnDimension($col)->setAutoSize(true);
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TOTAL ROW
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $totalRow = $row;
+
+
+                            $sheet->setCellValue(
+                                'A' . $totalRow,
+                                'TOTAL'
+                            );
+
+
+                            $sheet->mergeCells(
+                                'A' . $totalRow . ':H' . $totalRow
+                            );
+
+
+                            $sheet->setCellValue(
+                                'I' . $totalRow,
+                                $cashin
+                            );
+
+
+                            $sheet->setCellValue(
+                                'J' . $totalRow,
+                                $cashout
+                            );
+
+
+                            $sheet->setCellValue(
+                                'K' . $totalRow,
+                                $cashin - $cashout
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TOTAL STYLE
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet->getStyle(
+                                'A' . $totalRow . ':K' . $totalRow
+                            )->getFont()->setBold(true);
+
+                            foreach(range('A','K') as $col){
+                                $sheet->getColumnDimension($col)->setAutoSize(true);
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | AMOUNT FORMAT
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if ($totalRow >= 6) {
+
+                                $sheet->getStyle(
+                                    'H6:K' . $totalRow
+                                )->getNumberFormat()
+                                ->setFormatCode(
+                                    '#,##0'
+                                );
+
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | BORDERS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet->getStyle(
+                                'A5:K' . $totalRow
+                            )->getBorders()
+                            ->getAllBorders()
+                            ->setBorderStyle(
+                                Border::BORDER_THIN
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | COLUMN WIDTHS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $widths = [
+
+                                'A' => 8,
+                                'B' => 20,
+                                'C' => 15,
+                                'D' => 22,
+                                'E' => 25,
+                                'F' => 40,
+                                'G' => 20,
+                                'H' => 18,
+                                'I' => 18,
+                                'J' => 18,
+                                'J' => 18
+                            ];
+
+                            foreach ($widths as $col => $width) {
+                                $sheet->getColumnDimension($col)
+                                    ->setWidth($width);
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | FREEZE HEADER
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet->freezePane('A6');
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | PRINT SETTINGS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet->getPageSetup()
+                                    ->setOrientation( \PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
+
+                            $sheet->getPageSetup()->setFitToWidth(1);
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | DOWNLOAD
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $filename ='transaction_report_' .date('Y-m-d_H-i-s') .'.xlsx';
+                            if (ob_get_length()) {
+                                ob_end_clean();
+                            }
+
+
+                            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' );
+                            header('Content-Disposition: attachment; filename="' .$filename .'"' );
+
+                            header('Cache-Control: max-age=0');
+                            $writer = new Xlsx($spreadsheet);
+                            $writer->save(
+                                'php://output'
+                            );
+                            exit;
+                        }
+
+                        if ($format === 'pdf') 
+                        {
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | LOAD FPDF
+                            |--------------------------------------------------------------------------
+                            */
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | PDF CLASS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            class CashbookTransactionReportPDF extends FPDF
+                            {
+                                public $businessName = '';
+                                public $reportTitle = 'TRANSACTION REPORT';
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | PAGE HEADER
+                                |--------------------------------------------------------------------------
+                                |
+                                | This is automatically called by FPDF whenever AddPage() is called.
+                                |
+                                | IMPORTANT:
+                                | Do NOT put transaction table headers here.
+                                |
+                                */
+
+                                function Header()
+                                {
+                                    $this->SetFont(
+                                        'Arial',
+                                        'B',
+                                        16
+                                    );
+
+                                    $this->Cell(
+                                        0,
+                                        8,
+                                        strtoupper($this->businessName),
+                                        0,
+                                        1,
+                                        'C'
+                                    );
+
+
+                                    $this->SetFont(
+                                        'Arial',
+                                        'B',
+                                        12
+                                    );
+
+                                    $this->Cell(
+                                        0,
+                                        7,
+                                        $this->reportTitle,
+                                        0,
+                                        1,
+                                        'C'
+                                    );
+
+
+                                    $this->SetFont(
+                                        'Arial',
+                                        '',
+                                        8
+                                    );
+
+                                    $this->Cell(
+                                        0,
+                                        5,
+                                        'Generated: ' . date('d-m-Y H:i'),
+                                        0,
+                                        1,
+                                        'C'
+                                    );
+
+
+                                    $this->Ln(4);
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | TRANSACTION TABLE HEADER
+                                |--------------------------------------------------------------------------
+                                |
+                                | This is called manually when the transaction table begins.
+                                |
+                                */
+
+                                function TableHeader()
+                                {
+                                    $this->SetFont(
+                                        'Arial',
+                                        'B',
+                                        7
+                                    );
+
+
+                                    $this->Cell(8, 7, '#', 1);
+                                    $this->Cell(28, 7, 'Date', 1);
+                                    $this->Cell(32, 7, 'Category', 1);
+                                    $this->Cell(32, 7, 'Item', 1);
+                                    $this->Cell(27, 7, 'Customer', 1);
+                                    $this->Cell(51, 7, 'Details', 1);
+                                    $this->Cell(22, 7, 'Cash In', 1, 0, 'R');
+                                    $this->Cell(22, 7, 'Cash Out', 1, 0, 'R');
+                                    $this->Cell(22, 7, 'Balance', 1, 1, 'R');
+                                    $this->SetFont(
+                                        'Arial',
+                                        '',
+                                        7
+                                    );
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | PAGE FOOTER
+                                |--------------------------------------------------------------------------
+                                */
+
+                                function Footer()
+                                {
+                                    $this->SetY(-15);
+
+                                    $this->SetFont(
+                                        'Arial',
+                                        '',
+                                        7
+                                    );
+
+                                    $this->Cell(
+                                        0,
+                                        5,
+                                        'Page ' .
+                                        $this->PageNo() .
+                                        ' | Cashbook Transaction Report',
+                                        0,
+                                        0,
+                                        'C'
+                                    );
+                                }
+
+                                function CheckTablePageBreak($height = 6)
+                                {
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | Bottom margin
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    $bottomMargin = 18;
+
+
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | Available page height
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    $pageHeight = $this->GetPageHeight();
+
+
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | Current position
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    $currentY = $this->GetY();
+
+
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | Check whether row fits
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    if (
+                                        $currentY +
+                                        $height +
+                                        $bottomMargin
+                                        >
+                                        $pageHeight
+                                    ) {
+
+                                        $this->AddPage();
+
+                                        /*
+                                        |--------------------------------------------------------------------------
+                                        | AddPage() already called Header()
+                                        |--------------------------------------------------------------------------
+                                        |
+                                        | Now put the transaction headings below the normal page header.
+                                        |
+                                        */
+
+                                        $this->TableHeader();
+
+                                        $this->SetFont(
+                                            'Arial',
+                                            '',
+                                            7
+                                        );
+
+                                    }
+                                }
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | CREATE PDF
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $pdf =new CashbookTransactionReportPDF('L','mm','A4');
+                            $pdf->businessName = $book->name ??'BUSINESS';
+                            $pdf->SetMargins(8,8,8);
+                            $pdf->SetAutoPageBreak(true, 18);
+                            $pdf->AddPage();
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | SUMMARY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $pdf->SetFont(
+                                'Arial',
+                                'B',
+                                9
+                            );
+
+
+                            $pdf->Cell(
+                                42,
+                                7,
+                                'CASH IN',
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                42,
+                                7,
+                                'CASH OUT',
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                42,
+                                7,
+                                'NET BALANCE',
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                42,
+                                7,
+                                'TRANSACTIONS',
+                                1,
+                                1,
+                                'C'
+                            );
+
+
+                            $pdf->SetFont(
+                                'Arial',
+                                '',
+                                9
+                            );
+
+
+                            $pdf->Cell(
+                                42,
+                                7,
+                                number_format($cashin, 0),
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                42,
+                                7,
+                                number_format($cashout, 0),
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                42,
+                                7,
+                                number_format(
+                                    $cashin - $cashout,
+                                    0
+                                ),
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                42,
+                                7,
+                                $transactionCount,
+                                1,
+                                1,
+                                'C'
+                            );
+
+
+                            $pdf->Ln(4);
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | FILTER INFORMATION
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $filterText = [];
+
+
+                            if (!empty($filters['min_date'])) {
+
+                                $filterText[] =
+                                    'From: ' .
+                                    date(
+                                        'd-m-Y',
+                                        strtotime(
+                                            $filters['min_date']
+                                        )
+                                    );
+
+                            }
+
+
+                            if (!empty($filters['max_date'])) {
+
+                                $filterText[] =
+                                    'To: ' .
+                                    date(
+                                        'd-m-Y',
+                                        strtotime(
+                                            $filters['max_date']
+                                        )
+                                    );
+
+                            }
+
+
+                            if (!empty($filters['month'])) {
+
+                                $filterText[] =
+                                    'Month: ' .
+                                    $filters['month'];
+
+                            }
+
+
+                            if (!empty($filters['year'])) {
+
+                                $filterText[] =
+                                    'Year: ' .
+                                    $filters['year'];
+
+                            }
+
+
+                            if (!empty($filters['type'])) {
+
+                                $filterText[] =
+                                    'Type: ' .
+                                    (
+                                        $filters['type'] === 'credit'
+                                        ? 'Cash In'
+                                        : 'Cash Out'
+                                    );
+
+                            }
+
+
+                            if (!empty($filters['category'])) {
+
+                                $catSql = "
+                                    SELECT name
+                                    FROM cashbook_categories
+                                    WHERE id = ?
+                                    LIMIT 1
+                                ";
+
+                                $catRes =
+                                    prepared_statements(
+                                        $catSql,
+                                        'i',
+                                        [(int)$filters['category']]
+                                    );
+
+                                if ($catRes) {
+
+                                    $cat =
+                                        $catRes->fetch_assoc();
+
+                                    if ($cat) {
+
+                                        $filterText[] =
+                                            'Category: ' .
+                                            $cat['name'];
+
+                                    }
+
+                                }
+
+                            }
+
+                            if (!empty($filters['customer'])) 
+                            {
+
+                                $custSql = "
+                                    SELECT name
+                                    FROM cashbook_customers
+                                    WHERE id = ?
+                                    LIMIT 1
+                                ";
+
+                                $custRes =
+                                    prepared_statements(
+                                        $custSql,
+                                        'i',
+                                        [(int)$filters['customer']]
+                                    );
+
+                                if ($custRes) {
+
+                                    $cust =
+                                        $custRes->fetch_assoc();
+
+                                    if ($cust) {
+
+                                        $filterText[] =
+                                            'Customer: ' .
+                                            $cust['name'];
+
+                                    }
+
+                                }
+
+                            }
+
+                            if (!empty($filters['item'])) 
+                            {
+                                $itemSql = "SELECT name FROM cashbook_items WHERE id = ? LIMIT 1 ";
+                                $itemRes = prepared_statements( $itemSql,'i',[(int)$filters['item']]);
+
+                                if ($itemRes) 
+                                {
+                                    $itm = $itemRes->fetch_assoc();
+                                    if ($cust) { $filterText[] = 'Item: ' . $itm['name'];}
+                                }
+                            }
+
+
+                            $pdf->SetFont(
+                                'Arial',
+                                'B',
+                                8
+                            );
+
+
+                            $pdf->Cell(
+                                0,
+                                5,
+                                'REPORT FILTERS',
+                                0,
+                                1
+                            );
+
+
+                            $pdf->SetFont(
+                                'Arial',
+                                '',
+                                8
+                            );
+
+
+                            $pdf->MultiCell(
+                                0,
+                                5,
+                                !empty($filterText)
+                                    ? implode(
+                                        ' | ',
+                                        $filterText
+                                    )
+                                    : 'All Transactions',
+                                0,
+                                'L'
+                            );
+
+
+                            $pdf->Ln(3);
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TRANSACTION DATA
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $pdf->SetFont('Arial','',7);
+                            
+                            $number = 1;
+                            // add table header
+                            $pdf->TableHeader();
+
+                            foreach ($transactions as $transaction) {
+
+                                $pdf->CheckTablePageBreak(6);
+
+
+                                $date =!empty($transaction['created_at'])
+                                        ? date(
+                                            'd-m-Y H:i',
+                                            strtotime(
+                                                $transaction['created_at']
+                                            )
+                                        )
+                                        : '';
+
+
+                                $category = $transaction['category_name']?? '';
+                                $item = $transaction['item_name']?? '';
+                                $customer = $transaction['customer_name'] ?? '';
+                                $details = $transaction['details'] ?? '';
+
+
+                                $credit =
+                                    (float)(
+                                        $transaction['credit_amount']
+                                        ?? 0
+                                    );
+
+                                $debit = (float)( $transaction['debit_amount'] != $transaction['credit_amount']) ? $transaction['debit_amount'] : 0 ;
+
+                                $rowBalance =
+                                    (float)(
+                                        $transaction['running_balance']
+                                        ?? 0
+                                    );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | LIMIT TEXT
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $category = mb_substr($category, 0, 28);
+                                $item = mb_substr($item,0,28);
+
+                                $customer =  mb_substr($customer,0, 28);
+                                $details = mb_substr($details,0,58);
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | DRAW ROW
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $pdf->Cell(
+                                    8,
+                                    6,
+                                    $number,
+                                    1
+                                );
+
+                                $pdf->Cell(
+                                    28,
+                                    6,
+                                    $date,
+                                    1
+                                );
+
+                                $pdf->Cell(
+                                    32,
+                                    6,
+                                    $category,
+                                    1
+                                );
+
+                                $pdf->Cell(
+                                    32,
+                                    6,
+                                    $item,
+                                    1
+                                );
+
+                                $pdf->Cell(
+                                    27,
+                                    6,
+                                    $customer,
+                                    1
+                                );
+
+                                $pdf->Cell(
+                                    51,
+                                    6,
+                                    $details,
+                                    1
+                                );
+
+                                $pdf->Cell(
+                                    22,
+                                    6,
+                                    $credit > 0
+                                        ? number_format(
+                                            $credit,
+                                            0
+                                        )
+                                        : '',
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+                                $pdf->Cell(
+                                    22,
+                                    6,
+                                    $debit > 0
+                                        ? number_format(
+                                            $debit,
+                                            0
+                                        )
+                                        : '',
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+                                $pdf->Cell(
+                                    22,
+                                    6,
+                                    number_format(
+                                        $rowBalance,
+                                        0
+                                    ),
+                                    1,
+                                    1,
+                                    'R'
+                                );
+
+
+                                $number++;
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TOTAL
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $pdf->CheckTablePageBreak(7);
+                            $pdf->SetFont(
+                                'Arial',
+                                'B',
+                                8
+                            );
+
+                            $pdf->Cell(
+                                178,
+                                7,
+                                'TOTAL',
+                                1,
+                                0,
+                                'R'
+                            );
+
+                            $pdf->Cell(
+                                22,
+                                7,
+                                number_format(
+                                    $cashin,
+                                    0
+                                ),
+                                1,
+                                0,
+                                'R'
+                            );
+
+                            $pdf->Cell(
+                                22,
+                                7,
+                                number_format(
+                                    $cashout,
+                                    0
+                                ),
+                                1,
+                                0,
+                                'R'
+                            );
+
+                            $pdf->Cell(
+                                22,
+                                7,
+                                number_format(
+                                    $cashin - $cashout,
+                                    0
+                                ),
+                                1,
+                                1,
+                                'R'
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | DOWNLOAD
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $filename =
+                                'transaction_report_' .
+                                date('Y-m-d_H-i-s') .
+                                '.pdf';
+
+
+                            if (ob_get_length()) {
+                                ob_end_clean();
+                            }
+
+
+                            $pdf->Output(
+                                'D',
+                                $filename
+                            );
+
+
+                            exit;
+
+                        }
+                    break;
             }
         }
-    }else{
+            
+        }else{
         redirect('../');
     }
 ?>
