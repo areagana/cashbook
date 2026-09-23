@@ -622,7 +622,18 @@
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta name="theme-color" content="#F31725">
+                <meta name="mobile-web-app-capable" content="yes">
+                <meta name="apple-mobile-web-app-capable" content="yes">
+                <meta name="apple-mobile-web-app-status-bar-style"content="default">
+                <meta name="apple-mobile-web-app-title" content="Cashbook">
+                <link rel="apple-touch-icon"href="/cashbook/icons/icon-192.png">
+                <link rel="apple-touch-icon" sizes="180x180" href="/cashbook/icons/apple-touch-icon.png">
+                <link rel="icon" type="image/png" sizes="32x32" href="/cashbook/icons/favicon-32x32.png">
+                <link rel="icon" type="image/png" sizes="16x16" href="/cashbook/icons/favicon-16x16.png">
+
                 <title><?=($header) ? $header : "Cashbook";?></title>
+                <link rel="manifest" href="/cashbook/manifest.json">
                 
                 <!-- Bootstrap 4 -->
                 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.18/css/bootstrap-select.min.css">
@@ -701,6 +712,33 @@
                     <script src="../assets/js/select2.min.js" defer></script>
                     <script src="../assets/js/custom.js"></script>
                     <script src="../assets/script.js"></script>
+                    <script>
+                        if ('serviceWorker' in navigator) {
+
+                            window.addEventListener('load', function () {
+
+                                navigator.serviceWorker
+                                    .register('/cashbook/service-worker.js')
+                                    .then(function (registration) {
+
+                                        console.log(
+                                            'Cashbook Service Worker registered:',
+                                            registration.scope
+                                        );
+
+                                    })
+                                    .catch(function (error) {
+
+                                        console.error(
+                                            'Cashbook Service Worker registration failed:',
+                                            error
+                                        );
+
+                                    });
+                            });
+
+                        }
+                    </script>
             </body>
         </html>
         <?php
