@@ -13,12 +13,14 @@
         | CUSTOMER FINANCIAL SUMMARY
         |--------------------------------------------------------------------------
         |
-        | Customer balance is taken from cashbook_customer_balances, while
-        | transaction totals come from cashbook_transactions.
+        | Customer balance is taken from cashbook_customer_balances.
         |
-        | Convention:
-        |   credit_amount = cash coming from customer
-        |   debit_amount  = amount charged/owed by customer
+        | Real money movement is taken from cashbook_transactions only when
+        | the transaction is backed by the appropriate source record:
+        |   credit_amount = counted only if cashbook_cashins.transaction_id = t.id
+        |   debit_amount  = counted only if cashbook_cashouts.transaction_id = t.id
+        |
+        | This keeps ledger-only/unbacked transactions out of cash movement totals.
         |
         | This page therefore gives us:
         |   - Customer count
@@ -78,16 +80,34 @@
         |--------------------------------------------------------------------------
         */
 
+        /*
+        |--------------------------------------------------------------------------
+        | CUSTOMER DATA
+        |--------------------------------------------------------------------------
+        | IMPORTANT:
+        | Items and money movement are aggregated independently before they are
+        | joined to customers. This prevents customer_items x transactions from
+        | multiplying transaction amounts.
+        |
+        | Real money movement rule:
+        |   Cash In  -> transaction must exist in cashbook_cashins
+        |   Cash Out -> transaction must exist in cashbook_cashouts
+        |--------------------------------------------------------------------------
+        */
+
         $sql = "
             SELECT
                 c.*,
-                COUNT(DISTINCT cci.item_id) AS items,
+
+                COALESCE(ci.items,0) AS items,
+
                 cr.name AS route,
                 crm.name AS route_manager,
+
                 COALESCE(cb.balance,0) AS balance,
 
-                COALESCE(SUM(t.credit_amount),0) AS cashin,
-                COALESCE(SUM(t.debit_amount),0) AS cashout
+                COALESCE(tm.cashin,0) AS cashin,
+                COALESCE(tm.cashout,0) AS cashout
 
             FROM cashbook_customers c
 
@@ -101,20 +121,60 @@
             LEFT JOIN cashbook_route_managers crm
                 ON crm.id = c.route_manager_id
 
-            LEFT JOIN cashbook_customer_items cci
-                ON cci.customer_id = c.id
+            LEFT JOIN (
+                SELECT
+                    customer_id,
+                    COUNT(DISTINCT item_id) AS items
+                FROM cashbook_customer_items
+                GROUP BY customer_id
+            ) ci
+                ON ci.customer_id = c.id
 
-            LEFT JOIN cashbook_transactions t
-                ON t.customer_id = c.id
-                AND t.book_id = c.book_id
+            LEFT JOIN (
+                SELECT
+                    t.customer_id,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN t.credit_amount > 0
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM cashbook_cashins csh_in
+                                    WHERE csh_in.transaction_id = t.id
+                                )
+                                THEN t.credit_amount
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS cashin,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN t.debit_amount > 0
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM cashbook_cashouts csh_out
+                                    WHERE csh_out.transaction_id = t.id
+                                )
+                                THEN t.debit_amount
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS cashout
+
+                FROM cashbook_transactions t
+
+                WHERE t.book_id = ?
+
+                GROUP BY t.customer_id
+            ) tm
+                ON tm.customer_id = c.id
 
             WHERE c.book_id = ?
-
-            GROUP BY
-                c.id,
-                cr.name,
-                crm.name,
-                cb.balance
 
             ORDER BY
                 COALESCE(cb.balance,0) DESC,
@@ -122,11 +182,43 @@
         ";
 
         $transactionSummarySql = " SELECT
-                    COALESCE(SUM(credit_amount),0) AS cashin,
-                    COALESCE(SUM(debit_amount),0) AS cashout
-                FROM cashbook_transactions
-                WHERE book_id = ?
-                AND customer_id > 0
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN t.credit_amount > 0
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM cashbook_cashins ci
+                                    WHERE ci.transaction_id = t.id
+                                )
+                                THEN t.credit_amount
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS cashin,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN t.debit_amount > 0
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM cashbook_cashouts co
+                                    WHERE co.transaction_id = t.id
+                                )
+                                THEN t.debit_amount
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS cashout
+
+                FROM cashbook_transactions t
+
+                WHERE t.book_id = ?
+                AND t.customer_id > 0
             ";
 
             $transactionSummaryRes = prepared_statements(
@@ -142,12 +234,23 @@
             $cashIn = (float)($transactionSummary['cashin'] ?? 0);
             $cashOut = (float)($transactionSummary['cashout'] ?? 0);
 
-        $res = prepared_statements($sql,'i',[$book->id]);
+        $res = prepared_statements($sql,'ii',[$book->id,$book->id]);
 
         $customers = [];
 
         $totalItems = 0;
         $customersWithTransactions = 0;
+
+        /*
+        |--------------------------------------------------------------------------
+        | CUSTOMER TABLE TOTALS
+        |--------------------------------------------------------------------------
+        | These totals are accumulated from the exact same rows displayed in
+        | the Customer Financial Summary. This guarantees footer alignment.
+        */
+        $tableCashIn = 0;
+        $tableCashOut = 0;
+        $tableBalance = 0;
 
         while($r = $res->fetch_assoc())
         {
@@ -159,11 +262,25 @@
 
             $totalItems += (int)$r['items'];
 
+            $tableCashIn += $r['cashin'];
+            $tableCashOut += $r['cashout'];
+            $tableBalance += $r['balance'];
+
             if($r['cashin'] != 0 || $r['cashout'] != 0)
             {
                 $customersWithTransactions++;
             }
         }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ALIGN DASHBOARD MONEY TOTALS WITH CUSTOMER TABLE
+        |--------------------------------------------------------------------------
+        */
+        $cashIn = $tableCashIn;
+        $cashOut = $tableCashOut;
+        $netMovement = $cashIn - $cashOut;
 
         /*
         |--------------------------------------------------------------------------
@@ -303,16 +420,6 @@
                 Customers
             </a>
         </div>
-
-        <div class="col-md-4 p-2 text-md-right">
-            <a
-                href="index_ai.php?bsid=<?=$bsid;?>"
-                class="btn btn-sm btn-flat btn-outline-primary">
-                <i class="fa fa-magic"></i>
-                AI PAGE
-            </a>
-        </div>
-
     </div>
 
     <hr>
@@ -829,15 +936,15 @@
                                 </td>
 
                                 <td class="text-right text-success">
-                                    <?=customerMoney($cashIn);?>
+                                    <?=customerMoney($tableCashIn);?>
                                 </td>
 
                                 <td class="text-right text-danger">
-                                    <?=customerMoney($cashOut);?>
+                                    <?=customerMoney($tableCashOut);?>
                                 </td>
 
-                                <td class="text-right text-primary">
-                                    <?=customerMoney($outstandingBalance);?>
+                                <td class="text-right <?=($tableBalance >= 0 ? 'text-primary' : 'text-danger');?>">
+                                    <?=customerMoney($tableBalance);?>
                                 </td>
 
                                 <td></td>

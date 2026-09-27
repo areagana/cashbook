@@ -40,59 +40,34 @@
                     ?>
 
                     <div class="row mx-1">
-
-                        <div class="col p-2">
-
-                            <strong>
-                                CATEGORY:
-                            </strong>
-
-                            <?= htmlspecialchars($category['name'] ?? 'Unknown Category'); ?>
-
+                        <div class="col p-2 h3">
+                            CATEGORY DETAILS
                         </div>
 
                         <div class="col p-2 text-right">
-
-                            <button
-                                class="btn btn-sm btn-outline-danger btn-flat"
-                                onclick="printMe('printable-div')">
-
-                                <i class="fa fa-print"></i>
+                            <button class="btn btn-sm btn-outline-danger btn-flat" onclick="printMe('printable-div')"><i class="fa fa-print"></i>
                                 Print
-
                             </button>
-
                         </div>
-
                     </div>
+                    <hr>
 
 
                     <div class="p-2" id="printable-div">
-
                         <!-- =========================================================
                             CATEGORY HEADER
                         ========================================================== -->
 
                         <div class="row mx-1">
-
                             <div class="col p-2">
-
                                 <h3>
-                                    <strong>
-                                        Category:
-                                    </strong>
-
+                                    <strong>Category:</strong>
                                     <?= htmlspecialchars($category['name'] ?? 'Unknown Category'); ?>
-
                                 </h3>
-
                             </div>
 
-
                             <div class="col p-2">
-
                                 <div class="border p-3 rounded">
-
                                     <?php
 
                                     /*

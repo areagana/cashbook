@@ -18,66 +18,40 @@ if (isVerified()) {
     ========================================================== -->
 
     <div class="row mx-1 align-items-center">
-
         <div class="col-md-8 p-2 d-flex align-items-center">
-
             <a href="../books/?bkid=<?= $bsid; ?>" class="nav-link px-1">
                 Books
             </a>
-
             <i class="fa fa-angle-right mx-2"></i>
-
             <span class="text-muted">
                 REPORTS
             </span>
-
         </div>
 
-
         <!-- EXPORT BUTTONS -->
-
         <div class="col-md-4 p-2 text-right">
-
-            <button
-                type="button"
+            <button type="button"
                 class="btn btn-sm btn-outline-success btn-flat report-export"
                 data-format="excel">
 
                 <i class="fa fa-file-excel-o"></i>
                 Excel
-
             </button>
-
-
-            <button
-                type="button"
+            <button type="button"
                 class="btn btn-sm btn-outline-danger btn-flat report-export"
                 data-format="pdf">
-
                 <i class="fa fa-file-pdf-o"></i>
                 PDF
-
             </button>
-
-
-            <button
-                type="button"
+            <button type="button"
                 class="btn btn-sm btn-outline-secondary btn-flat"
                 onclick="printMe('report-print-area')">
-
                 <i class="fa fa-print"></i>
                 Print
-
             </button>
-
         </div>
-
     </div>
-
-
     <hr class="mt-1">
-
-
     <!-- =========================================================
          BUSINESS STATUS SUMMARY
          This is populated immediately when page loads.
@@ -85,51 +59,29 @@ if (isVerified()) {
     ========================================================== -->
 
     <div id="business-summary">
-
         <div class="row mx-1">
-
             <div class="col-12">
-
                 <h5 class="font-weight-bold mb-3">
-
                     <i class="fa fa-dashboard"></i>
                     BUSINESS STATUS
-
                 </h5>
-
             </div>
-
-
             <!-- CASH IN -->
 
-            <div class="col-xl-3 col-md-6 col-sm-6 mb-3">
-
+            <div class="col-xl-3 col-md-2 col-sm-3 mb-3">
                 <div class="card shadow-sm border-left-success h-100">
-
                     <div class="card-body">
-
                         <div class="row no-gutters align-items-center">
-
                             <div class="col mr-2">
-
                                 <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
                                     Cash In
                                 </div>
-
-                                <div
-                                    class="h4 mb-0 font-weight-bold text-gray-800"
-                                    id="summary-cashin">
-
+                                <div class="h4 mb-0 font-weight-bold text-gray-800" id="summary-cashin">
                                     0
-
                                 </div>
-
                             </div>
-
                             <div class="col-auto">
-
                                 <i class="fa fa-arrow-circle-down fa-2x text-success"></i>
-
                             </div>
 
                         </div>
@@ -139,52 +91,31 @@ if (isVerified()) {
                 </div>
 
             </div>
-
-
             <!-- CASH OUT -->
 
-            <div class="col-xl-3 col-md-6 col-sm-6 mb-3">
-
+            <div class="col-xl-2 col-md-2 col-sm-3 mb-3">
                 <div class="card shadow-sm border-left-danger h-100">
-
                     <div class="card-body">
-
                         <div class="row no-gutters align-items-center">
-
                             <div class="col mr-2">
-
                                 <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
                                     Cash Out
                                 </div>
-
-                                <div
-                                    class="h4 mb-0 font-weight-bold text-gray-800"
-                                    id="summary-cashout">
-
+                                <div class="h4 mb-0 font-weight-bold text-gray-800" id="summary-cashout">
                                     0
-
                                 </div>
-
                             </div>
-
                             <div class="col-auto">
-
                                 <i class="fa fa-arrow-circle-up fa-2x text-danger"></i>
-
                             </div>
-
                         </div>
-
                     </div>
-
                 </div>
-
             </div>
-
 
             <!-- BALANCE -->
 
-            <div class="col-xl-3 col-md-6 col-sm-6 mb-3">
+            <div class="col-xl-3 col-md-2 col-sm-3 mb-3">
 
                 <div class="card shadow-sm border-left-primary h-100">
 
@@ -221,51 +152,51 @@ if (isVerified()) {
                 </div>
 
             </div>
-
-
-            <!-- TRANSACTIONS -->
-
-            <div class="col-xl-3 col-md-6 col-sm-6 mb-3">
-
-                <div class="card shadow-sm border-left-secondary h-100">
-
+            <!-- QTY -->
+            <div class="col-xl-2 col-md-2 col-sm-3 mb-3">
+                <div class="card shadow-sm border-left-primary h-100">
                     <div class="card-body">
-
                         <div class="row no-gutters align-items-center">
-
                             <div class="col mr-2">
-
-                                <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">
-                                    Transactions
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                    Quantity
                                 </div>
-
-                                <div
-                                    class="h4 mb-0 font-weight-bold text-gray-800"
-                                    id="summary-transactions">
-
+                                <div class="h4 mb-0 font-weight-bold text-gray-800" id="report-quantity">
                                     0
-
                                 </div>
-
                             </div>
-
                             <div class="col-auto">
-
-                                <i class="fa fa-exchange fa-2x text-secondary"></i>
-
+                                <i class="fa fa-cubes fa-2x text-primary"></i>
                             </div>
-
                         </div>
-
                     </div>
-
                 </div>
-
             </div>
 
+            <!-- TRANSACTIONS -->
+        <div class="col-xl-2 col-md-2 col-sm-3 mb-3">
+            <div class="card shadow-sm border-left-secondary h-100">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">
+                                Transactions
+                            </div>
+                            <div class="h4 mb-0 font-weight-bold text-gray-800"
+                                id="summary-transactions">
+                                0
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fa fa-exchange fa-2x text-secondary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-
+        </div>
     </div>
+</div>
 
 
     <!-- =========================================================
@@ -273,12 +204,9 @@ if (isVerified()) {
     ========================================================== -->
 
     <div class="row mx-1">
-
-
         <!-- =====================================================
              REPORT CENTER
         ====================================================== -->
-
         <div class="col-lg-9 col-md-8 order-2 order-md-1">
             <div class="card shadow-sm" id="report-print-area">
                 <div class="card-header bg-white">
@@ -308,6 +236,12 @@ if (isVerified()) {
                                     <th>Date</th>
                                     <th>Category</th>
                                     <th>Item</th>
+                                    <th class="text-right">
+                                        Qty In
+                                    </th>
+                                    <th class="text-right">
+                                        Qty Out
+                                    </th>
                                     <th>Customer</th>
                                     <th>Details</th>
                                     <th class="text-right">
@@ -323,7 +257,7 @@ if (isVerified()) {
                             </thead>
                             <tbody class="transactions-tbody">
                                 <tr>
-                                    <td colspan="9" class="text-center p-5">
+                                    <td colspan="10" class="text-center p-5">
                                         <i class="fa fa-spinner fa-spin fa-2x"></i>
                                         <div class="mt-2">
                                             Loading report...
@@ -332,44 +266,60 @@ if (isVerified()) {
                                 </tr>
                             </tbody>
                             <tfoot>
-
                                 <tr class="font-weight-bold bg-light">
-
-                                    <td colspan="4" class="text-right">
+                                    <td colspan="3">
                                         TOTAL
                                     </td>
-
+                                    <td
+                                        class="text-right"
+                                        id="report-total-qty-in">
+                                        0
+                                    </td>
+                                    <td
+                                        class="text-right"
+                                        id="report-total-qty-out">
+                                        0
+                                    </td>
+                                    <td colspan="2"></td>
                                     <td
                                         class="text-right"
                                         id="report-total-cashin">
-
-                                        0
-
-                                    </td>
-
-                                    <td class="text-right" id="report-total-cashout">
                                         0
                                     </td>
-
                                     <td
                                         class="text-right"
-                                        id="report-total-balance">
-
+                                        id="report-total-cashout">
                                         0
-
                                     </td>
+                                    <td></td>
                                 </tr>
 
+                                <tr class="font-weight-bold">
+                                    <td colspan="3">
+                                        NET MOVEMENT
+                                    </td>
+                                    <td
+                                        colspan="2"
+                                        class="text-right"
+                                        id="report-total-net-qty">
+                                        0
+                                    </td>
+                                    <td colspan="2">
+                                        BALANCE
+                                    </td>
+                                    <td
+                                        colspan="2"
+                                        class="text-right"
+                                        id="report-total-balance">
+                                        0
+                                    </td>
+                                    <td></td>
+                                </tr>
                             </tfoot>
-
                         </table>
-
                     </div>
-
                 </div>
-
             </div>
-
         </div>
 
 
@@ -378,33 +328,21 @@ if (isVerified()) {
         ====================================================== -->
 
         <div class="col-lg-3 col-md-4 order-1 order-md-2 mb-3">
-
             <div class="card shadow-sm">
-
                 <div class="card-header bg-white">
-
                     <h5 class="mb-0 font-weight-bold">
-
                         <i class="fa fa-filter"></i>
                         Report Filters
-
                     </h5>
-
                 </div>
 
-
                 <div class="card-body">
-
                     <!-- DATE FROM -->
-
                     <div class="form-group">
-
                         <label class="font-weight-bold">
                             Date From
                         </label>
-
-                        <input
-                            type="date"
+                        <input type="date"
                             name="min_date"
                             data-type="min_date"
                             max="<?= date('Y-m-d'); ?>"
@@ -415,18 +353,14 @@ if (isVerified()) {
                     <!-- DATE TO -->
 
                     <div class="form-group">
-
                         <label class="font-weight-bold">
                             Date To
                         </label>
-
-                        <input
-                            type="date"
+                        <input type="date"
                             name="max_date"
                             data-type="max_date"
                             max="<?= date('Y-m-d'); ?>"
                             class="form-control filter-item">
-
                     </div>
 
 
@@ -456,7 +390,6 @@ if (isVerified()) {
                         );
 
                         $month_names = [
-
                             1 => 'January',
                             2 => 'February',
                             3 => 'March',
@@ -469,7 +402,6 @@ if (isVerified()) {
                             10 => 'October',
                             11 => 'November',
                             12 => 'December'
-
                         ];
                         ?>
                         <select name="month"  data-type="month" class="form-control filter-item">
@@ -478,8 +410,7 @@ if (isVerified()) {
                             </option>
 
                             <?php while ($rm = $months->fetch_assoc()): ?>
-                                <option
-                                    value="<?= $rm['month']; ?>"
+                                <option value="<?= $rm['month']; ?>"
                                     data-year="<?= $rm['year']; ?>">
 
                                     <?= $month_names[$rm['month']]; ?>
@@ -489,11 +420,8 @@ if (isVerified()) {
                         </select>
                     </div>
 
-
                     <!-- TYPE -->
-
                     <div class="form-group">
-
                         <label class="font-weight-bold">
                             Transaction Type
                         </label>
@@ -508,54 +436,33 @@ if (isVerified()) {
                                 Cash Out
                             </option>
                         </select>
-
                     </div>
 
 
                     <!-- CATEGORY -->
-
                     <div class="form-group">
                         <label class="font-weight-bold">
                             Category
                         </label>
-
                         <?php
-
-                        $sql = "SELECT *
-                            FROM cashbook_categories
-                            WHERE book_id = ?
-                            ORDER BY name ASC
-                        ";
-
-                        $cats = prepared_statements(
-                            $sql,
-                            'i',
-                            [$book->id]
-                        );
-
+                            $sql = "SELECT *
+                                FROM cashbook_categories
+                                WHERE book_id = ?
+                                ORDER BY name ASC";
+                            $cats = prepared_statements($sql, 'i',[$book->id]);
                         ?>
 
-                        <select
-                            name="category"
-                            data-type="category"
-                            class="form-control filter-item">
-
+                        <select name="category" data-type="category" class="form-control filter-item">
                             <option value="">
                                 All Categories
                             </option>
 
                             <?php while ($rc = $cats->fetch_assoc()): ?>
-
                                 <option value="<?= $rc['id']; ?>">
-
                                     <?= htmlspecialchars($rc['name']); ?>
-
                                 </option>
-
                             <?php endwhile; ?>
-
                         </select>
-
                     </div>
 
 
@@ -608,36 +515,28 @@ if (isVerified()) {
                     </div>
 
                     <!-- ITEM -->
-
                     <div class="form-group">
-
                         <label class="font-weight-bold">
                             Item
                         </label>
 
                         <?php
-
-                        $sqlc = " SELECT * FROM cashbook_items  WHERE book_id = ?  ORDER BY name ASC ";
-                        $itm = prepared_statements($sqlc,'i',[$book->id] );
+                            $sqlc = " SELECT * FROM cashbook_items  WHERE book_id = ?  ORDER BY name ASC ";
+                            $itm = prepared_statements($sqlc,'i',[$book->id] );
                         ?>
 
                         <select name="item" data-type="item" class="form-control filter-item">
                             <option value="">
                                 All Items
                             </option>
-
                             <?php while ($rit = $itm->fetch_assoc()): ?>
                                 <option value="<?= $rit['id']; ?>">
                                     <?= htmlspecialchars($rit['name']); ?>
                                 </option>
                             <?php endwhile; ?>
                         </select>
-                    </div>
-
-                                
+                    </div>             
                     <hr>
-
-
                     <!-- FILTER BUTTON -->
 
                     <button type="button" class="btn btn-success btn-flat btn-block" id="apply-report-filter">
@@ -645,14 +544,12 @@ if (isVerified()) {
                         Apply Filters
                     </button>
 
-
                     <!-- RESET -->
 
                     <button  type="button" class="btn btn-outline-secondary btn-flat btn-block" id="reset-report-filter">
                         <i class="fa fa-refresh"></i>
                         Reset
                     </button>
-
                     <div class="text-center text-muted small mt-3"  id="filter-status">
                         Showing all transactions
                     </div>
@@ -667,26 +564,12 @@ if (isVerified()) {
      SIDE MODAL
 ============================================================== -->
 
-<div
-    class="p-0 bg-white side-modal-tall absolute border shadow"
-    id="side-modal-cashin">
-
+<div class="p-0 bg-white side-modal-tall absolute border shadow" id="side-modal-cashin">
     <div class="side-modal-header bg-success">
-
         <h3 class="side-modal-title text-white"></h3>
-
-        <button
-            type="button"
-            class="side-modal-close">
-
-            &times;
-
-        </button>
-
+        <button type="button" class="side-modal-close">&times;</button>
     </div>
-
     <div class="side-modal-content"></div>
-
 </div>
 
 
@@ -694,137 +577,255 @@ if (isVerified()) {
      CENTRAL MODAL
 ============================================================== -->
 
-<div
-    class="p-0 bg-white central-modal absolute border shadow"
-    id="central-modal">
-
+<div class="p-0 bg-white central-modal absolute border shadow" id="central-modal">
     <div class="central-modal-header bg-success">
-
         <h3 class="central-modal-title"></h3>
-
-        <button
-            type="button"
-            class="central-modal-close">
-
-            &times;
-
-        </button>
-
+        <button type="button"  class="central-modal-close"> &times; </button>
     </div>
-
     <div class="central-modal-content"></div>
-
 </div>
 
 
 <?php pageFooter(); ?>
-
-
 <script>
-
     const BOOK_ID = "<?= $book->id; ?>";
-
-
     /* =========================================================
        LOAD REPORT
     ========================================================== */
 
     function loadReport(filters = {})
     {
+        let requestData =
+            Object.assign(
+                {},
+                filters,
+                {
+                    action: 'transactionFilter',
+                    book_id: BOOK_ID
+                }
+            );
 
-        filters.action = 'transactionFilter';
-        filters.book_id = BOOK_ID;
 
         $.ajax({
 
-            url: '../books/save/index.php',
+            url:
+                '../books/save/index.php',
 
-            type: 'POST',
+            type:
+                'POST',
 
-            data: filters,
+            data:
+                requestData,
 
-            beforeSend: function () {
 
-                $('.transactions-tbody').html(`
+            beforeSend: function()
+            {
+                $('.transactions-tbody')
+                    .html(`
 
-                    <tr>
-                        <td colspan="9" class="text-center p-5">
-                            <i class="fa fa-spinner fa-spin fa-2x"></i>
-                            <div class="mt-2">
-                                Loading report...
-                            </div>
-                        </td>
-                    </tr>
+                        <tr>
 
-                `);
+                            <td
+                                colspan="10"
+                                class="text-center p-5"
+                            >
 
+                                <i
+                                    class="
+                                        fa
+                                        fa-spinner
+                                        fa-spin
+                                        fa-2x
+                                    "
+                                ></i>
+
+                                <div class="mt-2">
+
+                                    Loading report...
+
+                                </div>
+
+                            </td>
+
+                        </tr>
+
+                    `);
             },
 
-            success: function (res) {
+
+            success: function(res)
+            {
                 /*
-                 * Backend should return the report rows.
-                 *
-                 * We also support a JSON response if you decide
-                 * to upgrade transactionFilter later.
-                 */
+                |--------------------------------------------------------------------------
+                | BACKEND CURRENTLY RETURNS HTML
+                |--------------------------------------------------------------------------
+                */
 
-                try {
+                $('.transactions-tbody')
+                    .html(res);
 
-                    let data = JSON.parse(res);
-                    if (data.status === 'success') {
 
-                        $('.transactions-tbody').html(data.html);
-                        updateReportSummary(data);
+                /*
+                |--------------------------------------------------------------------------
+                | RECALCULATE EVERYTHING
+                |--------------------------------------------------------------------------
+                */
 
-                    } else {
-                        $('.transactions-tbody').html(data.html || emptyReport());
-                    }
+                calculateTableSummary();
 
-                } catch (e) {
 
-                    /*
-                     * Backward compatibility:
-                     *
-                     * Your current backend returns HTML.
-                     */
+                /*
+                |--------------------------------------------------------------------------
+                | DESCRIPTION
+                |--------------------------------------------------------------------------
+                */
 
-                    $('.transactions-tbody').html(res);
+                updateReportDescription(
+                    filters
+                );
 
-                    /*
-                     * Recalculate totals from returned table.
-                     */
 
-                    calculateTableSummary();
-                }
+                /*
+                |--------------------------------------------------------------------------
+                | STATUS
+                |--------------------------------------------------------------------------
+                */
 
+                let count =
+                    $('.transactions-tbody')
+                        .find(
+                            'tr.transaction-details'
+                        )
+                        .length;
+
+
+                $('#filter-status')
+                    .html(
+                        count +
+                        ' transaction' +
+                        (count === 1 ? '' : 's') +
+                        ' found'
+                    );
             },
 
-            error: function () {
 
-                $('.transactions-tbody').html(`
+            error: function(xhr)
+            {
+                $('.transactions-tbody')
+                    .html(`
 
-                    <tr>
+                        <tr>
 
-                        <td colspan="9" class="text-center text-danger p-5">
+                            <td
+                                colspan="10"
+                                class="
+                                    text-center
+                                    text-danger
+                                    p-5
+                                "
+                            >
 
-                            <i class="fa fa-exclamation-triangle fa-2x"></i>
+                                <i
+                                    class="
+                                        fa
+                                        fa-exclamation-triangle
+                                        fa-2x
+                                    "
+                                ></i>
 
-                            <div class="mt-2">
-                                Failed to load report.
-                            </div>
+                                <div class="mt-2">
 
-                        </td>
+                                    Failed to load report.
 
-                    </tr>
+                                </div>
 
-                `);
+                            </td>
 
+                        </tr>
+
+                    `);
+
+
+                console.error(
+                    'Report request failed:',
+                    xhr.responseText
+                );
             }
 
         });
-
     }
 
+
+    function updateReportDescription(filters)
+    {
+        let parts = [];
+
+
+        if(filters.min_date)
+        {
+            parts.push(
+                'From ' + filters.min_date
+            );
+        }
+
+
+        if(filters.max_date)
+        {
+            parts.push(
+                'To ' + filters.max_date
+            );
+        }
+
+
+        if(filters.month)
+        {
+            let monthText =
+                $('select[data-type="month"] option:selected')
+                    .text()
+                    .trim();
+
+            parts.push(monthText);
+        }
+
+
+        if(filters.type)
+        {
+            parts.push(
+                filters.type === 'credit'
+                    ? 'Cash In'
+                    : 'Cash Out'
+            );
+        }
+
+
+        if(filters.category)
+        {
+            parts.push(
+                $('select[data-type="category"] option:selected')
+                    .text()
+                    .trim()
+            );
+        }
+
+
+        if(filters.customer)
+        {
+            parts.push(
+                $('select[data-type="customer"] option:selected')
+                    .text()
+                    .trim()
+            );
+        }
+
+
+        if(filters.item)
+        {
+            parts.push(
+                $('select[data-type="item"] option:selected').text().trim()
+            );
+        }
+        $('#report-description').text(parts.length ? parts.join(' • ') : 'All transactions');
+    }
 
     /* =========================================================
        INITIAL REPORT
@@ -835,55 +836,54 @@ if (isVerified()) {
     });
 
 
+    function getReportFilters()
+    {
+        let filters = {};
+        $('.filter-item').each(function()
+        {
+            const key = $(this).data('type');
+            const value = $(this).val();
+            if(key && value !== '' && value !== null)
+            {
+                filters[key] = value;
+            }
+        });
+
+        const monthOption =$('select[data-type="month"] option:selected');
+        if(monthOption.val() !== '' && monthOption.attr('data-year'))
+        {
+            filters.year = monthOption.attr('data-year');
+        }
+
+        return filters;
+    }
+
     /* =========================================================
        APPLY FILTER
     ========================================================== */
-
-    $('#apply-report-filter').on('click', function () {
-
-        let filters = {};
-
-        $('.filter-item').each(function () {
-
-            let key = $(this).data('type');
-            let value = $(this).val();
-
-            if (value !== '') {
-
-                filters[key] = value;
-
-            }
-
-        });
-
-
-        /*
-         * If month is selected, send its year as well.
-         */
-
-        let monthOption =
-            $('select[data-type="month"] option:selected');
-
-
-        if (
-            monthOption.val() !== '' &&
-            monthOption.data('year')
-        ) {
-
-            filters.year = monthOption.data('year');
-
-        }
-
-
+    $(document).on('click','#apply-report-filter',function(e){
+        e.preventDefault();
+        let filters = getReportFilters();
         $('#filter-status').html(
             '<i class="fa fa-spinner fa-spin"></i> Applying filters...'
         );
-
-
         loadReport(filters);
-
     });
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | RESET
+    |--------------------------------------------------------------------------
+    */
+
+    $(document).on('click','#reset-report-filter',function(e){
+        e.preventDefault();
+        $('.filter-item').val('');
+        $('#filter-status').html('Showing all transactions');
+        $('#report-description').html('All transactions');
+        loadReport({});
+    });
 
     /* =========================================================
        CHANGE FILTER
@@ -891,37 +891,13 @@ if (isVerified()) {
     ========================================================== */
 
     $(document).on('change', '.filter-item', function () {
-
         /*
          * We intentionally do not automatically query here.
          *
          * The user can select multiple filters first and then
          * click Apply Filters.
          */
-
     });
-
-
-    /* =========================================================
-       RESET FILTERS
-    ========================================================== */
-
-    $('#reset-report-filter').on('click', function () {
-
-        $('.filter-item').val('');
-
-        $('#filter-status').html(
-            'Showing all transactions'
-        );
-
-        $('#report-description').html(
-            'All transactions'
-        );
-
-        loadReport();
-
-    });
-
 
     /* =========================================================
        TABLE SUMMARY
@@ -929,54 +905,144 @@ if (isVerified()) {
 
     function calculateTableSummary()
     {
+        let cashIn = 0;
+        let cashOut = 0;
 
-        let cashin = 0;
-        let cashout = 0;
-        let transactions = 0;
+        let qtyIn = 0;
+        let qtyOut = 0;
 
-
-        $('.transactions-tbody tr').each(function () {
-
-            /*
-             * Skip "no transactions" row.
-             */
-
-            if ($(this).find('td').length < 8) {
-                return;
-            }
+        let transactionCount = 0;
 
 
-            transactions++;
+        $('.transactions-tbody')
+            .find('tr.transaction-details')
+            .each(function()
+            {
+                /*
+                |--------------------------------------------------------------------------
+                | CASH
+                |--------------------------------------------------------------------------
+                */
+
+                let inValue =
+                    parseFloat(
+                        $(this)
+                            .find('.report-cashin')
+                            .attr('data-amount')
+                    ) || 0;
 
 
-            let inValue =
-                parseFloat(
-                    $(this).find('.report-cashin').data('amount')
-                ) || 0;
+                let outValue =
+                    parseFloat(
+                        $(this)
+                            .find('.report-cashout')
+                            .attr('data-amount')
+                    ) || 0;
 
 
-            let outValue =
-                parseFloat(
-                    $(this).find('.report-cashout').data('amount')
-                ) || 0;
+                /*
+                |--------------------------------------------------------------------------
+                | QUANTITY
+                |--------------------------------------------------------------------------
+                */
+
+                let quantityIn =
+                    parseFloat(
+                        $(this)
+                            .find('.report-qty-in')
+                            .attr('data-quantity')
+                    ) || 0;
 
 
-            cashin += inValue;
-            cashout += outValue;
+                let quantityOut =
+                    parseFloat(
+                        $(this)
+                            .find('.report-qty-out')
+                            .attr('data-quantity')
+                    ) || 0;
 
-        });
+
+                cashIn += inValue;
+
+                cashOut += outValue;
+
+                qtyIn += quantityIn;
+
+                qtyOut += quantityOut;
+
+                transactionCount++;
+            });
 
 
-        let balance = cashin - cashout;
+        /*
+        |--------------------------------------------------------------------------
+        | CALCULATIONS
+        |--------------------------------------------------------------------------
+        */
 
+        let balance =
+            cashIn - cashOut;
+
+
+        let netQuantity =
+            qtyIn - qtyOut;
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | TABLE FOOTER
+        |--------------------------------------------------------------------------
+        */
+
+        $('#report-total-cashin')
+            .text(
+                formatMoney(cashIn)
+            );
+
+
+        $('#report-total-cashout')
+            .text(
+                formatMoney(cashOut)
+            );
+
+
+        $('#report-total-balance')
+            .text(
+                formatMoney(balance)
+            );
+
+
+        $('#report-total-qty-in')
+            .text(
+                formatQuantity(qtyIn)
+            );
+
+
+        $('#report-total-qty-out')
+            .text(
+                formatQuantity(qtyOut)
+            );
+
+
+        $('#report-total-net-qty')
+            .text(
+                formatQuantity(netQuantity)
+            );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | DASHBOARD
+        |--------------------------------------------------------------------------
+        */
 
         updateSummaryCards(
-            cashin,
-            cashout,
+            cashIn,
+            cashOut,
             balance,
-            transactions
+            transactionCount,
+            netQuantity
         );
-
     }
 
 
@@ -988,49 +1054,20 @@ if (isVerified()) {
         cashin,
         cashout,
         balance,
-        transactions
+        transactions,
+        quantity
     )
     {
 
-        $('#summary-cashin').text(
-            formatMoney(cashin)
-        );
-
-
-        $('#summary-cashout').text(
-            formatMoney(cashout)
-        );
-
-
-        $('#summary-balance').text(
-            formatMoney(balance)
-        );
-
-
-        $('#summary-transactions').text(
-            transactions
-        );
-
-
-        $('#report-total-cashin').text(
-            formatMoney(cashin)
-        );
-
-
-        $('#report-total-cashout').text(
-            formatMoney(cashout)
-        );
-
-
-        $('#report-total-balance').text(
-            formatMoney(balance)
-        );
-
-
-        $('#report-count').text(
-            transactions + ' Transactions'
-        );
-
+        $('#summary-cashin').text(formatMoney(cashin));
+        $('#summary-cashout').text(formatMoney(cashout));
+        $('#summary-balance').text(formatMoney(balance));
+        $('#summary-transactions').text(transactions);
+        $('#report-total-cashin').text(formatMoney(cashin));
+        $('#report-total-cashout').text(formatMoney(cashout));
+        $('#report-total-balance').text(formatMoney(balance));
+        $('#report-count').text(transactions + ' Transactions');
+        $('#report-quantity').text(quantity);
     }
 
 
@@ -1040,47 +1077,26 @@ if (isVerified()) {
 
     function updateReportSummary(data)
     {
-
-        let cashin =
-            parseFloat(data.cashin || 0);
-
-        let cashout =
-            parseFloat(data.cashout || 0);
-
-        let balance =
-            parseFloat(
-                data.balance !== undefined
-                    ? data.balance
-                    : cashin - cashout
-            );
-
-        let transactions =
-            parseInt(data.transactions || 0);
-
+        let cashin = parseFloat(data.cashin || 0);
+        let cashout = parseFloat(data.cashout || 0);
+        let balance = parseFloat(data.balance !== undefined ? data.balance : cashin - cashout);
+        let transactions = parseInt(data.transactions || 0);
+        let quantity = parseInt(data.quantity || 0);
 
         updateSummaryCards(
             cashin,
             cashout,
             balance,
-            transactions
+            transactions,
+            quantity
         );
 
-
         if (data.description) {
-
-            $('#report-description')
-                .html(data.description);
-
+            $('#report-description').html(data.description);
         }
-
-
         if (data.filter_status) {
-
-            $('#filter-status')
-                .html(data.filter_status);
-
+            $('#filter-status').html(data.filter_status);
         }
-
     }
 
 
@@ -1105,60 +1121,45 @@ if (isVerified()) {
     /* =========================================================
        EMPTY REPORT
     ========================================================== */
-
     function emptyReport()
     {
-
-        return `
-
-            <tr>
-
-                <td
-                    colspan="9"
-                    class="text-center text-muted p-5">
-
-                    <i class="fa fa-info-circle fa-2x"></i>
-
-                    <div class="mt-2">
-                        No transactions found.
-                    </div>
-
-                </td>
-
-            </tr>
-
-        `;
-
+        return `<tr>
+                    <td
+                        colspan="9"
+                        class="text-center text-muted p-5">
+                        <i class="fa fa-info-circle fa-2x"></i>
+                        <div class="mt-2">
+                            No transactions found.
+                        </div>
+                    </td>
+                </tr>`;
     }
 
+    function formatQuantity(value)
+    {
+        value = parseFloat(value || 0);
+
+        return new Intl.NumberFormat(
+            'en-UG',
+            {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            }
+        ).format(value);
+    }
 
     /* =========================================================
        EXPORT
     ========================================================== */
 
     $(document).on('click', '.report-export', function () {
+        const button = $(this);
+        const format = button.data('format');
+        const params = new URLSearchParams();
 
-    const button = $(this);
-
-    const format = button.data('format');
-
-    const params = new URLSearchParams();
-
-    params.append(
-        'action',
-        'exportTransactionReport'
-    );
-
-    params.append(
-        'book_id',
-        BOOK_ID
-    );
-
-    params.append(
-        'format',
-        format
-    );
-
+        params.append( 'action','exportTransactionReport');
+        params.append('book_id', BOOK_ID);
+        params.append('format',format);
 
     /*
     |--------------------------------------------------------------------------
@@ -1167,20 +1168,12 @@ if (isVerified()) {
     */
 
     $('.filter-item').each(function () {
-
         const key =$(this).data('type');
         const value =$(this).val();
         if (value !== '') {
-
-            params.append(
-                key,
-                value
-            );
-
+            params.append(key, value);
         }
-
     });
-
 
     /*
     |--------------------------------------------------------------------------
@@ -1191,39 +1184,22 @@ if (isVerified()) {
     const monthSelect = $('select[data-type="month"]');
     const monthOption = monthSelect.find('option:selected');
 
-    if (
-        monthOption.val() !== '' &&
-        monthOption.data('year')
-    ) {
-
-        params.set(
-            'year',
-            monthOption.data('year')
-        );
-
+    if (monthOption.val() !== '' && monthOption.data('year')){
+        params.set('year',monthOption.data('year'));
     }
-
 
     /*
     |--------------------------------------------------------------------------
     | VISUAL FEEDBACK
     |--------------------------------------------------------------------------
     */
-
-    button .prop('disabled', true).html(
-            '<i class="fa fa-spinner fa-spin"></i> Exporting...'
-        );
-
-
+    button .prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Exporting...' );
     /*
     |--------------------------------------------------------------------------
     | OPEN DOWNLOAD
     |--------------------------------------------------------------------------
     */
-
     window.open('../books/save/index.php?' + params.toString(),'_blank');
-
-
     /*
     |--------------------------------------------------------------------------
     | RESTORE BUTTON
@@ -1231,28 +1207,13 @@ if (isVerified()) {
     */
 
     setTimeout(function () {
-
         if (format === 'excel') {
-
-            button.html(
-                '<i class="fa fa-file-excel-o"></i> Excel'
-            );
-
+            button.html('<i class="fa fa-file-excel-o"></i> Excel' );
         } else {
-
-            button.html(
-                '<i class="fa fa-file-pdf-o"></i> PDF'
-            );
-
+            button.html('<i class="fa fa-file-pdf-o"></i> PDF');
         }
-
-        button.prop(
-            'disabled',
-            false
-        );
-
+        button.prop('disabled', false);
     }, 1500);
-
 });
 
 
@@ -1260,38 +1221,16 @@ if (isVerified()) {
        EXISTING MODAL FUNCTIONALITY
     ========================================================== */
 
-    $(document).on(
-        'click',
-        '.btn-click',
-        function () {
-
-            var title =
-                $(this).data('title');
-
-            title =
-                title.toUpperCase();
-
-
-            $('.side-modal-tall').show();
-
-            $('.side-modal-title')
-                .html(title);
-
-
-            var category =
-                $(this).data('section');
-
-            var id =
-                $(this).data('id');
-
-
-            fetchData(
-                category,
-                id
-            );
-
-        }
-    );
+    $(document).on('click','.btn-click',function ()
+    {
+        var title = $(this).data('title');
+        title =title.toUpperCase();
+        $('.side-modal-tall').show();
+        $('.side-modal-title').html(title);
+        var category = $(this).data('section');
+        var id = $(this).data('id');
+        fetchData(category,id);
+    });
 
 
     function fetchData(sect, id)
@@ -1363,13 +1302,10 @@ if (isVerified()) {
        EXISTING FORM SUBMISSION
     ========================================================== */
 
-    $(document).on('click','.saveRoute',
-        function () {
+    $(document).on('click','.saveRoute',function () {
             submitSingleForm("newRouteForm","../books/save/index.php");
         }
     );
-
-
     function submitSingleForm(
         formId,
         backendUrl
@@ -1446,14 +1382,8 @@ if (isVerified()) {
     }
 
 </script>
-
-
 <?php
-
 } else {
-
     redirect('../');
-
 }
-
 ?>

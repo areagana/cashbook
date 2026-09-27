@@ -21,22 +21,90 @@
         |--------------------------------------------------------------------------
         */
 
-        $categorySql = "
-            SELECT
+       $categorySql = "SELECT
                 c.id,
                 c.name,
                 c.details,
-                COALESCE(SUM(t.credit_amount), 0) AS cashin,
-                COALESCE(SUM(t.debit_amount), 0) AS cashout,
-                COALESCE(SUM(t.credit_amount), 0) -
-                COALESCE(SUM(t.debit_amount), 0) AS net
+
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN t.credit_amount > 0
+                            AND EXISTS (
+                                SELECT 1
+                                FROM cashbook_cashins ci
+                                WHERE ci.transaction_id = t.id
+                            )
+                            THEN t.credit_amount
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS cashin,
+
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN t.debit_amount > 0
+                            AND EXISTS (
+                                SELECT 1
+                                FROM cashbook_cashouts co
+                                WHERE co.transaction_id = t.id
+                            )
+                            THEN t.debit_amount
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS cashout,
+
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN t.credit_amount > 0
+                            AND EXISTS (
+                                SELECT 1
+                                FROM cashbook_cashins ci
+                                WHERE ci.transaction_id = t.id
+                            )
+                            THEN t.credit_amount
+                            ELSE 0
+                        END
+                    ),
+                    0
+                )
+                -
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN t.debit_amount > 0
+                            AND EXISTS (
+                                SELECT 1
+                                FROM cashbook_cashouts co
+                                WHERE co.transaction_id = t.id
+                            )
+                            THEN t.debit_amount
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS net
+
             FROM cashbook_categories c
+
             LEFT JOIN cashbook_transactions t
                 ON t.category_id = c.id
                 AND t.book_id = c.book_id
+
             WHERE c.book_id = ?
-            GROUP BY c.id, c.name, c.details
-            ORDER BY c.name ASC
+
+            GROUP BY
+                c.id,
+                c.name,
+                c.details
+
+            ORDER BY
+                c.name ASC
         ";
 
         $categoryRes = prepared_statements($categorySql, 'i', [$book->id]);
@@ -366,168 +434,12 @@
 
     </div>
 
-    <!-- CATEGORY SUMMARY TABLE -->
-    <div class="row mx-1">
-        <div class="col p-2">
-
-            <div class="card shadow-sm border-0">
-
-                <div class="card-header bg-white">
-
-                    <div class="row align-items-center">
-
-                        <div class="col-md-7">
-                            <strong>
-                                <i class="fa fa-table mr-2"></i>
-                                Category Financial Summary
-                            </strong>
-                        </div>
-
-                        <div class="col-md-5 mt-2 mt-md-0">
-                            <input
-                                type="text"
-                                id="categorySummarySearch"
-                                class="form-control form-control-sm category-filter float-md-right"
-                                placeholder="Search category...">
-                        </div>
-
-                    </div>
-
-                </div>
-
-                <div class="table-responsive">
-
-                    <table class="table table-sm table-striped table-hover category-summary-table mb-0">
-
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Category</th>
-                                <th>Details</th>
-                                <th class="text-right">Cash In</th>
-                                <th class="text-right">Cash Out</th>
-                                <th class="text-right">Net</th>
-                                <th class="text-right">Action</th>
-                            </tr>
-                        </thead>
-
-                        <tbody id="categorySummaryBody">
-
-                        <?php if(empty($categories)):?>
-
-                            <tr>
-                                <td colspan="7" class="text-center text-muted p-4">
-                                    No categories found.
-                                </td>
-                            </tr>
-
-                        <?php else:?>
-
-                            <?php $s = 0; ?>
-
-                            <?php foreach($categories as $r):?>
-
-                                <tr class="hover hover-hide-content">
-
-                                    <td><?=++$s;?></td>
-
-                                    <td>
-                                        <strong>
-                                            <?=htmlspecialchars($r['name']);?>
-                                        </strong>
-                                    </td>
-
-                                    <td>
-                                        <?=htmlspecialchars($r['details'] ?? '');?>
-                                    </td>
-
-                                    <td class="text-right text-success">
-                                        <?=categoryMoney($r['cashin']);?>
-                                    </td>
-
-                                    <td class="text-right text-danger">
-                                        <?=categoryMoney($r['cashout']);?>
-                                    </td>
-
-                                    <td class="text-right <?=($r['net'] >= 0 ? 'text-success' : 'text-danger');?>">
-                                        <strong>
-                                            <?=categoryMoney($r['net']);?>
-                                        </strong>
-                                    </td>
-
-                                    <td class="text-right">
-
-                                        <?php if(hasRole(['owner','partner'])):?>
-
-                                            <span class="hover-display text-sms">
-
-                                                <button  class="btn btn-sm btn-outline-info edit-category text-muted btn-click" data-title="Edit category" data-section="edit-category" data-id="<?=$r['id'];?>">
-                                                    <i class="fa fa-edit"></i>
-                                                </button>
-                                                <button  class="btn btn-sm btn-outline-primary view-category text-muted" data-title="category details" data-section="view-category" data-id="<?=$r['id'];?>">
-                                                    <i class="fa fa-eye"></i>
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-danger delete-category" data-id="<?=$r['id'];?>">
-                                                    <i class="fa fa-trash"></i>
-                                                </button>
-
-                                            </span>
-
-                                        <?php endif;?>
-                                    </td>
-                                </tr>
-
-                            <?php endforeach;?>
-
-                        <?php endif;?>
-
-                        </tbody>
-
-                        <?php if(!empty($categories)):?>
-
-                            <tfoot>
-
-                                <tr class="category-total-row">
-
-                                    <td colspan="3" class="text-right">
-                                        TOTAL
-                                    </td>
-
-                                    <td class="text-right text-success">
-                                        <?=categoryMoney($totalCashIn);?>
-                                    </td>
-
-                                    <td class="text-right text-danger">
-                                        <?=categoryMoney($totalCashOut);?>
-                                    </td>
-
-                                    <td class="text-right <?=($netCash >= 0 ? 'text-success' : 'text-danger');?>">
-                                        <?=categoryMoney($netCash);?>
-                                    </td>
-
-                                    <td></td>
-
-                                </tr>
-
-                            </tfoot>
-
-                        <?php endif;?>
-
-                    </table>
-
-                </div>
-
-            </div>
-
-        </div>
-    </div>
-
     <!-- EXISTING CATEGORY MANAGEMENT -->
     <div class="row mx-1 mt-3">
 
         <div class="col p-2">
 
-            <div class="card shadow-sm border-0">
+            <div class="card shadow-sm border-0 p-2">
 
                 <div class="card-header bg-white">
                     <strong>
@@ -594,7 +506,7 @@
                                                     data-id="<?=$r['id'];?>">
                                                     <i class="fa fa-edit"></i>
                                                 </button>
-                                                <button  class="btn btn-sm btn-outline-primary view-category text-muted" data-title="category details" data-section="view-category" data-id="<?=$r['id'];?>">
+                                                <button  class="btn btn-sm btn-outline-primary view-category text-muted" data-title="<?=$r['name'];?>" data-section="view-category" data-id="<?=$r['id'];?>">
                                                     <i class="fa fa-eye"></i>
                                                 </button>
                                                 <button

@@ -7,100 +7,648 @@
         $book = bookFind(encryptor('decrypt',$bsid));
     ?>
             <style>
+                .invoice-summary-card {
+                    border-radius: 8px;
+                    min-height: 125px;
+                }
+
+                .invoice-summary-card .summary-icon {
+                    font-size: 34px;
+                    opacity: .16;
+                }
+
+                .invoice-table td,
+                .invoice-table th {
+                    vertical-align: middle;
+                }
+
                 @media print {
-                    footer{
+                    footer {
                         position: fixed;
                         bottom: 10px;
                         left: 0;
-
                         width: 100%;
                         text-align: center;
-
                         font-size: 11px;
                         color: #666;
                     }
                 }
             </style>
-            <div class="container">
-                <div class="row mx-1">
-                    <div class="col p-2 inline-block">
-                        <a href="../books/?bkid=<?=$bsid;?>" class="nav-link">Books</a><i class="fa fa-angle-right"></i>
-                        <a class="nav-link">Invoices</a>
-                    </div>
-                </div>
-                <hr>
-                <div class="row mx-1">
-                    <div class="col p-2">
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <h3 class="p-2"><?=strToUpper($book->name);?> - INVOICES</h3>
-                            </div>
-                            <div class="col p-2">
-                                <?php if(hasRole(['owner','partner','staff'])):?>
-                                    <div class="col p-3">
-                                        <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add invoice' data-section='invoice'><i class="fa fa-plus-circle"></i> Invoice</button>
-                                    </div>
-                                <?php endif;?>
-                            </div>
-                        </div>
-                        <hr>
-                        <div class="p-2">
-                            <?php
-                                $sql = "SELECT ci.*,cc.name as customer,COALESCE(sum(cir.total),0) as returned,(COALESCE(ci.balance,0) -COALESCE(sum(cir.total),0)) as newBalance  FROM cashbook_invoices ci 
-                                            LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id
-                                            LEFT JOIN cashbook_invoice_returns cir ON cir.invoice_id = ci.id
-                                            WHERE ci.book_id =? GROUP BY ci.id ORDER BY ci.invoice_date DESC";
-                                $res =prepared_statements($sql,'i',[$book->id]);
 
-                                // fetch balance per customer
-                                $stmt = "SELECT COALESCE(sum(credit_amount),0) as credits, COALESCE(sum(debit_amount),0) as debits,(COALESCE(sum(credit_amount),0) - COALESCE(sum(debit_amount),0)) as balance FROM cashbook_transactions WHERE customer_id =?";
-                                $s =1;
-                            ?>
-                                <table class="table table-sm table-striped dataTable">
+            <?php
+                /*
+                |--------------------------------------------------------------------------
+                | INVOICE DATA
+                |--------------------------------------------------------------------------
+                */
+                $sql = "
+                    SELECT
+                        ci.*,
+                        cc.name AS customer,
+                        COALESCE(SUM(cir.total),0) AS returned,
+                        (
+                            COALESCE(ci.balance,0) -
+                            COALESCE(SUM(cir.total),0)
+                        ) AS newBalance
+
+                    FROM cashbook_invoices ci
+
+                    LEFT JOIN cashbook_customers cc
+                        ON cc.id = ci.customer_id
+
+                    LEFT JOIN cashbook_invoice_returns cir
+                        ON cir.invoice_id = ci.id
+
+                    WHERE ci.book_id = ?
+
+                    GROUP BY ci.id
+
+                    ORDER BY ci.invoice_date DESC
+                ";
+
+                $res = prepared_statements(
+                    $sql,
+                    'i',
+                    [$book->id]
+                );
+
+                $invoiceRows = [];
+
+                $invoiceCount = 0;
+                $invoiceTotal = 0;
+                $returnedTotal = 0;
+                $paidTotal = 0;
+                $balanceTotal = 0;
+
+                $paidInvoices = 0;
+                $partialInvoices = 0;
+                $unpaidInvoices = 0;
+
+                if($res && $res->num_rows > 0)
+                {
+                    while($r = $res->fetch_assoc())
+                    {
+                        $r['total'] =
+                            (float)($r['total'] ?? 0);
+
+                        $r['returned'] =
+                            (float)($r['returned'] ?? 0);
+
+                        $r['paid_amount'] =
+                            (float)($r['paid_amount'] ?? 0);
+
+                        $r['newBalance'] =
+                            (float)($r['newBalance'] ?? 0);
+
+                        $invoiceRows[] = $r;
+
+                        $invoiceCount++;
+                        $invoiceTotal += $r['total'];
+                        $returnedTotal += $r['returned'];
+                        $paidTotal += $r['paid_amount'];
+                        $balanceTotal += $r['newBalance'];
+
+                        if($r['newBalance'] <= 0)
+                        {
+                            $paidInvoices++;
+                        }
+                        elseif($r['paid_amount'] > 0)
+                        {
+                            $partialInvoices++;
+                        }
+                        else
+                        {
+                            $unpaidInvoices++;
+                        }
+                    }
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | EXISTING CUSTOMER BALANCE QUERY
+                |--------------------------------------------------------------------------
+                |
+                | Retained because invoice forms loaded by this page may rely on it.
+                |
+                */
+                $stmt = "
+                    SELECT
+                        COALESCE(SUM(credit_amount),0) AS credits,
+                        COALESCE(SUM(debit_amount),0) AS debits,
+                        (
+                            COALESCE(SUM(credit_amount),0) -
+                            COALESCE(SUM(debit_amount),0)
+                        ) AS balance
+
+                    FROM cashbook_transactions
+
+                    WHERE customer_id = ?
+                ";
+            ?>
+
+            <div class="container-fluid">
+
+                <!-- BREADCRUMB / PAGE NAVIGATION -->
+                <div class="row mx-1 align-items-center">
+
+                    <div class="col-md-8 p-2">
+
+                        <a
+                            href="../books/?bkid=<?=$bsid;?>"
+                            class="nav-link d-inline-block">
+                            Books
+                        </a>
+
+                        <i class="fa fa-angle-right"></i>
+
+                        <a class="nav-link d-inline-block">
+                            Invoices
+                        </a>
+
+                    </div>
+
+                </div>
+
+                <hr>
+
+
+                <!-- PAGE HEADER -->
+                <div class="row mx-1 align-items-center">
+
+                    <div class="col-md-8 p-2">
+
+                        <h3 class="mb-1">
+                            <?=strToUpper($book->name);?> - INVOICES
+                        </h3>
+
+                        <small class="text-muted">
+                            Customer invoices, payments, returns and outstanding balances
+                        </small>
+
+                    </div>
+
+
+                    <?php if(hasRole(['owner','partner','staff'])):?>
+
+                        <div class="col-md-4 p-2 text-md-right">
+
+                            <button
+                                class="btn btn-sm btn-flat btn-outline-success btn-click"
+                                data-title="add invoice"
+                                data-section="invoice">
+
+                                <i class="fa fa-plus-circle"></i>
+                                Invoice
+
+                            </button>
+
+                        </div>
+
+                    <?php endif;?>
+
+                </div>
+
+                <hr>
+
+
+                <!-- SUMMARY CARDS -->
+                <div class="row mx-1">
+
+                    <!-- TOTAL INVOICED -->
+                    <div class="col-xl-3 col-md-6 p-2">
+
+                        <div class="card invoice-summary-card shadow-sm border-left border-info">
+
+                            <div class="card-body">
+
+                                <div class="d-flex justify-content-between">
+
+                                    <div>
+
+                                        <small class="text-muted text-uppercase">
+                                            Total Invoiced
+                                        </small>
+
+                                        <h4 class="mt-2 mb-0 text-info">
+                                            <?=number_format($invoiceTotal,0);?>
+                                        </h4>
+
+                                    </div>
+
+                                    <div class="summary-icon text-info">
+                                        <i class="fa fa-file-text-o"></i>
+                                    </div>
+
+                                </div>
+
+                                <small class="text-muted">
+                                    <?=$invoiceCount;?> invoices issued
+                                </small>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- TOTAL PAID -->
+                    <div class="col-xl-3 col-md-6 p-2">
+
+                        <div class="card invoice-summary-card shadow-sm border-left border-success">
+
+                            <div class="card-body">
+
+                                <div class="d-flex justify-content-between">
+
+                                    <div>
+
+                                        <small class="text-muted text-uppercase">
+                                            Total Paid
+                                        </small>
+
+                                        <h4 class="mt-2 mb-0 text-success">
+                                            <?=number_format($paidTotal,0);?>
+                                        </h4>
+
+                                    </div>
+
+                                    <div class="summary-icon text-success">
+                                        <i class="fa fa-check-circle"></i>
+                                    </div>
+
+                                </div>
+
+                                <small class="text-muted">
+                                    <?=$paidInvoices;?> fully settled
+                                </small>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- OUTSTANDING -->
+                    <div class="col-xl-3 col-md-6 p-2">
+
+                        <div class="card invoice-summary-card shadow-sm border-left border-warning">
+
+                            <div class="card-body">
+
+                                <div class="d-flex justify-content-between">
+
+                                    <div>
+
+                                        <small class="text-muted text-uppercase">
+                                            Outstanding
+                                        </small>
+
+                                        <h4 class="mt-2 mb-0 text-warning">
+                                            <?=number_format($balanceTotal,0);?>
+                                        </h4>
+
+                                    </div>
+
+                                    <div class="summary-icon text-warning">
+                                        <i class="fa fa-credit-card"></i>
+                                    </div>
+
+                                </div>
+
+                                <small class="text-muted">
+                                    <?=$partialInvoices;?> part paid
+                                    &bull;
+                                    <?=$unpaidInvoices;?> unpaid
+                                </small>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- RETURNS -->
+                    <div class="col-xl-3 col-md-6 p-2">
+
+                        <div class="card invoice-summary-card shadow-sm border-left border-danger">
+
+                            <div class="card-body">
+
+                                <div class="d-flex justify-content-between">
+
+                                    <div>
+
+                                        <small class="text-muted text-uppercase">
+                                            Invoice Returns
+                                        </small>
+
+                                        <h4 class="mt-2 mb-0 text-danger">
+                                            <?=number_format($returnedTotal,0);?>
+                                        </h4>
+
+                                    </div>
+
+                                    <div class="summary-icon text-danger">
+                                        <i class="fa fa-undo"></i>
+                                    </div>
+
+                                </div>
+
+                                <small class="text-muted">
+                                    Total value returned
+                                </small>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- INVOICE REGISTER -->
+                <div class="row mx-1">
+
+                    <div class="col-12 p-2">
+
+                        <div class="card shadow-sm border-0">
+
+                            <div class="card-header bg-white">
+
+                                <div class="row align-items-center">
+
+                                    <div class="col-md-8">
+
+                                        <strong>
+                                            <i class="fa fa-table mr-2"></i>
+                                            Invoice Register
+                                        </strong>
+
+                                        <br>
+
+                                        <small class="text-muted">
+                                            Customer invoices and their current payment status
+                                        </small>
+
+                                    </div>
+
+                                    <div class="col-md-4 text-md-right">
+
+                                        <span class="badge badge-secondary">
+                                            <?=$invoiceCount;?> Records
+                                        </span>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="table-responsive">
+
+                                <table class="table table-sm table-striped table-hover dataTable invoice-table mb-0">
+
                                     <thead>
+
                                         <tr>
                                             <th>#</th>
-                                            <th>Invoice no</th>
+                                            <th>Invoice No.</th>
                                             <th>Customer</th>
-                                            <th class='text-right'>Amount</th>
-                                            <th class='text-right'>Return</th>
-                                            <th class='text-right'>Paid</th>
-                                            <th class='text-right'>Balance</th>
-                                            <th>Action</th>
+                                            <th class="text-right">Amount</th>
+                                            <th class="text-right">Return</th>
+                                            <th class="text-right">Paid</th>
+                                            <th class="text-right">Balance</th>
+                                            <th>Status</th>
+                                            <th class="text-right">Action</th>
                                         </tr>
+
                                     </thead>
+
+
                                     <tbody>
-                                        <?php if($res && $res->num_rows > 0): ?>
-                                            <?php  while($r = $res->fetch_assoc()):?>
-                                                <tr class='hover hover-hide-content'>
-                                                    <td><?=$s++;?></td>
-                                                    <td><?=$r['invoice_no'];?></td>
-                                                    <td><?=$r['customer'];?></td>
-                                                    <td class='text-right'><?=number_format($r['total'],0);?></td>
-                                                    <td class='text-right'><?=number_format($r['returned'],0);?></td>
-                                                    <td class='text-right'><?=number_format($r['paid_amount'],0);?></td>
-                                                    <td class='text-right'><?=number_format($r['newBalance'],0);?></td>
-                                                    <td class='text-right'>
-                                                        <?php if(hasRole(['owner','partner','staff'])):?>
-                                                            <span class="hover-display text-sms">
-                                                                <?php if(hasRole(['owner'])):?>
-                                                                    <button class="btn btn-sm btn-outline-info edit-invoice text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-edit"></i></button>
-                                                                    <button class="btn btn-sm btn-outline-danger delete-invoice" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
-                                                                <?php endif;?>
-                                                                <button class="btn btn-sm btn-outline-info create-detail text-muted" data-id="<?=$r['id'];?>"><i class="fa fa-plus"></i></button>
-                                                                <button class="btn btn-sm btn-outline-info view-invoice text-muted" data-id="<?=$r['id'];?>" data-title="" title='view'><i class="fa fa-eye"></i></button>
-                                                                <button class="btn btn-sm btn-outline-info invoice-return text-muted" data-id="<?=$r['id'];?>" title='Invoice Return'><i class="fa fa-undo" aria-hidden="true"></i></button> 
-                                                            </span>
-                                                        <?php endif;?>
-                                                    </td>
-                                                </tr>
-                                            <?php endwhile;?>
-                                        <?php endif;?>
+
+                                    <?php if(!empty($invoiceRows)):?>
+
+                                        <?php $s = 1;?>
+
+                                        <?php foreach($invoiceRows as $r):?>
+
+                                            <?php
+                                                $rb =
+                                                    (float)$r['newBalance'];
+
+                                                $rp =
+                                                    (float)$r['paid_amount'];
+
+                                                if($rb <= 0)
+                                                {
+                                                    $status =
+                                                        'Paid';
+
+                                                    $statusClass =
+                                                        'badge-success';
+                                                }
+                                                elseif($rp > 0)
+                                                {
+                                                    $status =
+                                                        'Part Paid';
+
+                                                    $statusClass =
+                                                        'badge-warning';
+                                                }
+                                                else
+                                                {
+                                                    $status =
+                                                        'Unpaid';
+
+                                                    $statusClass =
+                                                        'badge-danger';
+                                                }
+                                            ?>
+
+                                            <tr class="hover hover-hide-content">
+
+                                                <td>
+                                                    <?=$s++;?>
+                                                </td>
+
+
+                                                <td>
+
+                                                    <strong>
+                                                        <?=htmlspecialchars($r['invoice_no']);?>
+                                                    </strong>
+
+                                                </td>
+
+
+                                                <td>
+                                                    <?=htmlspecialchars($r['customer'] ?? '');?>
+                                                </td>
+
+
+                                                <td class="text-right">
+
+                                                    <?=number_format(
+                                                        $r['total'],
+                                                        0
+                                                    );?>
+
+                                                </td>
+
+
+                                                <td class="text-right text-danger">
+
+                                                    <?=number_format(
+                                                        $r['returned'],
+                                                        0
+                                                    );?>
+
+                                                </td>
+
+
+                                                <td class="text-right text-success">
+
+                                                    <?=number_format(
+                                                        $r['paid_amount'],
+                                                        0
+                                                    );?>
+
+                                                </td>
+
+
+                                                <td class="
+                                                    text-right
+                                                    <?=(
+                                                        $rb > 0
+                                                            ? 'text-primary'
+                                                            : 'text-success'
+                                                    );?>
+                                                ">
+
+                                                    <strong>
+                                                        <?=number_format(
+                                                            $rb,
+                                                            0
+                                                        );?>
+                                                    </strong>
+
+                                                </td>
+
+
+                                                <td>
+
+                                                    <span class="badge <?=$statusClass;?>">
+                                                        <?=$status;?>
+                                                    </span>
+
+                                                </td>
+
+
+                                                <td class="text-right">
+
+                                                    <?php if(hasRole(['owner','partner','staff'])):?>
+
+                                                        <span class="hover-display text-sms">
+
+                                                            <?php if(hasRole(['owner'])):?>
+
+                                                                <button
+                                                                    class="btn btn-sm btn-outline-info edit-invoice text-muted"
+                                                                    data-id="<?=$r['id'];?>"
+                                                                    title="Edit Invoice">
+
+                                                                    <i class="fa fa-edit"></i>
+
+                                                                </button>
+
+
+                                                                <button
+                                                                    class="btn btn-sm btn-outline-danger delete-invoice"
+                                                                    data-id="<?=$r['id'];?>"
+                                                                    title="Delete Invoice">
+
+                                                                    <i class="fa fa-trash"></i>
+
+                                                                </button>
+
+                                                            <?php endif;?>
+
+
+                                                            <button
+                                                                class="btn btn-sm btn-outline-info create-detail text-muted"
+                                                                data-id="<?=$r['id'];?>"
+                                                                title="Add Invoice Details">
+
+                                                                <i class="fa fa-plus"></i>
+
+                                                            </button>
+
+
+                                                            <button
+                                                                class="btn btn-sm btn-outline-info view-invoice text-muted"
+                                                                data-id="<?=$r['id'];?>"
+                                                                data-title=""
+                                                                title="View Invoice">
+
+                                                                <i class="fa fa-eye"></i>
+
+                                                            </button>
+
+
+                                                            <button
+                                                                class="btn btn-sm btn-outline-info invoice-return text-muted"
+                                                                data-id="<?=$r['id'];?>"
+                                                                title="Invoice Return">
+
+                                                                <i class="fa fa-undo"></i>
+
+                                                            </button>
+
+                                                        </span>
+
+                                                    <?php endif;?>
+
+                                                </td>
+
+                                            </tr>
+
+                                        <?php endforeach;?>
+
+
+                                    <?php else:?>
+
+                                        <tr>
+
+                                            <td
+                                                colspan="9"
+                                                class="text-center text-muted p-4">
+
+                                                No invoices found.
+
+                                            </td>
+
+                                        </tr>
+
+                                    <?php endif;?>
+
                                     </tbody>
+
                                 </table>
+
+                            </div>
+
                         </div>
+
                     </div>
+
                 </div>
+
             </div>
              <!-- side modal for a cash in -->
             <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
@@ -114,7 +662,7 @@
             </div>
             
             <!-- side modal for a cash in -->
-            <div class="p-0 bg-white side-modal-full side-modal-full-page absolute border shadow" id='side-modal-cashin'>
+            <div class="p-0 bg-white side-modal-full side-modal-full-page absolute border shadow" id='side-modal-full'>
                 <div class="side-modal-header bg-success">
                     <h3 class="side-modal-title text-dark"></h3>
                     <button type='button' class='side-modal-close'>&times;</button>

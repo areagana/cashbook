@@ -562,49 +562,289 @@
     }
 
     // customer ledger update function
-    function creditorLedgerUpdate($creditor_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type = false)
+    function creditorLedgerUpdate(
+        $creditor_id,
+        $credit,
+        $debit,
+        $category_id,
+        $details,
+        $book_id,
+        $payment_mode,
+        $trans_id,
+        $date,
+        $user_id,
+        $item_id,
+        $qty,
+        $type = false
+    )
     {
-        $creditor_id = (int) $creditor_id;
+        $creditor_id = (int)$creditor_id;
+        $credit      = (float)$credit;
+        $debit       = (float)$debit;
+        $trans_id    = (int)$trans_id;
 
-        // A creditor ledger entry must belong to a real creditor
-        if ($creditor_id <= 0) {
+        if($creditor_id <= 0 || $trans_id <= 0)
+        {
             return false;
         }
-        
-        // check if the transaction already exists to avoid incrementing balance twice
-        $check_sql = "SELECT * FROM cashbook_creditor_ledger WHERE transaction_id = ?";
-        $check_res = prepared_statements($check_sql, 'i', [$trans_id]);
-        
-        if ($check_res->num_rows > 0) 
+
+        /*
+        |--------------------------------------------------------------------------
+        | CHECK EXISTING LEDGER TRANSACTION
+        |--------------------------------------------------------------------------
+        */
+
+        $check_sql = "
+            SELECT *
+            FROM cashbook_creditor_ledger
+            WHERE transaction_id = ?
+            LIMIT 1
+        ";
+
+        $check_res = prepared_statements(
+            $check_sql,
+            'i',
+            [$trans_id]
+        );
+
+
+        if($check_res && $check_res->num_rows > 0)
         {
-            // Transaction already exists, update it
-            $balance = getCreditorBalanceBeforeTransaction($creditor_id, $trans_id);
+            $oldLedger = $check_res->fetch_assoc();
 
-            // use balance to update the ledger
-            $newBalance = $balance + $credit - $debit;
+            $old_creditor_id = (int)$oldLedger['creditor_id'];
 
-            $update_sql = "UPDATE cashbook_creditor_ledger SET type = ?, creditor_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ? WHERE transaction_id = ?";
-            prepared_statements($update_sql,'siddsiisiiidi',[$type,$creditor_id,$credit,$debit,$details,$book_id,$payment_mode,$date,$user_id,$item_id,$qty,$newBalance,$trans_id]);
 
-            // update creditor balance
-            saveCreditorBalance($creditor_id,$newBalance,$date);
-            $_SESSION['success'] = "Data updated successfully.";
-        
-        }else {
-            // get creditor balance
-            $balance = getCreditorBalance($creditor_id);
-           
-            // use balance to update the ledger
-            $newBalance = $balance + $credit - $debit;
-            $_SESSIO['success'] = "Checking ledger update";
-            // Insert new transaction
-            $stmt = "INSERT INTO  cashbook_creditor_ledger SET type = ?, creditor_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ?";
-            prepared_statements($stmt,'siddsiiisiiid',[$type,$creditor_id,$credit,$debit,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$newBalance]);  
+            /*
+            |--------------------------------------------------------------------------
+            | SAME CREDITOR
+            |--------------------------------------------------------------------------
+            */
 
-            // update creditor balance
-            saveCreditorBalance($creditor_id,$newBalance,$date);
-            $_SESSION['success'] = "Data saved successfully.";
+            if($old_creditor_id === $creditor_id)
+            {
+                /*
+                * Get balance immediately before this transaction.
+                */
+                $balance = getCreditorBalanceBeforeTransaction(
+                    $creditor_id,
+                    $trans_id
+                );
+
+                $newBalance =
+                    $balance +
+                    $credit -
+                    $debit;
+
+
+                $update_sql = "
+                    UPDATE cashbook_creditor_ledger SET
+                        type = ?,
+                        creditor_id = ?,
+                        credit_amount = ?,
+                        debit_amount = ?,
+                        details = ?,
+                        book_id = ?,
+                        paymode_id = ?,
+                        created_at = ?,
+                        user_id = ?,
+                        item_id = ?,
+                        quantity = ?,
+                        balance = ?
+                    WHERE transaction_id = ?
+                ";
+
+                prepared_statements(
+                    $update_sql,
+                    'siddsiisiiidi',
+                    [
+                        $type,
+                        $creditor_id,
+                        $credit,
+                        $debit,
+                        $details,
+                        $book_id,
+                        $payment_mode,
+                        $date,
+                        $user_id,
+                        $item_id,
+                        $qty,
+                        $newBalance,
+                        $trans_id
+                    ]
+                );
+
+
+                /*
+                * Save current creditor balance.
+                */
+                saveCreditorBalance(
+                    $creditor_id,
+                    $newBalance,
+                    $date
+                );
+            }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | CREDITOR CHANGED
+            |--------------------------------------------------------------------------
+            */
+
+            else
+            {
+                /*
+                * Remove this transaction from the old creditor first.
+                */
+                $delete_sql = "
+                    DELETE FROM cashbook_creditor_ledger
+                    WHERE transaction_id = ?
+                ";
+
+                prepared_statements(
+                    $delete_sql,
+                    'i',
+                    [$trans_id]
+                );
+
+
+                /*
+                * Recalculate old creditor's current balance.
+                */
+                $oldBalance = getCreditorBalance($old_creditor_id);
+
+                saveCreditorBalance(
+                    $old_creditor_id,
+                    $oldBalance,
+                    $date
+                );
+
+
+                /*
+                * Now create the transaction against the newly selected creditor.
+                */
+                $balance = getCreditorBalance($creditor_id);
+
+                $newBalance =
+                    $balance +
+                    $credit -
+                    $debit;
+
+
+                $insert_sql = "
+                    INSERT INTO cashbook_creditor_ledger SET
+                        type = ?,
+                        creditor_id = ?,
+                        credit_amount = ?,
+                        debit_amount = ?,
+                        details = ?,
+                        book_id = ?,
+                        paymode_id = ?,
+                        transaction_id = ?,
+                        created_at = ?,
+                        user_id = ?,
+                        item_id = ?,
+                        quantity = ?,
+                        balance = ?
+                ";
+
+                prepared_statements(
+                    $insert_sql,
+                    'siddsiiisiiid',
+                    [
+                        $type,
+                        $creditor_id,
+                        $credit,
+                        $debit,
+                        $details,
+                        $book_id,
+                        $payment_mode,
+                        $trans_id,
+                        $date,
+                        $user_id,
+                        $item_id,
+                        $qty,
+                        $newBalance
+                    ]
+                );
+
+
+                saveCreditorBalance(
+                    $creditor_id,
+                    $newBalance,
+                    $date
+                );
+            }
+
+
+            $_SESSION['success'] = "Creditor transaction updated successfully.";
+
+            return true;
         }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | NEW CREDITOR LEDGER TRANSACTION
+        |--------------------------------------------------------------------------
+        */
+
+        $balance = getCreditorBalance($creditor_id);
+
+        $newBalance =
+            $balance +
+            $credit -
+            $debit;
+
+
+        $stmt = "
+            INSERT INTO cashbook_creditor_ledger SET
+                type = ?,
+                creditor_id = ?,
+                credit_amount = ?,
+                debit_amount = ?,
+                details = ?,
+                book_id = ?,
+                paymode_id = ?,
+                transaction_id = ?,
+                created_at = ?,
+                user_id = ?,
+                item_id = ?,
+                quantity = ?,
+                balance = ?
+        ";
+
+        prepared_statements(
+            $stmt,
+            'siddsiiisiiid',
+            [
+                $type,
+                $creditor_id,
+                $credit,
+                $debit,
+                $details,
+                $book_id,
+                $payment_mode,
+                $trans_id,
+                $date,
+                $user_id,
+                $item_id,
+                $qty,
+                $newBalance
+            ]
+        );
+
+
+        saveCreditorBalance(
+            $creditor_id,
+            $newBalance,
+            $date
+        );
+
+        $_SESSION['success'] = "Creditor transaction saved successfully.";
+
+        return true;
     }
 
     // set book function
@@ -911,31 +1151,19 @@
 
                 <!-- Items -->
                 <li class="sidebar-item">
-
-                    <a
-                        href="../items/?bsid=<?= $bsid; ?>"
-                        class="sidebar-link"
-                    >
+                    <a href="../items/?bsid=<?= $bsid; ?>" class="sidebar-link">
                         <i class="fa fa-box"></i>
-
                         <span>Items</span>
                     </a>
-
                 </li>
 
 
                 <!-- Purchases -->
                 <li class="sidebar-item">
-
-                    <a
-                        href="../purchases/?bsid=<?= $bsid; ?>"
-                        class="sidebar-link"
-                    >
+                    <a href="../purchases/?bsid=<?= $bsid; ?>" class="sidebar-link">
                         <i class="fa fa-shopping-cart"></i>
-
                         <span>Purchases</span>
                     </a>
-
                 </li>
 
 
@@ -956,31 +1184,19 @@
 
                 <!-- Categories -->
                 <li class="sidebar-item">
-
-                    <a
-                        href="../category/?bkid=<?= $bsid; ?>"
-                        class="sidebar-link"
-                    >
+                    <a href="../category/?bkid=<?= $bsid; ?>" class="sidebar-link">
                         <i class="fa fa-tags"></i>
-
                         <span>Categories</span>
                     </a>
-
                 </li>
 
 
                 <!-- Pay Modes -->
                 <li class="sidebar-item">
-
-                    <a
-                        href="../modes/?bsid=<?= $bsid; ?>"
-                        class="sidebar-link"
-                    >
+                    <a href="../modes/?bsid=<?= $bsid; ?>"  class="sidebar-link">
                         <i class="fa fa-handshake"></i>
-
                         <span>Pay Modes</span>
                     </a>
-
                 </li>
 
 
@@ -996,6 +1212,14 @@
                         <span>Invoices</span>
                     </a>
 
+                </li>
+
+                <!-- Invoices -->
+                <li class="sidebar-item">
+                    <a href="../report/?bkid=<?= $bsid; ?>" class="sidebar-link">
+                        <i class="fa fa-file-invoice"></i>
+                        <span>Report</span>
+                    </a>
                 </li>
 
 
@@ -1223,24 +1447,17 @@
 
     function saveCreditorBalance($creditor_id, $balance, $date)
     {
-        global $server;
+        $creditor_id = (int)$creditor_id;
+        $balance = (float)$balance;
 
-        $balance = (float) $balance;
-
-        // Get creditor
         $creditor = creditorFind($creditor_id);
 
-        if (!$creditor) {
+        if(!$creditor)
+        {
             return false;
         }
 
-        $book_id = $creditor->book_id;
-
-        /*
-        =====================================================
-        1. UPDATE / INSERT CURRENT CREDITOR BALANCE
-        =====================================================
-        */
+        $book_id = (int)$creditor->book_id;
 
         $check_stmt = "
             SELECT id
@@ -1253,15 +1470,17 @@
         $check = prepared_statements(
             $check_stmt,
             'ii',
-            [$creditor_id, $book_id]
+            [$creditor_id,$book_id]
         );
 
-        if (!$check) {
+        if(!$check)
+        {
             return false;
         }
 
-        if ($check->num_rows > 0) {
 
+        if($check->num_rows > 0)
+        {
             $stmt = "
                 UPDATE cashbook_creditor_balances
                 SET
@@ -1271,7 +1490,7 @@
                 AND book_id = ?
             ";
 
-            $result = prepared_statements(
+            return prepared_statements(
                 $stmt,
                 'dsii',
                 [
@@ -1281,10 +1500,289 @@
                     $book_id
                 ]
             );
+        }
 
-        } else {
 
-            $stmt = "
+        $stmt = "
+            INSERT INTO cashbook_creditor_balances
+            (
+                creditor_id,
+                balance,
+                date,
+                book_id
+            )
+            VALUES (?, ?, ?, ?)
+        ";
+
+        return prepared_statements(
+            $stmt,
+            'idsi',
+            [
+                $creditor_id,
+                $balance,
+                $date,
+                $book_id
+            ]
+        );
+    }
+
+    function recalculateCreditorLedgerFromTransaction(
+        $creditor_id,
+        $transaction_id
+    )
+    {
+        $creditor_id   = (int)$creditor_id;
+        $transaction_id = (int)$transaction_id;
+
+        if($creditor_id <= 0 || $transaction_id <= 0)
+        {
+            return false;
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | FIND EDITED TRANSACTION
+        |--------------------------------------------------------------------------
+        */
+
+        $sql = "
+            SELECT
+                id,
+                created_at
+            FROM cashbook_creditor_ledger
+            WHERE creditor_id = ?
+            AND transaction_id = ?
+            LIMIT 1
+        ";
+
+        $res = prepared_statements(
+            $sql,
+            'ii',
+            [
+                $creditor_id,
+                $transaction_id
+            ]
+        );
+
+
+        if(!$res || $res->num_rows <= 0)
+        {
+            return false;
+        }
+
+
+        $editedTransaction = $res->fetch_assoc();
+
+        $ledger_id = (int)$editedTransaction['id'];
+        $created_at = $editedTransaction['created_at'];
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | GET BALANCE IMMEDIATELY BEFORE EDITED TRANSACTION
+        |--------------------------------------------------------------------------
+        |
+        | This is the important part.
+        |
+        | We DO NOT start from zero.
+        |--------------------------------------------------------------------------
+        */
+
+        $previousSql = "
+            SELECT balance
+            FROM cashbook_creditor_ledger
+            WHERE creditor_id = ?
+            AND (
+                created_at < ?
+                OR
+                (
+                    created_at = ?
+                    AND id < ?
+                )
+            )
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+        ";
+
+        $previous = prepared_statements(
+            $previousSql,
+            'issi',
+            [
+                $creditor_id,
+                $created_at,
+                $created_at,
+                $ledger_id
+            ]
+        );
+
+
+        $runningBalance = 0;
+
+
+        if($previous && $previous->num_rows > 0)
+        {
+            $previousRow =
+                $previous->fetch_assoc();
+
+            $runningBalance =
+                (float)$previousRow['balance'];
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | GET EDITED TRANSACTION + EVERYTHING AFTER IT
+        |--------------------------------------------------------------------------
+        */
+
+        $ledgerSql = "
+            SELECT
+                id,
+                credit_amount,
+                debit_amount,
+                created_at
+            FROM cashbook_creditor_ledger
+            WHERE creditor_id = ?
+            AND (
+                created_at > ?
+                OR
+                (
+                    created_at = ?
+                    AND id >= ?
+                )
+            )
+            ORDER BY created_at ASC, id ASC
+        ";
+
+        $ledger = prepared_statements(
+            $ledgerSql,
+            'issi',
+            [
+                $creditor_id,
+                $created_at,
+                $created_at,
+                $ledger_id
+            ]
+        );
+
+
+        if(!$ledger)
+        {
+            return false;
+        }
+
+
+        $lastDate = $created_at;
+
+
+        while($row = $ledger->fetch_assoc())
+        {
+            $credit =
+                (float)$row['credit_amount'];
+
+            $debit =
+                (float)$row['debit_amount'];
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | RUNNING BALANCE
+            |--------------------------------------------------------------------------
+            */
+
+            $runningBalance =
+                $runningBalance
+                + $credit
+                - $debit;
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | UPDATE THIS LEDGER ROW
+            |--------------------------------------------------------------------------
+            */
+
+            $updateSql = "
+                UPDATE cashbook_creditor_ledger
+                SET balance = ?
+                WHERE id = ?
+            ";
+
+            prepared_statements(
+                $updateSql,
+                'di',
+                [
+                    $runningBalance,
+                    $row['id']
+                ]
+            );
+
+
+            $lastDate = $row['created_at'];
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | UPDATE CURRENT CREDITOR BALANCE
+        |--------------------------------------------------------------------------
+        |
+        | IMPORTANT:
+        | Do NOT call saveCreditorBalance() here because your current version
+        | also updates the latest ledger row.
+        |
+        | We already updated every affected ledger row above.
+        |--------------------------------------------------------------------------
+        */
+
+        $balanceCheckSql = "
+            SELECT id
+            FROM cashbook_creditor_balances
+            WHERE creditor_id = ?
+            LIMIT 1
+        ";
+
+        $balanceCheck = prepared_statements(
+            $balanceCheckSql,
+            'i',
+            [$creditor_id]
+        );
+
+
+        if($balanceCheck && $balanceCheck->num_rows > 0)
+        {
+            $updateBalanceSql = "
+                UPDATE cashbook_creditor_balances
+                SET
+                    balance = ?,
+                    date = ?
+                WHERE creditor_id = ?
+            ";
+
+            prepared_statements(
+                $updateBalanceSql,
+                'dsi',
+                [
+                    $runningBalance,
+                    $lastDate,
+                    $creditor_id
+                ]
+            );
+        }
+        else
+        {
+            $creditor = creditorFind($creditor_id);
+
+            if(!$creditor)
+            {
+                return false;
+            }
+
+            $book_id = (int)$creditor->book_id;
+
+
+            $insertBalanceSql = "
                 INSERT INTO cashbook_creditor_balances
                 (
                     creditor_id,
@@ -1295,59 +1793,20 @@
                 VALUES (?, ?, ?, ?)
             ";
 
-            $result = prepared_statements(
-                $stmt,
+            prepared_statements(
+                $insertBalanceSql,
                 'idsi',
                 [
                     $creditor_id,
-                    $balance,
-                    $date,
+                    $runningBalance,
+                    $lastDate,
                     $book_id
                 ]
             );
         }
 
-        if (!$result) {
-            return false;
-        }
 
-        /*
-        =====================================================
-        2. UPDATE THE LATEST CREDITOR LEDGER BALANCE
-        =====================================================
-        */
-
-        $ledger_stmt = "
-            UPDATE cashbook_creditor_ledger
-            SET balance = ?
-            WHERE id = (
-                SELECT id
-                FROM (
-                    SELECT id
-                    FROM cashbook_creditor_ledger
-                    WHERE creditor_id = ?
-                    AND book_id = ?
-                    ORDER BY id DESC
-                    LIMIT 1
-                ) AS latest
-            )
-        ";
-
-        $ledger_result = prepared_statements(
-            $ledger_stmt,
-            'dii',
-            [
-                $balance,
-                $creditor_id,
-                $book_id
-            ]
-        );
-
-        if (!$ledger_result) {
-            return false;
-        }
-
-        return true;
+        return $runningBalance;
     }
 
     function stockIn($item_id, $qty, $trans_id = false)

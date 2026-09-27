@@ -1493,71 +1493,440 @@
                             break;
 
                         case 'editCashinSave':
-                                $details = request('cashin_details');
-                                $category_id = request('category_id');
-                                $amount = request('inamount');
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | REQUEST DATA
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $details      = request('cashin_details');
+                                $category_id  = request('category_id');
+                                $amount       = (float)request('inamount');
                                 $payment_mode = request('paymode_id');
-                                $transid = request('transaction_id');
-                                $date = request('created_at');
-                                $user_id = auth()->id;
-                                $customer_id = request('customer_id');
-                                $item_id = request('item_id');
-                                $quantity = request('quantity');
-                                $type = request('transaction_type');
-                                $invoice_id = isset($_POST['invoice_id']) ? request('invoice_id') : "";
-                                $creditor_id = request('creditor_id') ?? "";
+                                $transid      = (int)request('transaction_id');
+                                $date         = request('created_at');
+                                $user_id      = auth()->id;
+
+                                $customer_id  = request('customer_id');
+                                $creditor_id  = request('creditor_id');
+                                $item_id      = request('item_id');
+                                $quantity     = (float)request('quantity');
+                                $type         = request('transaction_type');
+
+                                $invoice_id = isset($_POST['invoice_id'])
+                                    ? request('invoice_id')
+                                    : "";
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | GET ORIGINAL TRANSACTION
+                                |--------------------------------------------------------------------------
+                                |
+                                | This MUST happen before updating cashbook_transactions because we need
+                                | the old creditor, item and quantity for reconciliation.
+                                |
+                                */
+
                                 $transaction = transactionFind($transid);
-                                $book_id = $transaction->book_id;
-                                $old_item_id = $transaction->item_id;
-                                $old_quantity = (float) $transaction->quantity;
+
+                                if(!$transaction)
+                                {
+                                    $_SESSION['error'] = "Transaction could not be found.";
+                                    break;
+                                }
+
+
+                                $book_id = (int)$transaction->book_id;
+
+                                $old_item_id = !empty($transaction->item_id)
+                                    ? (int)$transaction->item_id
+                                    : 0;
+
+                                $old_quantity = (float)$transaction->quantity;
+
                                 $old_type = $transaction->type;
 
-                                // // track transaction edits
-                                trackTransactionEdits($transid,'edit');
 
-                                // save the content
-                                $sql = "UPDATE cashbook_transactions SET type = ?, credit_amount = ?, details = ?,category_id = ?,paymode_id=?,created_at=?,user_id = ?,customer_id=?,item_id = ?, quantity = ?,invoice_id = ? WHERE id = ?";
-                                $res = prepared_statements($sql,'sisiissiiiii',[$type,$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$item_id,$quantity,$invoice_id,$transid]);
-                                
-                                // Chcek type to enter this transaction
-                                if($type === 'cash_sale' || $type === 'payment' || $type === 'other_income')
+                                /*
+                                |--------------------------------------------------------------------------
+                                | GET OLD CREDITOR
+                                |--------------------------------------------------------------------------
+                                |
+                                | Do not depend only on cashbook_transactions.creditor_id here.
+                                | The existing creditor ledger gives us the creditor currently attached
+                                | to this transaction.
+                                |
+                                */
+
+                                $old_creditor_id = 0;
+
+                                $oldCreditorSql = "
+                                    SELECT creditor_id
+                                    FROM cashbook_creditor_ledger
+                                    WHERE transaction_id = ?
+                                    LIMIT 1
+                                ";
+
+                                $oldCreditorRes = prepared_statements(
+                                    $oldCreditorSql,
+                                    'i',
+                                    [$transid]
+                                );
+
+                                if(
+                                    $oldCreditorRes &&
+                                    $oldCreditorRes->num_rows > 0
+                                )
                                 {
-                                    $stmt = "UPDATE cashbook_cashins SET type = ?,customer_id = ?, amount = ?, category_id = ?, details = ?,
-                                            paymode_id = ?,created_at = ?,user_id = ?,item_id = ?, quantity = ? 
-                                        WHERE transaction_id = ?";
-                                    prepared_statements($stmt,'sidisisiiii',[$type,$customer_id,$amount,$category_id,$details,$payment_mode,$date,$user_id,$item_id,$quantity,$transid]);
+                                    $oldCreditorRow =
+                                        $oldCreditorRes->fetch_assoc();
+
+                                    $old_creditor_id =
+                                        (int)$oldCreditorRow['creditor_id'];
                                 }
 
-                                if ($type === 'cash_sale' || $type === 'payment' || $type === 'other_income') 
-                                {
-                                    // If the old transaction had a stock item,
-                                    // first restore its previous stock movement.
-                                    if (!empty($old_item_id) && $old_quantity > 0) {
-                                        restoreStockOut($old_item_id, $old_quantity);
-                                    }
 
-                                    // Apply the new stock-out
-                                    if (!empty($item_id) && $quantity > 0) 
+                                /*
+                                |--------------------------------------------------------------------------
+                                | NORMALISE OPTIONAL IDS
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $customer_id = !empty($customer_id)
+                                    ? (int)$customer_id
+                                    : 0;
+
+                                $creditor_id = !empty($creditor_id)
+                                    ? (int)$creditor_id
+                                    : 0;
+
+                                $item_id = !empty($item_id)
+                                    ? (int)$item_id
+                                    : 0;
+
+                                $invoice_id = !empty($invoice_id)
+                                    ? (int)$invoice_id
+                                    : 0;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | TRACK TRANSACTION EDIT
+                                |--------------------------------------------------------------------------
+                                */
+
+                                trackTransactionEdits(
+                                    $transid,
+                                    'edit'
+                                );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | UPDATE MAIN TRANSACTION
+                                |--------------------------------------------------------------------------
+                                |
+                                | creditor_id is now included so cashbook_transactions remains aligned
+                                | with cashbook_creditor_ledger.
+                                |
+                                */
+
+                                $sql = "
+                                    UPDATE cashbook_transactions SET
+
+                                        type = ?,
+                                        credit_amount = ?,
+                                        details = ?,
+                                        category_id = ?,
+                                        paymode_id = ?,
+                                        created_at = ?,
+                                        user_id = ?,
+                                        customer_id = ?,
+                                        creditor_id = ?,
+                                        item_id = ?,
+                                        quantity = ?,
+                                        invoice_id = ?
+
+                                    WHERE id = ?
+                                ";
+
+
+                                $res = prepared_statements(
+                                    $sql,
+                                    'sisiissiiiiii',
+                                    [
+                                        $type,
+                                        $amount,
+                                        $details,
+                                        $category_id,
+                                        $payment_mode,
+                                        $date,
+                                        $user_id,
+                                        $customer_id,
+                                        $creditor_id,
+                                        $item_id,
+                                        $quantity,
+                                        $invoice_id,
+                                        $transid
+                                    ]
+                                );
+
+
+                                if(!$res)
+                                {
+                                    $_SESSION['error'] =
+                                        "Transaction could not be updated.";
+
+                                    break;
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | UPDATE CASH-IN RECORD
+                                |--------------------------------------------------------------------------
+                                |
+                                | Only these transaction types belong in cashbook_cashins.
+                                |
+                                */
+
+                                if(
+                                    $type === 'cash_sale' ||
+                                    $type === 'payment' ||
+                                    $type === 'other_income'
+                                )
+                                {
+                                    $stmt = "
+                                        UPDATE cashbook_cashins SET
+
+                                            type = ?,
+                                            customer_id = ?,
+                                            amount = ?,
+                                            category_id = ?,
+                                            details = ?,
+                                            paymode_id = ?,
+                                            created_at = ?,
+                                            user_id = ?,
+                                            item_id = ?,
+                                            quantity = ?
+
+                                        WHERE transaction_id = ?
+                                    ";
+
+
+                                    prepared_statements(
+                                        $stmt,
+                                        'sidisisiiii',
+                                        [
+                                            $type,
+                                            $customer_id,
+                                            $amount,
+                                            $category_id,
+                                            $details,
+                                            $payment_mode,
+                                            $date,
+                                            $user_id,
+                                            $item_id,
+                                            $quantity,
+                                            $transid
+                                        ]
+                                    );
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | STOCK RECONCILIATION
+                                |--------------------------------------------------------------------------
+                                |
+                                | Restore the original stock movement first and then apply the newly
+                                | edited movement.
+                                |
+                                */
+
+                                if(
+                                    $old_type === 'cash_sale' ||
+                                    $old_type === 'payment' ||
+                                    $old_type === 'other_income'
+                                )
+                                {
+                                    if(
+                                        $old_item_id > 0 &&
+                                        $old_quantity > 0
+                                    )
                                     {
-                                        stockOut($item_id, $quantity, $transid);
+                                        restoreStockOut(
+                                            $old_item_id,
+                                            $old_quantity
+                                        );
                                     }
                                 }
 
-                                // would need to handle customer ledger records
-                                if(!empty($customer_id))
+
+                                /*
+                                | Apply new stock movement.
+                                */
+
+                                if(
+                                    $type === 'cash_sale' ||
+                                    $type === 'payment' ||
+                                    $type === 'other_income'
+                                )
                                 {
-                                    // update customer ledger
-                                    customerLedgerUpdate($customer_id,$amount,0,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$quantity,$type);
+                                    if(
+                                        $item_id > 0 &&
+                                        $quantity > 0
+                                    )
+                                    {
+                                        stockOut(
+                                            $item_id,
+                                            $quantity,
+                                            $transid
+                                        );
+                                    }
                                 }
 
-                                // check if creditor has been selected and update the ledger
-                                if(!empty($creditor_id))
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CUSTOMER LEDGER
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if($customer_id > 0)
                                 {
-                                    // update customer ledger
-                                    creditorLedgerUpdate($creditor_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
+                                    customerLedgerUpdate(
+                                        $customer_id,
+                                        $amount,
+                                        0,
+                                        $category_id,
+                                        $details,
+                                        $book_id,
+                                        $payment_mode,
+                                        $transid,
+                                        $date,
+                                        $user_id,
+                                        $item_id,
+                                        $quantity,
+                                        $type
+                                    );
                                 }
 
-                                $_SESSION['success'] = "Data saved";
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CREDITOR LEDGER
+                                |--------------------------------------------------------------------------
+                                |
+                                | A creditor payment recorded through Cash In reduces the amount owed
+                                | to the creditor.
+                                |
+                                | Creditor balance formula:
+                                |
+                                |     balance = previous balance + credit - debit
+                                |
+                                | Therefore:
+                                |
+                                |     credit = 0
+                                |     debit  = payment amount
+                                |
+                                */
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CASE 1 & 2
+                                | SAME CREDITOR OR NEW CREDITOR SELECTED
+                                |--------------------------------------------------------------------------
+                                |
+                                | creditorLedgerUpdate() will:
+                                |
+                                | - update the existing ledger transaction;
+                                | - move it to another creditor if creditor changed;
+                                | - recalculate the old creditor when necessary;
+                                | - recalculate the new/current creditor.
+                                |
+                                */
+
+                                if($creditor_id > 0)
+                                {
+                                    $credit = 0;
+                                    $debit  = $amount;
+
+
+                                    creditorLedgerUpdate(
+                                        $creditor_id,
+                                        $credit,
+                                        $debit,
+                                        $category_id,
+                                        $details,
+                                        $book_id,
+                                        $payment_mode,
+                                        $transid,
+                                        $date,
+                                        $user_id,
+                                        $item_id,
+                                        $quantity,
+                                        $type
+                                    );
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CASE 3
+                                | CREDITOR REMOVED FROM TRANSACTION
+                                |--------------------------------------------------------------------------
+                                |
+                                | Example:
+                                |
+                                | Before edit:
+                                |     Creditor = Supplier A
+                                |     Payment  = 300,000
+                                |
+                                | After edit:
+                                |     Creditor = NONE
+                                |
+                                | We must remove the old creditor ledger entry and rebuild Supplier A's
+                                | ledger/balance.
+                                |
+                                */
+
+                                elseif($old_creditor_id > 0)
+                                {
+                                    $deleteCreditorLedger = "
+                                        DELETE FROM cashbook_creditor_ledger
+                                        WHERE transaction_id = ?
+                                    ";
+
+                                    prepared_statements(
+                                        $deleteCreditorLedger,
+                                        'i',
+                                        [$transid]
+                                    );
+
+
+                                    /*
+                                    | Rebuild old creditor's running balances after removing
+                                    | this transaction.
+                                    */
+
+                                    recalculateCreditorLedger(
+                                        $old_creditor_id
+                                    );
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | SUCCESS
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $_SESSION['success'] =
+                                    "Transaction updated successfully.";
 
                             break;
                             
@@ -1580,8 +1949,8 @@
                                 $suplier_id = isset($_POST['suplier_id']) ? request('suplier_id') : "";
 
                                 // save the content
-                                $sql = "INSERT INTO cashbook_transactions SET item_id = ?, quantity = ?, rate=?, debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?,customer_id=?";
-                                $res = prepared_statements($sql,'iiiiisiisisi',[$item_id,$qty,$purchase_rate,$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id]);
+                                $sql = "INSERT INTO cashbook_transactions SET item_id = ?, quantity = ?, rate=?, debit_amount = ?,book_id = ?, details = ?,category_id=?,paymode_id = ?,created_at = ?,user_id=?,type=?,customer_id=?,creditor_id = ?";
+                                $res = prepared_statements($sql,'iiiiisiisisii',[$item_id,$qty,$purchase_rate,$amount,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id,$creditor_id]);
                                 $trans_id = $server->insert_id;
 
                                  // check if the transaction is a purchase and save to purchases table
@@ -1612,66 +1981,842 @@
 
                         case 'editCashoutSave':
 
-                                $details = request('cashout_details');
-                                $category_id = request('category_id');
-                                $amount = request('outamount');
+                                /*
+                                |--------------------------------------------------------------------------
+                                | REQUEST DATA
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $details      = request('cashout_details');
+                                $category_id  = request('category_id');
+                                $amount       = (float) request('outamount');
                                 $payment_mode = request('paymode_id');
-                                $transid = request('transaction_id');
-                                $date = request('created_at');
+                                $transid      = (int) request('transaction_id');
+                                $date         = request('created_at');
+                                $user_id      = auth()->id;
+
                                 $customer_id = request('customer_id');
-                                $type = request('expense_type');
+                                $creditor_id = request('creditor_id');
+                                $type        = request('expense_type');
 
-                                $item_id = isset($_POST['item_id']) ? request('item_id') : "";
-                                $qty = isset($_POST['quantity']) ? request('quantity') : "";
-                                $purchase_rate = isset($_POST['purchase_rate']) ? request('purchase_rate') : "";
-                                $suplier_id = isset($_POST['suplier_id']) ? request('suplier_id') : "";
-                                $book_id = transactionFind($transid)->book_id;
+                                $item_id = isset($_POST['item_id'])
+                                    ? request('item_id')
+                                    : "";
 
-                                // record transaction edits
-                                trackTransactionEdits($transid,'edit');
+                                $qty = isset($_POST['quantity'])
+                                    ? (float) request('quantity')
+                                    : 0;
 
-                                // save the content
-                                $sql = "UPDATE cashbook_transactions SET item_id = ?, quantity = ?, rate=?, type=?, debit_amount = ?, details = ?,category_id=?,paymode_id = ?,created_at=?,user_id = ?,customer_id=? WHERE id = ?";
-                                $res = prepared_statements($sql,'iiisisiisiii',[$item_id,$qty,$purchase_rate,$type,$amount,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$transid]);
-                                
+                                $purchase_rate = isset($_POST['purchase_rate'])
+                                    ? (float) request('purchase_rate')
+                                    : 0;
 
-                                // check if the transaction is a purchase and save to purchases table
-                                if($type == 'purchase' && !empty($item_id) && !empty($qty) && !empty($purchase_rate))
+                                $suplier_id = isset($_POST['suplier_id'])
+                                    ? request('suplier_id')
+                                    : "";
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | GET ORIGINAL TRANSACTION
+                                |--------------------------------------------------------------------------
+                                |
+                                | IMPORTANT:
+                                | We must capture the old transaction before updating anything.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $transaction = transactionFind($transid);
+
+                                if(!$transaction)
                                 {
-                                    // fetch the purchase record for this transaction
-                                    $purchase_check = "SELECT * FROM cashbook_purchases WHERE transaction_id = ?";
-                                    $purchase = prepared_statements($purchase_check,'i',[$transid]);
-                                    
-                                    if($purchase->num_rows > 0)
+                                    $_SESSION['error'] = "Transaction could not be found.";
+                                    break;
+                                }
+
+
+                                $book_id = (int) $transaction->book_id;
+
+                                $old_item_id = !empty($transaction->item_id)
+                                    ? (int) $transaction->item_id
+                                    : 0;
+
+                                $old_quantity = isset($transaction->quantity)
+                                    ? (float) $transaction->quantity
+                                    : 0;
+
+                                $old_type = isset($transaction->type)
+                                    ? $transaction->type
+                                    : "";
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | GET OLD CREDITOR LEDGER TRANSACTION
+                                |--------------------------------------------------------------------------
+                                |
+                                | We need:
+                                |
+                                |   - old creditor
+                                |   - old credit
+                                |   - old debit
+                                |
+                                | This allows us to reverse ONLY the old effect and apply the new one.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $old_creditor_id     = 0;
+                                $old_creditor_credit = 0;
+                                $old_creditor_debit  = 0;
+
+                                $oldCreditorSql = "
+                                    SELECT
+                                        creditor_id,
+                                        credit_amount,
+                                        debit_amount
+                                    FROM cashbook_creditor_ledger
+                                    WHERE transaction_id = ?
+                                    LIMIT 1
+                                ";
+
+                                $oldCreditorRes = prepared_statements(
+                                    $oldCreditorSql,
+                                    'i',
+                                    [$transid]
+                                );
+
+
+                                if(
+                                    $oldCreditorRes &&
+                                    $oldCreditorRes->num_rows > 0
+                                )
+                                {
+                                    $oldCreditorRow =
+                                        $oldCreditorRes->fetch_assoc();
+
+                                    $old_creditor_id =
+                                        (int) $oldCreditorRow['creditor_id'];
+
+                                    $old_creditor_credit =
+                                        (float) $oldCreditorRow['credit_amount'];
+
+                                    $old_creditor_debit =
+                                        (float) $oldCreditorRow['debit_amount'];
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | NORMALISE OPTIONAL VALUES
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $customer_id = !empty($customer_id)
+                                    ? (int) $customer_id
+                                    : 0;
+
+                                $creditor_id = !empty($creditor_id)
+                                    ? (int) $creditor_id
+                                    : 0;
+
+                                $item_id = !empty($item_id)
+                                    ? (int) $item_id
+                                    : 0;
+
+                                $suplier_id = !empty($suplier_id)
+                                    ? (int) $suplier_id
+                                    : 0;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | TRACK TRANSACTION EDIT
+                                |--------------------------------------------------------------------------
+                                */
+
+                                trackTransactionEdits(
+                                    $transid,
+                                    'edit'
+                                );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | UPDATE MAIN TRANSACTION
+                                |--------------------------------------------------------------------------
+                                |
+                                | Cash Out is stored in debit_amount.
+                                |
+                                | creditor_id is also saved so that cashbook_transactions remains
+                                | synchronized with cashbook_creditor_ledger.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $sql = "UPDATE cashbook_transactions SET
+
+                                        item_id = ?,
+                                        quantity = ?,
+                                        rate = ?,
+                                        type = ?,
+                                        debit_amount = ?,
+                                        details = ?,
+                                        category_id = ?,
+                                        paymode_id = ?,
+                                        user_id = ?,
+                                        customer_id = ?,
+                                        creditor_id = ?
+
+                                    WHERE id = ?
+                                ";
+
+
+                                $res = prepared_statements(
+                                    $sql,
+                                    'iddsdsiiiiii',
+                                    [
+                                        $item_id,
+                                        $qty,
+                                        $purchase_rate,
+                                        $type,
+                                        $amount,
+                                        $details,
+                                        $category_id,
+                                        $payment_mode,
+                                        $user_id,
+                                        $customer_id,
+                                        $creditor_id,
+                                        $transid
+                                    ]
+                                );
+
+
+                                if(!$res)
+                                {
+                                    $_SESSION['error'] =
+                                        "Transaction could not be updated.";
+
+                                    break;
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | PURCHASE RECORD
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if(
+                                    $type === 'purchase' &&
+                                    $item_id > 0 &&
+                                    $qty > 0 &&
+                                    $purchase_rate > 0
+                                )
+                                {
+                                    $purchase_check = "
+                                        SELECT id
+                                        FROM cashbook_purchases
+                                        WHERE transaction_id = ?
+                                        LIMIT 1
+                                    ";
+
+                                    $purchase = prepared_statements(
+                                        $purchase_check,
+                                        'i',
+                                        [$transid]
+                                    );
+
+
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | UPDATE EXISTING PURCHASE
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    if(
+                                        $purchase &&
+                                        $purchase->num_rows > 0
+                                    )
                                     {
-                                        // update the purchase record
-                                        $stmt = "UPDATE cashbook_purchases SET item_id = ?, quantity = ?, unit_price = ?, total = ?, book_id = ?, created_at = ?, user_id = ? WHERE transaction_id = ?";
-                                        prepared_statements($stmt,'iiidisi',[$item_id,$qty,$purchase_rate,$amount,$book_id,$date,$user_id,$transid]);
-                                    
-                                    }else{
-                                        // insert record if does not exixt
-                                        $stmt = "INSERT INTO cashbook_purchases SET transaction_id = ?, item_id = ?, quantity = ?, unit_price = ?, total = ?, book_id = ?, created_at = ?, user_id = ?";
-                                        prepared_statements($stmt,'iiiidisi',[$trans_id,$item_id,$qty,$purchase_rate,$amount,$book_id,$date,$user_id]);
+                                        $stmt = "
+                                            UPDATE cashbook_purchases SET
+
+                                                item_id = ?,
+                                                quantity = ?,
+                                                unit_price = ?,
+                                                total = ?,
+                                                book_id = ?,
+                                                created_at = ?,
+                                                user_id = ?
+
+                                            WHERE transaction_id = ?
+                                        ";
+
+                                        prepared_statements(
+                                            $stmt,
+                                            'idddisii',
+                                            [
+                                                $item_id,
+                                                $qty,
+                                                $purchase_rate,
+                                                $amount,
+                                                $book_id,
+                                                $date,
+                                                $user_id,
+                                                $transid
+                                            ]
+                                        );
+                                    }
+
+
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | INSERT PURCHASE IF IT DOES NOT EXIST
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    else
+                                    {
+                                        $stmt = "
+                                            INSERT INTO cashbook_purchases SET
+
+                                                transaction_id = ?,
+                                                item_id = ?,
+                                                quantity = ?,
+                                                unit_price = ?,
+                                                total = ?,
+                                                book_id = ?,
+                                                created_at = ?,
+                                                user_id = ?
+                                        ";
+
+                                        prepared_statements(
+                                            $stmt,
+                                            'iidddisi',
+                                            [
+                                                $transid,
+                                                $item_id,
+                                                $qty,
+                                                $purchase_rate,
+                                                $amount,
+                                                $book_id,
+                                                $date,
+                                                $user_id
+                                            ]
+                                        );
                                     }
                                 }
-    
-                                // enter borrowing records
-                                if(($type =='borrowing' || $type == 'credit_sale') && !empty($customer_id))
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | TRANSACTION CHANGED FROM PURCHASE
+                                |--------------------------------------------------------------------------
+                                */
+
+                                elseif($old_type === 'purchase')
                                 {
-                                    // update customer ledger
-                                    customerLedgerUpdate($customer_id,0,$amount,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$qty,$type);
+                                    $deletePurchase = "
+                                        DELETE FROM cashbook_purchases
+                                        WHERE transaction_id = ?
+                                    ";
+
+                                    prepared_statements(
+                                        $deletePurchase,
+                                        'i',
+                                        [$transid]
+                                    );
                                 }
 
-                                 if($type == 'creditorPayment' && !empty($creditor_id))
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CUSTOMER LEDGER
+                                |--------------------------------------------------------------------------
+                                |
+                                | Preserve your existing borrowing / credit sale handling.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if(
+                                    (
+                                        $type === 'borrowing' ||
+                                        $type === 'credit_sale'
+                                    ) &&
+                                    $customer_id > 0
+                                )
                                 {
-                                    // update customer ledger
-                                    CreditorLedgerUpdate($creditor_id,0,$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
+                                    customerLedgerUpdate(
+                                        $customer_id,
+                                        0,
+                                        $amount,
+                                        $category_id,
+                                        $details,
+                                        $book_id,
+                                        $payment_mode,
+                                        $transid,
+                                        $date,
+                                        $user_id,
+                                        $item_id,
+                                        $qty,
+                                        $type
+                                    );
                                 }
 
-                                // update cashouts table
-                                $stmt = "UPDATE cashbook_cashouts SET item_id = ?, type=?,quantity=?,rate=?, amount = ?, category_id = ?, details = ?,paymode_id = ?,created_at=?,user_id =? WHERE transaction_id = ?";
-                                prepared_statements($stmt,'isiiiisisii',[$item_id,$type,$qty,$purchase_rate,$amount,$category_id,$details,$payment_mode,$date,$user_id,$transid]);
-                                $_SESSION['success'] = "checked";
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CREDITOR PAYMENT EDITING
+                                |--------------------------------------------------------------------------
+                                |
+                                | IMPORTANT ACCOUNTING RULE
+                                |--------------------------------------------------------------------------
+                                |
+                                | We DO NOT rebuild the creditor balance from zero.
+                                |
+                                | Instead:
+                                |
+                                |       reverse old effect
+                                |       +
+                                |       apply new effect
+                                |
+                                | Creditor balance:
+                                |
+                                |       balance = balance + credit - debit
+                                |
+                                | A creditor payment is therefore a DEBIT because it reduces what
+                                | we owe the creditor.
+                                |--------------------------------------------------------------------------
+                                */
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CASE 1:
+                                | SAME CREDITOR - AMOUNT / DATE / DETAILS EDITED
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if(
+                                    $type === 'creditorPayment' &&
+                                    $creditor_id > 0 &&
+                                    $old_creditor_id > 0 &&
+                                    $old_creditor_id === $creditor_id
+                                )
+                                {
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | UPDATE THE CREDITOR PAYMENT
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    $creditorUpdate = "
+                                        UPDATE cashbook_creditor_ledger SET
+
+                                            type = ?,
+                                            creditor_id = ?,
+                                            credit_amount = ?,
+                                            debit_amount = ?,
+                                            details = ?,
+                                            book_id = ?,
+                                            paymode_id = ?,
+                                            created_at = ?,
+                                            user_id = ?,
+                                            item_id = ?,
+                                            quantity = ?
+
+                                        WHERE transaction_id = ?
+                                    ";
+
+
+                                    prepared_statements(
+                                        $creditorUpdate,
+                                        'siddsiisiiii',
+                                        [
+                                            $type,
+                                            $creditor_id,
+                                            0,
+                                            $amount,
+                                            $details,
+                                            $book_id,
+                                            $payment_mode,
+                                            $date,
+                                            $user_id,
+                                            $item_id,
+                                            $qty,
+                                            $transid
+                                        ]
+                                    );
+
+
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | RECALCULATE FROM THIS TRANSACTION FORWARD
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    recalculateCreditorLedgerFromTransaction(
+                                        $creditor_id,
+                                        $transid
+                                    );
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CASE 2:
+                                | CREDITOR CHANGED
+                                |--------------------------------------------------------------------------
+                                |
+                                | Example:
+                                |
+                                | Old creditor = Supplier A
+                                | Old payment  = 300,000
+                                |
+                                | New creditor = Supplier B
+                                | New payment  = 250,000
+                                |
+                                | Restore 300,000 to Supplier A.
+                                | Remove 250,000 from Supplier B.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                elseif(
+                                    $type === 'creditorPayment' &&
+                                    $creditor_id > 0 &&
+                                    $old_creditor_id > 0 &&
+                                    $old_creditor_id !== $creditor_id
+                                )
+                                {
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | RESTORE OLD CREDITOR
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    $oldCurrentBalance =
+                                        (float) getCreditorBalance(
+                                            $old_creditor_id
+                                        );
+
+
+                                    /*
+                                    | Reverse the old payment.
+                                    |
+                                    | The old payment had reduced the creditor balance.
+                                    | Therefore restoring it means adding it back.
+                                    */
+
+                                    $restoredOldBalance =
+                                        $oldCurrentBalance +
+                                        $old_creditor_debit -
+                                        $old_creditor_credit;
+
+
+                                    saveCreditorBalance(
+                                        $old_creditor_id,
+                                        $restoredOldBalance,
+                                        $date
+                                    );
+
+
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | APPLY PAYMENT TO NEW CREDITOR
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    $newCurrentBalance =
+                                        (float) getCreditorBalance(
+                                            $creditor_id
+                                        );
+
+
+                                    $newCreditorBalance =
+                                        $newCurrentBalance -
+                                        $amount;
+
+
+                                    /*
+                                    |--------------------------------------------------------------------------
+                                    | MOVE LEDGER TRANSACTION TO NEW CREDITOR
+                                    |--------------------------------------------------------------------------
+                                    */
+
+                                    $creditorUpdate = "
+                                        UPDATE cashbook_creditor_ledger SET
+
+                                            type = ?,
+                                            creditor_id = ?,
+                                            credit_amount = ?,
+                                            debit_amount = ?,
+                                            details = ?,
+                                            book_id = ?,
+                                            paymode_id = ?,
+                                            created_at = ?,
+                                            user_id = ?,
+                                            item_id = ?,
+                                            quantity = ?
+
+                                        WHERE transaction_id = ?
+                                    ";
+
+
+                                    prepared_statements(
+                                        $creditorUpdate,
+                                        'siddsiisiiii',
+                                        [
+                                            $type,
+                                            $creditor_id,
+                                            0,
+                                            $amount,
+                                            $details,
+                                            $book_id,
+                                            $payment_mode,
+                                            $date,
+                                            $user_id,
+                                            $item_id,
+                                            $qty,
+                                            $transid
+                                        ]
+                                    );
+
+
+                                    saveCreditorBalance(
+                                        $creditor_id,
+                                        $newCreditorBalance,
+                                        $date
+                                    );
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CASE 3:
+                                | NEW CREDITOR ADDED TO A TRANSACTION
+                                |--------------------------------------------------------------------------
+                                |
+                                | There was no creditor ledger entry before, but the edited transaction
+                                | is now a creditor payment.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                elseif(
+                                    $type === 'creditorPayment' &&
+                                    $creditor_id > 0 &&
+                                    $old_creditor_id <= 0
+                                )
+                                {
+                                    /*
+                                    | Get current creditor balance.
+                                    */
+
+                                    $currentBalance =
+                                        (float) getCreditorBalance(
+                                            $creditor_id
+                                        );
+
+
+                                    /*
+                                    | Apply the new payment.
+                                    */
+
+                                    $newBalance =
+                                        $currentBalance -
+                                        $amount;
+
+
+                                    /*
+                                    | Create creditor ledger record.
+                                    */
+
+                                    $creditorInsert = "INSERT INTO cashbook_creditor_ledger
+                                        (
+                                            type,
+                                            creditor_id,
+                                            credit_amount,
+                                            debit_amount,
+                                            details,
+                                            book_id,
+                                            paymode_id,
+                                            transaction_id,
+                                            created_at,
+                                            user_id,
+                                            item_id,
+                                            quantity,
+                                            balance
+                                        )
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ";
+
+
+                                    prepared_statements(
+                                        $creditorInsert,
+                                        'siddsiiisiiid',
+                                        [
+                                            $type,
+                                            $creditor_id,
+                                            0,
+                                            $amount,
+                                            $details,
+                                            $book_id,
+                                            $payment_mode,
+                                            $transid,
+                                            $date,
+                                            $user_id,
+                                            $item_id,
+                                            $qty,
+                                            $newBalance
+                                        ]
+                                    );
+
+
+                                    saveCreditorBalance(
+                                        $creditor_id,
+                                        $newBalance,
+                                        $date
+                                    );
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CASE 4:
+                                | CREDITOR REMOVED / TRANSACTION TYPE CHANGED
+                                |--------------------------------------------------------------------------
+                                |
+                                | Example:
+                                |
+                                | Old:
+                                |     creditorPayment
+                                |     Supplier A
+                                |     300,000
+                                |
+                                | New:
+                                |     normal expense
+                                |
+                                | The old payment effect must be reversed.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                elseif(
+                                    $old_creditor_id > 0 &&
+                                    (
+                                        $type !== 'creditorPayment' ||
+                                        $creditor_id <= 0
+                                    )
+                                )
+                                {
+                                    /*
+                                    | Get current balance.
+                                    */
+
+                                    $currentBalance =
+                                        (float) getCreditorBalance(
+                                            $old_creditor_id
+                                        );
+
+
+                                    /*
+                                    | Reverse old creditor transaction.
+                                    |
+                                    | Original effect:
+                                    |
+                                    |     balance + credit - debit
+                                    |
+                                    | Reverse:
+                                    |
+                                    |     balance - credit + debit
+                                    */
+
+                                    $restoredBalance =
+                                        $currentBalance
+                                        - $old_creditor_credit
+                                        + $old_creditor_debit;
+
+
+                                    /*
+                                    | Remove creditor ledger transaction.
+                                    */
+
+                                    $deleteCreditorLedger = "
+                                        DELETE FROM cashbook_creditor_ledger
+                                        WHERE transaction_id = ?
+                                    ";
+
+
+                                    prepared_statements(
+                                        $deleteCreditorLedger,
+                                        'i',
+                                        [$transid]
+                                    );
+
+
+                                    /*
+                                    | Save restored creditor balance.
+                                    */
+
+                                    saveCreditorBalance(
+                                        $old_creditor_id,
+                                        $restoredBalance,
+                                        $date
+                                    );
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | UPDATE CASHOUT RECORD
+                                |--------------------------------------------------------------------------
+                                |
+                                | Keep the actual cash movement synchronized with the edited transaction.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $stmt = "
+                                    UPDATE cashbook_cashouts SET
+
+                                        item_id = ?,
+                                        type = ?,
+                                        quantity = ?,
+                                        rate = ?,
+                                        amount = ?,
+                                        category_id = ?,
+                                        details = ?,
+                                        paymode_id = ?,
+                                        created_at = ?,
+                                        user_id = ?
+
+                                    WHERE transaction_id = ?
+                                ";
+
+
+                                prepared_statements(
+                                    $stmt,
+                                    'isdddisisii',
+                                    [
+                                        $item_id,
+                                        $type,
+                                        $qty,
+                                        $purchase_rate,
+                                        $amount,
+                                        $category_id,
+                                        $details,
+                                        $payment_mode,
+                                        $date,
+                                        $user_id,
+                                        $transid
+                                    ]
+                                );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | SUCCESS
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $_SESSION['success'] =
+                                    "Cash out transaction updated successfully.";
 
                             break;
 
@@ -2015,6 +3160,7 @@
                                 <?php
                                 break;
                             case 'debit':
+                                $book = bookFind($transaction->book_id);
                                 ?>
                                     <form id='newCashoutForm' method="post">
                                         <div class="row mx-1">
@@ -2113,14 +3259,14 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="p-0 expense-creditor hidden">
+                                        <div class="p-0 expense-creditor">
                                             <div class="row mx-1">
                                                 <div class="col-md-3 p-2">
                                                     <label for="creditor_id">CREDITOR:</label>
                                                 </div>
                                                 <?php
                                                     $sql = "SELECT * FROM cashbook_creditors WHERE book_id = ?  ORDER BY name ASC";
-                                                    $res = prepared_statements($sql,'i',[$bkid]);
+                                                    $res = prepared_statements($sql,'i',[$book->id]);
                                                 ?>
                                                 <div class="col p-2">
                                                     <select name="creditor_id" id="creditor_id" class="form-control">
@@ -2200,146 +3346,1695 @@
                                 break;
                         }
                     break;
-                case 'transactionFilter':
-                        $conditions = [];
-                        $params     = [];
-                        $types      = "";
 
-                        /* Required */
-                        $conditions[] = "t.book_id = ?";
-                        $params[]     = request('book_id');
+                case 'transactionFilter':
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | TRANSACTION REPORT
+                    |--------------------------------------------------------------------------
+                    |
+                    | Financial movement:
+                    |
+                    |   Cash In  = credit transaction verified in cashbook_cashins
+                    |   Cash Out = debit transaction verified in cashbook_cashouts
+                    |
+                    | Stock movement:
+                    |
+                    |   Purchase    = Quantity IN
+                    |   Sale        = Quantity OUT
+                    |   Net Qty     = Quantity IN - Quantity OUT
+                    |
+                    |--------------------------------------------------------------------------
+                    */
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | FILTER CONDITIONS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $conditions = [];
+                    $params     = [];
+                    $types      = "";
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | BOOK - REQUIRED
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $book_id = (int) request('book_id');
+
+                    $conditions[] = "t.book_id = ?";
+                    $params[]     = $book_id;
+                    $types       .= "i";
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | DATE FROM / DATE TO
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $min_date = !empty($_POST['min_date'])
+                        ? trim($_POST['min_date'])
+                        : '';
+
+                    $max_date = !empty($_POST['max_date'])
+                        ? trim($_POST['max_date'])
+                        : '';
+
+
+                    /*
+                    | FROM only
+                    */
+
+                    if($min_date != '' && $max_date == '')
+                    {
+                        $conditions[] = "DATE(t.created_at) = ?";
+                        $params[]     = $min_date;
+                        $types       .= "s";
+                    }
+
+
+                    /*
+                    | FROM and TO
+                    */
+
+                    if($min_date != '' && $max_date != '')
+                    {
+                        $conditions[] =
+                            "DATE(t.created_at) BETWEEN ? AND ?";
+
+                        $params[] = $min_date;
+                        $params[] = $max_date;
+
+                        $types .= "ss";
+                    }
+
+
+                    /*
+                    | TO only
+                    */
+
+                    if($min_date == '' && $max_date != '')
+                    {
+                        $conditions[] = "DATE(t.created_at) = ?";
+                        $params[]     = $max_date;
+                        $types       .= "s";
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | MONTH / YEAR
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if(!empty($_POST['month']))
+                    {
+                        $month = (int) $_POST['month'];
+
+                        $conditions[] = "MONTH(t.created_at) = ?";
+                        $params[]     = $month;
                         $types       .= "i";
 
-                        /* Date filter (ignore time) */
-                        if (!empty($_POST['min_date']) && empty($_POST['max_date'])) 
+
+                        if(!empty($_POST['year']))
                         {
-                            $conditions[] = "DATE(t.created_at) = ?";
-                            $params[]     = $_POST['min_date'];
-                            $types       .= "s";
-                        }
+                            $year = (int) $_POST['year'];
 
-                        if (!empty($_POST['max_date']) && !empty($_POST['min_date']))
+                            $conditions[] = "YEAR(t.created_at) = ?";
+                            $params[]     = $year;
+                            $types       .= "i";
+                        }
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | CASH IN / CASH OUT FILTER
+                    |--------------------------------------------------------------------------
+                    |
+                    | IMPORTANT:
+                    |
+                    | We do not rely only on credit_amount/debit_amount.
+                    |
+                    | Cash In must actually exist in cashbook_cashins.
+                    | Cash Out must actually exist in cashbook_cashouts.
+                    |
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if(!empty($_POST['type']))
+                    {
+                        $transaction_direction =
+                            trim($_POST['type']);
+
+
+                        /*
+                        | CASH IN
+                        */
+
+                        if($transaction_direction === 'credit')
                         {
-                            $conditions[] = "DATE(t.created_at) BETWEEN ? AND ?";
-                            $params[]     = $_POST['min_date'];
-                            $params[]     = $_POST['max_date'];
-                            $types       .= "ss";
+                            $conditions[] = "
+
+                                t.credit_amount > 0
+
+                                AND EXISTS
+                                (
+                                    SELECT 1
+
+                                    FROM cashbook_cashins cin_filter
+
+                                    WHERE
+                                        cin_filter.transaction_id = t.id
+                                )
+
+                            ";
                         }
 
-                        if (!empty($_POST['max_date']) && empty($_POST['min_date'])) 
+
+                        /*
+                        | CASH OUT
+                        */
+
+                        elseif($transaction_direction === 'debit')
                         {
-                            $conditions[] = "DATE(t.created_at) = ?";
-                            $params[]     = $_POST['max_date'];
-                            $types       .= "s";
+                            $conditions[] = "
+
+                                t.debit_amount > 0
+
+                                AND EXISTS
+                                (
+                                    SELECT 1
+
+                                    FROM cashbook_cashouts cout_filter
+
+                                    WHERE
+                                        cout_filter.transaction_id = t.id
+                                )
+
+                            ";
                         }
+                    }
 
-                        if (!empty($_POST['month'])) {
-                            $conditions[] = "MONTH(t.created_at) = ?";
-                            $params[]     = $_POST['month'];
-                            $types       .= "i";
-                        }
 
-                        /* Type filter */
-                        if (!empty($_POST['type'])) {
-                            $conditions[] = "t.type = ?";
-                            $params[]     = $_POST['type'];
-                            $types       .= "s";
-                        }
+                    if(!empty($_POST['category']))
+                    {
+                        $category_id = (int)$_POST['category'];
 
-                        /* Category filter */
-                        if (!empty($_POST['category'])) {
-                            $conditions[] = "t.category_id = ?";
-                            $params[]     = $_POST['category'];
-                            $types       .= "i";
-                        }
+                        $conditions[] = "t.category_id = ?
 
-                        /* Customer filter */
-                        if (!empty($_POST['customer'])) {
-                            $conditions[] = "t.customer_id = ?";
-                            $params[]     = $_POST['customer'];
-                            $types       .= "i";
-                        }
-
-                        /* Customer filter */
-                        if (!empty($_POST['item'])) {
-                            $conditions[] = "t.item_id = ?";
-                            $params[]     = $_POST['item'];
-                            $types       .= "i";
-                        }
-
-                        // $conditions[] = "month(t.created_at) = month(now())"; // default filter
-
-                        $sql = "SELECT 
-                                t.*,ci.name as item_name,
-                                c.name AS category_name,cc.name as customer_name,cco.amount as cashout
-                                FROM cashbook_transactions t
-                                LEFT JOIN cashbook_categories c ON c.id = t.category_id
-                                LEFT JOIN cashbook_customers cc ON cc.id = t.customer_id
-                                LEFT JOIN cashbook_items ci ON ci.id = t.item_id
-                                LEFT JOIN cashbook_cashouts cco ON cco.transaction_id = t.id
-                                LEFT JOIN cashbook_cashins cci ON cci.transaction_id = t.id
+                            AND EXISTS
+                            (
+                                SELECT 1
+                                FROM cashbook_categories category_check
+                                WHERE category_check.id = t.category_id
+                                AND category_check.book_id = t.book_id
+                            )
                         ";
 
-                        if ($conditions) {
-                            $sql .= " WHERE " . implode(" AND ", $conditions);
+                        $params[] = $category_id;
+                        $types .= "i";
+                    }
+
+                    if(!empty($_POST['customer']))
+                    {
+                        $customer_id = (int)$_POST['customer'];
+
+                        $conditions[] = "
+                            t.customer_id = ?
+
+                            AND EXISTS
+                            (
+                                SELECT 1
+
+                                FROM cashbook_customers customer_check
+
+                                WHERE
+                                    customer_check.id = t.customer_id
+
+                                    AND customer_check.book_id = t.book_id
+                            )
+                        ";
+
+                        $params[] = $customer_id;
+                        $types .= "i";
+                    }
+
+                    if(!empty($_POST['item']))
+                    {
+                        $item_id = (int)$_POST['item'];
+
+                        $conditions[] = "
+                            t.item_id = ?
+
+                            AND EXISTS
+                            (
+                                SELECT 1
+
+                                FROM cashbook_items item_check
+
+                                WHERE
+                                    item_check.id = t.item_id
+
+                                    AND item_check.book_id = t.book_id
+                            )
+                        ";
+
+                        $params[] =
+                            $item_id;
+
+                        $types .= "i";
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | MAIN QUERY
+                    |--------------------------------------------------------------------------
+                    |
+                    | real_cashin:
+                    |   Credit is only recognised if transaction exists
+                    |   in cashbook_cashins.
+                    |
+                    | real_cashout:
+                    |   Debit is only recognised if transaction exists
+                    |   in cashbook_cashouts.
+                    |
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $sql = "SELECT
+                            t.*,
+                            c.name AS category_name,
+                            cc.name AS customer_name,
+                            ci.name AS item_name,
+                            CASE
+                                WHEN
+                                    t.credit_amount > 0
+
+                                    AND EXISTS
+                                    (
+                                        SELECT 1
+
+                                        FROM cashbook_cashins cin
+
+                                        WHERE
+                                            cin.transaction_id = t.id
+                                            AND cin.book_id = t.book_id
+                                    )
+
+                                THEN t.credit_amount
+
+                                ELSE 0
+
+                            END AS real_cashin,
+                            CASE
+                                WHEN
+                                    t.debit_amount > 0
+
+                                    AND EXISTS
+                                    (
+                                        SELECT 1
+
+                                        FROM cashbook_cashouts cout
+
+                                        WHERE
+                                            cout.transaction_id = t.id
+                                            AND cout.book_id = t.book_id
+                                    )
+
+                                THEN t.debit_amount
+
+                                ELSE 0
+
+                            END AS real_cashout
+                        FROM cashbook_transactions t
+                        LEFT JOIN cashbook_categories c
+                            ON c.id = t.category_id
+                            AND c.book_id = t.book_id
+                        LEFT JOIN cashbook_customers cc
+                            ON cc.id = t.customer_id
+                            AND cc.book_id = t.book_id
+                        LEFT JOIN cashbook_items ci
+                            ON ci.id = t.item_id
+                            AND ci.book_id = t.book_id
+                    ";
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | WHERE CONDITIONS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if(!empty($conditions))
+                    {
+                        $sql .= "
+
+                            WHERE " .
+                            implode(
+                                " AND ",
+                                $conditions
+                            );
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | ORDER
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $sql .= "
+
+                        ORDER BY
+
+                            t.created_at ASC,
+
+                            t.id ASC
+
+                    ";
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | PREPARE
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $stmt =
+                        $server->prepare($sql);
+
+
+                    if(!$stmt)
+                    {
+                        ?>
+
+                        <tr>
+
+                            <td
+                                colspan="10"
+                                class="text-center text-danger p-5"
+                            >
+
+                                <i
+                                    class="
+                                        fa
+                                        fa-exclamation-triangle
+                                        fa-2x
+                                    "
+                                ></i>
+
+                                <div class="mt-2">
+
+                                    Failed to prepare report.
+
+                                </div>
+
+                                <?php
+
+                                /*
+                                | Useful while developing.
+                                | You can remove this later.
+                                */
+
+                                if(
+                                    isset($_SESSION['role']) &&
+                                    $_SESSION['role'] == 'superadministrator'
+                                )
+                                {
+                                    ?>
+
+                                    <small>
+                                        <?= htmlspecialchars(
+                                            $server->error
+                                        ); ?>
+                                    </small>
+
+                                    <?php
+                                }
+
+                                ?>
+
+                            </td>
+
+                        </tr>
+
+                        <?php
+
+                        break;
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | BIND PARAMETERS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if(!empty($params))
+                    {
+                        $stmt->bind_param(
+                            $types,
+                            ...$params
+                        );
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | EXECUTE
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $stmt->execute();
+
+                    $result =
+                        $stmt->get_result();
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | REPORT TOTALS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $totalCashIn  = 0;
+                    $totalCashOut = 0;
+
+                    $totalQtyIn   = 0;
+                    $totalQtyOut  = 0;
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | ITEM SUMMARY
+                    |--------------------------------------------------------------------------
+                    |
+                    | Each item will eventually look like:
+                    |
+                    | [
+                    |     name         => Gnuts,
+                    |     qty_in       => 100,
+                    |     qty_out      => 40,
+                    |     transactions => 5
+                    | ]
+                    |
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $itemSummary = [];
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | TRANSACTIONS FOUND
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if(
+                        $result &&
+                        $result->num_rows > 0
+                    ):
+
+
+                        while(
+                            $row =
+                            $result->fetch_assoc()
+                        )
+                        {
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | VERIFIED CASH MOVEMENT
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $cashIn =
+                                (float)
+                                ($row['real_cashin'] ?? 0);
+
+
+                            $cashOut =
+                                (float)
+                                ($row['real_cashout'] ?? 0);
+
+
+                            $totalCashIn +=
+                                $cashIn;
+
+
+                            $totalCashOut +=
+                                $cashOut;
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TRANSACTION QUANTITY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $quantity =
+                                (float)
+                                ($row['quantity'] ?? 0);
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | QUANTITY DIRECTION
+                            |--------------------------------------------------------------------------
+                            |
+                            | IMPORTANT:
+                            |
+                            | Money direction and stock direction are different.
+                            |
+                            | PURCHASE:
+                            |
+                            |   Cash     -> OUT
+                            |   Quantity -> IN
+                            |
+                            | SALE:
+                            |
+                            |   Cash     -> IN (for cash sale)
+                            |   Quantity -> OUT
+                            |
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $qtyIn  = 0;
+                            $qtyOut = 0;
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | NORMALISE TRANSACTION TYPE
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $transactionType =
+                                strtolower(
+                                    trim(
+                                        (string)
+                                        ($row['type'] ?? '')
+                                    )
+                                );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | QUANTITY IN TYPES
+                            |--------------------------------------------------------------------------
+                            |
+                            | These are transactions that bring stock into the business.
+                            |
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $quantityInTypes = [
+
+                                'purchase',
+
+                                'purchases',
+
+                                'stock_in',
+
+                                'stock in'
+
+                            ];
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | QUANTITY OUT TYPES
+                            |--------------------------------------------------------------------------
+                            |
+                            | These are transactions that remove stock from the business.
+                            |
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $quantityOutTypes = [
+
+                                'sale',
+
+                                'sales',
+
+                                'cash_sale',
+
+                                'cash sale',
+
+                                'credit_sale',
+
+                                'credit sale',
+
+                                'stock_out',
+
+                                'stock out'
+
+                            ];
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | CLASSIFY QUANTITY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if(
+                                in_array(
+                                    $transactionType,
+                                    $quantityInTypes,
+                                    true
+                                )
+                            )
+                            {
+                                $qtyIn =
+                                    $quantity;
+                            }
+
+
+                            elseif(
+                                in_array(
+                                    $transactionType,
+                                    $quantityOutTypes,
+                                    true
+                                )
+                            )
+                            {
+                                $qtyOut =
+                                    $quantity;
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | FALLBACK CLASSIFICATION
+                            |--------------------------------------------------------------------------
+                            |
+                            | This helps older transactions where type may not have been
+                            | stored consistently.
+                            |
+                            | If an item exists:
+                            |
+                            |   Cash Out + quantity -> probably purchase -> Qty In
+                            |
+                            |   Cash In + quantity  -> probably sale     -> Qty Out
+                            |
+                            | Explicit transaction types above ALWAYS take priority.
+                            |
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if(
+                                $quantity > 0 &&
+                                $qtyIn == 0 &&
+                                $qtyOut == 0 &&
+                                !empty($row['item_id'])
+                            )
+                            {
+
+                                /*
+                                | Cash Out usually represents purchasing stock.
+                                */
+
+                                if(
+                                    $cashOut > 0 &&
+                                    $cashIn <= 0
+                                )
+                                {
+                                    $qtyIn =
+                                        $quantity;
+                                }
+
+
+                                /*
+                                | Cash In usually represents selling stock.
+                                */
+
+                                elseif(
+                                    $cashIn > 0 &&
+                                    $cashOut <= 0
+                                )
+                                {
+                                    $qtyOut =
+                                        $quantity;
+                                }
+
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | NET QUANTITY FOR THIS TRANSACTION
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $netQty =
+                                $qtyIn -
+                                $qtyOut;
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | REPORT QUANTITY TOTALS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $totalQtyIn +=
+                                $qtyIn;
+
+
+                            $totalQtyOut +=
+                                $qtyOut;
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ITEM
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $transactionItemId =
+                                !empty($row['item_id'])
+                                    ? (int)$row['item_id']
+                                    : 0;
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | BUILD ITEM SUMMARY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if(
+                                $transactionItemId > 0
+                            )
+                            {
+
+                                /*
+                                | Create item if not already present.
+                                */
+
+                                if(
+                                    !isset(
+                                        $itemSummary[
+                                            $transactionItemId
+                                        ]
+                                    )
+                                )
+                                {
+                                    $itemSummary[
+                                        $transactionItemId
+                                    ] = [
+
+                                        'name' =>
+
+                                            !empty(
+                                                $row['item_name']
+                                            )
+                                                ? $row['item_name']
+                                                : 'Unnamed Item',
+
+                                        'qty_in' => 0,
+
+                                        'qty_out' => 0,
+
+                                        'transactions' => 0
+
+                                    ];
+                                }
+
+
+                                /*
+                                | Add quantities.
+                                */
+
+                                $itemSummary[
+                                    $transactionItemId
+                                ]['qty_in']
+                                    += $qtyIn;
+
+
+                                $itemSummary[
+                                    $transactionItemId
+                                ]['qty_out']
+                                    += $qtyOut;
+
+
+                                /*
+                                | Count transaction.
+                                */
+
+                                $itemSummary[
+                                    $transactionItemId
+                                ]['transactions']++;
+
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TRANSACTION ROW
+                            |--------------------------------------------------------------------------
+                            */
+
+                            ?>
+
+                            <tr
+                                class="
+                                    transaction-details
+                                    hover
+                                    hover-hide-content
+                                "
+
+                                data-item-id="<?=
+                                    $transactionItemId;
+                                ?>"
+
+                                data-qty-in="<?=
+                                    $qtyIn;
+                                ?>"
+
+                                data-qty-out="<?=
+                                    $qtyOut;
+                                ?>"
+                            >
+
+
+                                <!-- DATE -->
+
+                                <td>
+
+                                    <?= date(
+                                        'd-m-Y',
+                                        strtotime(
+                                            $row['created_at']
+                                        )
+                                    ); ?>
+
+                                </td>
+
+
+                                <!-- CATEGORY -->
+
+                                <td>
+
+                                    <?= htmlspecialchars(
+                                        $row['category_name']
+                                        ?? ''
+                                    ); ?>
+
+                                </td>
+
+
+                                <!-- ITEM -->
+
+                                <td>
+
+                                    <?php
+                                    if(
+                                        !empty(
+                                            $row['item_name']
+                                        )
+                                    ):
+                                    ?>
+
+                                        <strong>
+
+                                            <?= htmlspecialchars(
+                                                $row['item_name']
+                                            ); ?>
+
+                                        </strong>
+
+                                    <?php else: ?>
+
+                                        <span class="text-muted">
+                                            -
+                                        </span>
+
+                                    <?php endif; ?>
+
+                                </td>
+
+
+                                <!-- QUANTITY IN -->
+
+                                <td
+                                    class="
+                                        text-right
+                                        report-qty-in
+                                    "
+
+                                    data-quantity="<?=
+                                        $qtyIn;
+                                    ?>"
+                                >
+
+                                    <?php
+
+                                    if($qtyIn > 0)
+                                    {
+                                        echo (
+                                            floor($qtyIn)
+                                            == $qtyIn
+                                        )
+                                            ? number_format(
+                                                $qtyIn,
+                                                0
+                                            )
+                                            : number_format(
+                                                $qtyIn,
+                                                2
+                                            );
+                                    }
+
+                                    ?>
+
+                                </td>
+
+
+                                <!-- QUANTITY OUT -->
+
+                                <td
+                                    class="
+                                        text-right
+                                        report-qty-out
+                                    "
+
+                                    data-quantity="<?=
+                                        $qtyOut;
+                                    ?>"
+                                >
+
+                                    <?php
+
+                                    if($qtyOut > 0)
+                                    {
+                                        echo (
+                                            floor($qtyOut)
+                                            == $qtyOut
+                                        )
+                                            ? number_format(
+                                                $qtyOut,
+                                                0
+                                            )
+                                            : number_format(
+                                                $qtyOut,
+                                                2
+                                            );
+                                    }
+
+                                    ?>
+
+                                </td>
+
+
+                                <!-- CUSTOMER -->
+
+                                <td>
+
+                                    <?= htmlspecialchars(
+                                        $row['customer_name']
+                                        ?? ''
+                                    ); ?>
+
+                                </td>
+
+
+                                <!-- DETAILS -->
+
+                                <td>
+
+                                    <?= htmlspecialchars(
+                                        $row['details']
+                                        ?? ''
+                                    ); ?>
+
+                                </td>
+
+
+                                <!-- CASH IN -->
+
+                                <td
+                                    class="
+                                        text-right
+                                        report-cashin
+
+                                        <?=
+                                            $cashIn > 0
+                                                ? 'text-primary font-weight-bold'
+                                                : '';
+                                        ?>
+                                    "
+
+                                    data-amount="<?=
+                                        $cashIn;
+                                    ?>"
+                                >
+
+                                    <?php
+
+                                    if($cashIn > 0)
+                                    {
+                                        echo number_format(
+                                            $cashIn,
+                                            0
+                                        );
+                                    }
+
+                                    ?>
+
+                                </td>
+
+
+                                <!-- CASH OUT -->
+
+                                <td
+                                    class="
+                                        text-right
+                                        report-cashout
+
+                                        <?=
+                                            $cashOut > 0
+                                                ? 'text-danger font-weight-bold'
+                                                : '';
+                                        ?>
+                                    "
+
+                                    data-amount="<?=
+                                        $cashOut;
+                                    ?>"
+                                >
+
+                                    <?php
+
+                                    if($cashOut > 0)
+                                    {
+                                        echo number_format(
+                                            $cashOut,
+                                            0
+                                        );
+                                    }
+
+                                    ?>
+
+                                </td>
+
+
+                                <!-- ACTION -->
+
+                                <td>
+
+                                    <?php
+                                    if(
+                                        hasRole([
+                                            'owner',
+                                            'partner'
+                                        ])
+                                    ):
+                                    ?>
+
+                                        <span
+                                            class="
+                                                hover-display
+                                                text-sms
+                                            "
+                                        >
+
+
+                                            <!-- EDIT -->
+
+                                            <button
+                                                type="button"
+
+                                                class="
+                                                    btn
+                                                    btn-sm
+                                                    btn-outline-info
+                                                    edit-trans
+                                                    text-muted
+                                                "
+
+                                                data-id="<?=
+                                                    $row['id'];
+                                                ?>"
+
+                                                data-type="<?=
+                                                    $cashIn > 0
+                                                        ? 'credit'
+                                                        : 'debit';
+                                                ?>"
+                                            >
+
+                                                <i
+                                                    class="
+                                                        fa
+                                                        fa-edit
+                                                    "
+                                                ></i>
+
+                                            </button>
+
+
+                                            <!-- DELETE -->
+
+                                            <button
+                                                type="button"
+
+                                                class="
+                                                    btn
+                                                    btn-sm
+                                                    btn-outline-danger
+                                                    delete-trans
+                                                "
+
+                                                data-id="<?=
+                                                    $row['id'];
+                                                ?>"
+
+                                                data-type="<?=
+                                                    $cashIn > 0
+                                                        ? 'credit'
+                                                        : 'debit';
+                                                ?>"
+                                            >
+
+                                                <i
+                                                    class="
+                                                        fa
+                                                        fa-trash
+                                                    "
+                                                ></i>
+
+                                            </button>
+
+
+                                        </span>
+
+                                    <?php endif; ?>
+
+                                </td>
+
+
+                            </tr>
+
+                            <?php
+
                         }
 
-                        $sql .= " ORDER BY t.id ASC";
 
-                        // echo mysqli_error($server);
+                        /*
+                        |--------------------------------------------------------------------------
+                        | ITEM QUANTITY SUMMARY
+                        |--------------------------------------------------------------------------
+                        |
+                        | This hidden row travels with the AJAX response.
+                        |
+                        | We can move/display its contents in the Reports page.
+                        |
+                        |--------------------------------------------------------------------------
+                        */
 
-                        $stmt = $server->prepare($sql);
-                        $stmt->bind_param($types, ...$params);
-                        $stmt->execute();
-                        $result = $stmt->get_result();
-                            
-                        $credits =[];
-                        $debits = [];
-                        
-                        /* Render rows */
-                        if($result->num_rows >0):
-                            while ($row = $result->fetch_assoc()) 
-                            {
-                                $credits[] = $row['credit_amount'];
-                                // $debits[] = (empty($row['credit_amount']) ||  $row['credit_amount'] == 0 ) ? $row['debit_amount'] : "";
-                                 $debits[] = ($row['cashout'] == $row['debit_amount']) ? $row['debit_amount'] : 0;
-                                ?>
-                                    <tr class='transaction-details hover hover-hide-content'>
-                                        <td><?=date('d-m-Y', strtotime($row['created_at']));?></td>
-                                        <td><?=$row['category_name'];?></td>
-                                        <td><?=$row['item_name'];?></td>
-                                        <td><?=$row['customer_name'];?></td>
-                                        <td><?=$row['details'];?></td>
-                                        <td class ="<?=$row['credit_amount'] > 0 ? " text-primary" : "";?>"><?=($row['credit_amount'] > 0) ? number_format($row['credit_amount'],0) : "";?></td>
-                                        <td class ="<?=$row['debit_amount'] > 0 ? " text-danger" : "";?>"><?=($row['credit_amount'] > 0 ) ? "" : (($row['cashout'] == $row['debit_amount']) ? number_format($row['debit_amount'],0) : "");?></td>
-                                        <td>
-                                            <?php if(hasRole(['owner','partner'])):?>
-                                                <span class="hover-display text-sms">
-                                                    <button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$row['id'];?>" data-type="<?=($row['credit_amount'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
-                                                    <button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$row['id'];?>" data-type="<?=($row['credit_amount'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button> 
-                                                </span>
-                                            <?php endif;?>
-                                        </td>
-                                    </tr>
-                                <?php
-                            }
-                            ?>
-                                    <tr>
-                                        <th>TOTAL</th>
-                                        <th colspan='4'></th>
-                                        <th><?=number_format(array_sum($credits),0);?></th>
-                                        <th><?=number_format(array_sum($debits),0);?></th>
-                                        <th>BAL: <?=number_format((array_sum($credits)-array_sum($debits)),0);?></th>
-                                    </tr>
-                            <?php
-                        else:
-                            ?>
-                                <tr>
-                                    <td colspan='8'><center>No results found!</center></td>
-                                </tr>
-                            <?php
-                        endif;
-                    break;
+                        ?>
+
+                        <tr
+                            class="item-summary-holder"
+                            style="display:none;"
+                        >
+
+                            <td colspan="10">
+
+                                <div
+                                    class="
+                                        item-quantity-summary-data
+                                    "
+                                >
+
+
+                                    <?php
+                                    if(
+                                        !empty(
+                                            $itemSummary
+                                        )
+                                    ):
+                                    ?>
+
+
+                                        <div
+                                            class="
+                                                table-responsive
+                                            "
+                                        >
+
+
+                                            <table
+                                                class="
+                                                    table
+                                                    table-sm
+                                                    table-striped
+                                                    table-hover
+                                                    mb-0
+                                                "
+                                            >
+
+
+                                                <thead>
+
+                                                    <tr>
+
+                                                        <th
+                                                            style="
+                                                                width:50px;
+                                                            "
+                                                        >
+                                                            #
+                                                        </th>
+
+
+                                                        <th>
+                                                            Item
+                                                        </th>
+
+
+                                                        <th
+                                                            class="
+                                                                text-center
+                                                            "
+                                                        >
+                                                            Transactions
+                                                        </th>
+
+
+                                                        <th
+                                                            class="
+                                                                text-right
+                                                            "
+                                                        >
+                                                            Qty In
+                                                        </th>
+
+
+                                                        <th
+                                                            class="
+                                                                text-right
+                                                            "
+                                                        >
+                                                            Qty Out
+                                                        </th>
+
+
+                                                        <th
+                                                            class="
+                                                                text-right
+                                                            "
+                                                        >
+                                                            Net Qty
+                                                        </th>
+
+                                                    </tr>
+
+                                                </thead>
+
+
+                                                <tbody>
+
+
+                                                    <?php
+
+                                                    $itemNumber = 1;
+
+                                                    $summaryQtyIn  = 0;
+                                                    $summaryQtyOut = 0;
+
+
+                                                    foreach(
+                                                        $itemSummary
+                                                        as $summary
+                                                    ):
+
+
+                                                        $summaryNetQty =
+
+                                                            $summary[
+                                                                'qty_in'
+                                                            ]
+
+                                                            -
+
+                                                            $summary[
+                                                                'qty_out'
+                                                            ];
+
+
+                                                        $summaryQtyIn +=
+
+                                                            $summary[
+                                                                'qty_in'
+                                                            ];
+
+
+                                                        $summaryQtyOut +=
+
+                                                            $summary[
+                                                                'qty_out'
+                                                            ];
+
+                                                    ?>
+
+
+                                                        <tr>
+
+
+                                                            <td>
+
+                                                                <?=
+                                                                    $itemNumber++;
+                                                                ?>
+
+                                                            </td>
+
+
+                                                            <td>
+
+                                                                <strong>
+
+                                                                    <?= htmlspecialchars(
+                                                                        $summary[
+                                                                            'name'
+                                                                        ]
+                                                                    ); ?>
+
+                                                                </strong>
+
+                                                            </td>
+
+
+                                                            <td
+                                                                class="
+                                                                    text-center
+                                                                "
+                                                            >
+
+                                                                <?= number_format(
+                                                                    $summary[
+                                                                        'transactions'
+                                                                    ],
+                                                                    0
+                                                                ); ?>
+
+                                                            </td>
+
+
+                                                            <!-- QTY IN -->
+
+                                                            <td
+                                                                class="
+                                                                    text-right
+                                                                "
+                                                            >
+
+                                                                <?php
+
+                                                                echo (
+                                                                    floor(
+                                                                        $summary[
+                                                                            'qty_in'
+                                                                        ]
+                                                                    )
+                                                                    ==
+                                                                    $summary[
+                                                                        'qty_in'
+                                                                    ]
+                                                                )
+                                                                    ? number_format(
+                                                                        $summary[
+                                                                            'qty_in'
+                                                                        ],
+                                                                        0
+                                                                    )
+                                                                    : number_format(
+                                                                        $summary[
+                                                                            'qty_in'
+                                                                        ],
+                                                                        2
+                                                                    );
+
+                                                                ?>
+
+                                                            </td>
+
+
+                                                            <!-- QTY OUT -->
+
+                                                            <td
+                                                                class="
+                                                                    text-right
+                                                                "
+                                                            >
+
+                                                                <?php
+
+                                                                echo (
+                                                                    floor(
+                                                                        $summary[
+                                                                            'qty_out'
+                                                                        ]
+                                                                    )
+                                                                    ==
+                                                                    $summary[
+                                                                        'qty_out'
+                                                                    ]
+                                                                )
+                                                                    ? number_format(
+                                                                        $summary[
+                                                                            'qty_out'
+                                                                        ],
+                                                                        0
+                                                                    )
+                                                                    : number_format(
+                                                                        $summary[
+                                                                            'qty_out'
+                                                                        ],
+                                                                        2
+                                                                    );
+
+                                                                ?>
+
+                                                            </td>
+
+
+                                                            <!-- NET -->
+
+                                                            <td
+                                                                class="
+                                                                    text-right
+                                                                    font-weight-bold
+
+                                                                    <?=
+                                                                        $summaryNetQty < 0
+                                                                            ? 'text-danger'
+                                                                            : 'text-success';
+                                                                    ?>
+                                                                "
+                                                            >
+
+                                                                <?php
+
+                                                                echo (
+                                                                    floor(
+                                                                        $summaryNetQty
+                                                                    )
+                                                                    ==
+                                                                    $summaryNetQty
+                                                                )
+                                                                    ? number_format(
+                                                                        $summaryNetQty,
+                                                                        0
+                                                                    )
+                                                                    : number_format(
+                                                                        $summaryNetQty,
+                                                                        2
+                                                                    );
+
+                                                                ?>
+
+                                                            </td>
+
+
+                                                        </tr>
+
+
+                                                    <?php endforeach; ?>
+
+
+                                                </tbody>
+
+
+                                                <tfoot>
+
+
+                                                    <?php
+
+                                                    $summaryNet =
+
+                                                        $summaryQtyIn
+                                                        -
+                                                        $summaryQtyOut;
+
+                                                    ?>
+
+
+                                                    <tr
+                                                        class="
+                                                            font-weight-bold
+                                                        "
+                                                    >
+
+
+                                                        <th
+                                                            colspan="3"
+                                                        >
+                                                            TOTAL MOVEMENT
+                                                        </th>
+
+
+                                                        <th
+                                                            class="
+                                                                text-right
+                                                            "
+                                                        >
+                                                            <?php
+
+                                                            echo (
+                                                                floor(
+                                                                    $summaryQtyIn
+                                                                )
+                                                                ==
+                                                                $summaryQtyIn
+                                                            )
+                                                                ? number_format(
+                                                                    $summaryQtyIn,
+                                                                    0
+                                                                )
+                                                                : number_format(
+                                                                    $summaryQtyIn,
+                                                                    2
+                                                                );
+
+                                                            ?>
+                                                        </th>
+                                                        <th
+                                                            class="
+                                                                text-right
+                                                            "
+                                                        >
+                                                        <?php
+                                                            echo (
+                                                                floor(
+                                                                    $summaryQtyOut
+                                                                )
+                                                                ==
+                                                                $summaryQtyOut
+                                                            )
+                                                                ? number_format(
+                                                                    $summaryQtyOut,
+                                                                    0
+                                                                )
+                                                                : number_format(
+                                                                    $summaryQtyOut,
+                                                                    2
+                                                                );
+
+                                                            ?>
+                                                        </th>
+                                                        <th
+                                                            class="
+                                                                text-right
+                                                            "
+                                                        >
+                                                        <?php
+                                                            echo (
+                                                                floor(
+                                                                    $summaryNet
+                                                                )
+                                                                ==
+                                                                $summaryNet
+                                                            )
+                                                                ? number_format(
+                                                                    $summaryNet,
+                                                                    0
+                                                                )
+                                                                : number_format(
+                                                                    $summaryNet,
+                                                                    2
+                                                                );
+                                                            ?>
+                                                        </th>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    <?php else: ?>
+                                        <div
+                                            class="
+                                                text-center
+                                                text-muted
+                                                p-4
+                                            "
+                                        >
+                                            No item quantity movements
+                                            found for this report.
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | NO TRANSACTIONS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    else:
+
+                        ?>
+
+                        <tr>
+
+                            <td
+                                colspan="10"
+                                class="
+                                    text-center
+                                    text-muted
+                                    p-5
+                                "
+                            >
+                                <i
+                                    class="
+                                        fa
+                                        fa-info-circle
+                                        fa-2x
+                                    "
+                                ></i>
+                                <div class="mt-2">
+                                    No transactions found.
+                                </div>
+                            </td>
+                        </tr>
+                        <?php
+                    endif;
+                break;
                 case 'findCustomerInvoices':
                     $id = request('customer_id');
                     // fetch invoices
@@ -2479,9 +5174,226 @@
                         |--------------------------------------------------------------------------
                         */
 
-                        if ($format === 'excel') 
+                        if ($format === 'excel')
                         {
+                            /*
+                            |--------------------------------------------------------------------------
+                            | CREATE SPREADSHEET
+                            |--------------------------------------------------------------------------
+                            */
+
                             $spreadsheet = new Spreadsheet();
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | HELPER: FORMAT QUANTITY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $formatQty = function($value)
+                            {
+                                $value = (float)$value;
+
+                                return $value;
+                            };
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | QUANTITY MOVEMENT TYPES
+                            |--------------------------------------------------------------------------
+                            |
+                            | Purchase / stock in:
+                            |       Quantity IN
+                            |
+                            | Sale / stock out:
+                            |       Quantity OUT
+                            |
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $quantityInTypes = [
+                                'purchase',
+                                'purchases',
+                                'stock_in',
+                                'stock in'
+                            ];
+
+                            $quantityOutTypes = [
+                                'sale',
+                                'sales',
+                                'cash_sale',
+                                'cash sale',
+                                'credit_sale',
+                                'credit sale',
+                                'stock_out',
+                                'stock out'
+                            ];
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | BUILD QUANTITY SUMMARY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $totalQtyIn  = 0;
+                            $totalQtyOut = 0;
+
+                            $itemSummary = [];
+
+
+                            foreach ($transactions as $transaction)
+                            {
+                                $quantity = (float)($transaction['quantity'] ?? 0);
+
+                                $qtyIn  = 0;
+                                $qtyOut = 0;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | NORMALISE TYPE
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $transactionType = strtolower(
+                                    trim(
+                                        (string)($transaction['type'] ?? '')
+                                    )
+                                );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | EXPLICIT QUANTITY DIRECTION
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if (
+                                    in_array(
+                                        $transactionType,
+                                        $quantityInTypes,
+                                        true
+                                    )
+                                )
+                                {
+                                    $qtyIn = $quantity;
+                                }
+                                elseif (
+                                    in_array(
+                                        $transactionType,
+                                        $quantityOutTypes,
+                                        true
+                                    )
+                                )
+                                {
+                                    $qtyOut = $quantity;
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CASH VALUES
+                                |--------------------------------------------------------------------------
+                                |
+                                | If real_cashin / real_cashout were prepared by the report query,
+                                | use them.
+                                |
+                                | Otherwise fall back to the transaction amounts.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $rowCashIn = isset($transaction['real_cashin'])
+                                    ? (float)$transaction['real_cashin']
+                                    : (float)($transaction['credit_amount'] ?? 0);
+
+
+                                $rowCashOut = isset($transaction['real_cashout'])
+                                    ? (float)$transaction['real_cashout']
+                                    : (float)($transaction['debit_amount'] ?? 0);
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | FALLBACK QUANTITY CLASSIFICATION
+                                |--------------------------------------------------------------------------
+                                |
+                                | Only used when the transaction type did not tell us the direction.
+                                |
+                                | Cash Out + Item + Qty = likely purchase -> Qty In
+                                | Cash In  + Item + Qty = likely sale     -> Qty Out
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if (
+                                    $quantity > 0 &&
+                                    $qtyIn == 0 &&
+                                    $qtyOut == 0 &&
+                                    !empty($transaction['item_id'])
+                                )
+                                {
+                                    if (
+                                        $rowCashOut > 0 &&
+                                        $rowCashIn <= 0
+                                    )
+                                    {
+                                        $qtyIn = $quantity;
+                                    }
+                                    elseif (
+                                        $rowCashIn > 0 &&
+                                        $rowCashOut <= 0
+                                    )
+                                    {
+                                        $qtyOut = $quantity;
+                                    }
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | TOTAL QUANTITY MOVEMENT
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $totalQtyIn  += $qtyIn;
+                                $totalQtyOut += $qtyOut;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | ITEM SUMMARY
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $itemId = (int)($transaction['item_id'] ?? 0);
+
+                                if ($itemId > 0)
+                                {
+                                    if (!isset($itemSummary[$itemId]))
+                                    {
+                                        $itemSummary[$itemId] = [
+                                            'name'         => $transaction['item_name'] ?? 'Unnamed Item',
+                                            'qty_in'       => 0,
+                                            'qty_out'      => 0,
+                                            'transactions' => 0
+                                        ];
+                                    }
+
+
+                                    $itemSummary[$itemId]['qty_in'] += $qtyIn;
+
+                                    $itemSummary[$itemId]['qty_out'] += $qtyOut;
+
+                                    $itemSummary[$itemId]['transactions']++;
+                                }
+                            }
+
+
+                            $netQuantity =
+                                $totalQtyIn - $totalQtyOut;
+
 
                             /*
                             |--------------------------------------------------------------------------
@@ -2489,23 +5401,79 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $summary = $spreadsheet->getActiveSheet();
+                            $summary =
+                                $spreadsheet->getActiveSheet();
+
                             $summary->setTitle('Summary');
-                            $summary->mergeCells(
-                                'A1:D1'
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TITLE
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $summary->mergeCells('A1:D1');
+
+                            $summary->setCellValue(
+                                'A1',
+                                strtoupper(
+                                    $book->name ?? 'BUSINESS'
+                                )
                             );
 
-                            $summary->setCellValue('A1',strtoupper($book->name ?? 'BUSINESS'));
-                            $summary->mergeCells('A2:D2' );
-                            $summary->setCellValue('A2','TRANSACTION REPORT');
 
-                            $summary->setCellValue('A4','Generated');
-                            $summary->setCellValue('B4',date('d-m-Y H:i'));
-                            $summary->setCellValue('A6','Cash In');
-                            $summary->setCellValue('B6',$cashin);
-                            $summary->setCellValue('A7','Cash Out');
-                            $summary->setCellValue('B7',$cashout);
-                            $summary->setCellValue('A8','Net Balance');
+                            $summary->mergeCells('A2:D2');
+
+                            $summary->setCellValue(
+                                'A2',
+                                'TRANSACTION REPORT'
+                            );
+
+
+                            $summary->setCellValue(
+                                'A4',
+                                'Generated'
+                            );
+
+                            $summary->setCellValue(
+                                'B4',
+                                date('d-m-Y H:i')
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | FINANCIAL SUMMARY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $summary->setCellValue(
+                                'A6',
+                                'Cash In'
+                            );
+
+                            $summary->setCellValue(
+                                'B6',
+                                $cashin
+                            );
+
+
+                            $summary->setCellValue(
+                                'A7',
+                                'Cash Out'
+                            );
+
+                            $summary->setCellValue(
+                                'B7',
+                                $cashout
+                            );
+
+
+                            $summary->setCellValue(
+                                'A8',
+                                'Net Balance'
+                            );
 
                             $summary->setCellValue(
                                 'B8',
@@ -2526,45 +5494,108 @@
 
                             /*
                             |--------------------------------------------------------------------------
-                            | FILTER SUMMARY
+                            | QUANTITY SUMMARY
                             |--------------------------------------------------------------------------
                             */
 
                             $summary->setCellValue(
                                 'A11',
+                                'QUANTITY MOVEMENT'
+                            );
+
+
+                            $summary->setCellValue(
+                                'A12',
+                                'Quantity In'
+                            );
+
+                            $summary->setCellValue(
+                                'B12',
+                                $totalQtyIn
+                            );
+
+
+                            $summary->setCellValue(
+                                'A13',
+                                'Quantity Out'
+                            );
+
+                            $summary->setCellValue(
+                                'B13',
+                                $totalQtyOut
+                            );
+
+
+                            $summary->setCellValue(
+                                'A14',
+                                'Net Quantity'
+                            );
+
+                            $summary->setCellValue(
+                                'B14',
+                                $netQuantity
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | FILTER SUMMARY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $summary->setCellValue(
+                                'A16',
                                 'REPORT FILTERS'
                             );
 
 
-                            $filterRow = 12;
+                            $filterRow = 17;
 
 
                             $filterLabels = [
+
                                 'min_date' => 'Date From',
+
                                 'max_date' => 'Date To',
-                                'month'    => 'Month',
-                                'year'     => 'Year',
-                                'type'     => 'Type',
+
+                                'month' => 'Month',
+
+                                'year' => 'Year',
+
+                                'type' => 'Type',
+
                                 'category' => 'Category',
+
                                 'customer' => 'Customer',
+
                                 'item' => 'Item'
 
                             ];
 
 
-                            foreach ($filterLabels as $key => $label) 
+                            foreach (
+                                $filterLabels
+                                as $key => $label
+                            )
                             {
-                                if (isset($filters[$key]) && $filters[$key] !== '' && $filters[$key] !== null) 
+                                if (
+                                    isset($filters[$key]) &&
+                                    $filters[$key] !== '' &&
+                                    $filters[$key] !== null
+                                )
                                 {
-                                    $summary->setCellValue('A' . $filterRow, $label);
-                                    $summary->setCellValue('B' . $filterRow, $filters[$key]);
+                                    $summary->setCellValue(
+                                        'A' . $filterRow,
+                                        $label
+                                    );
+
+                                    $summary->setCellValue(
+                                        'B' . $filterRow,
+                                        $filters[$key]
+                                    );
+
                                     $filterRow++;
                                 }
-                            }
-
-                            foreach(range('A','C') as $col)
-                            {
-                                $summary->getColumnDimension($col)->setAutoSize(true);
                             }
 
 
@@ -2574,21 +5605,98 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $summary->getStyle('A1:D2')->getFont()->setBold(true);
+                            $summary
+                                ->getStyle('A1:D2')
+                                ->getFont()
+                                ->setBold(true);
 
-                            $summary->getStyle('A1:D2')->getAlignment()
-                                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                            $summary
+                                ->getStyle('A1:D2')
+                                ->getAlignment()
+                                ->setHorizontal(
+                                    Alignment::HORIZONTAL_CENTER
+                                );
 
 
-                            $summary->getStyle('A6:B9')->getBorders()
-                                    ->getAllBorders()
-                                    ->setBorderStyle(
-                                        Border::BORDER_THIN
-                                    );
+                            /*
+                            | Financial summary borders
+                            */
 
-                            $summary->getStyle('A6:A9')->getFont()->setBold(true);
-                            $summary->getColumnDimension('A') ->setWidth(25);
-                            $summary->getColumnDimension('B') ->setWidth(30);
+                            $summary
+                                ->getStyle('A6:B9')
+                                ->getBorders()
+                                ->getAllBorders()
+                                ->setBorderStyle(
+                                    Border::BORDER_THIN
+                                );
+
+
+                            /*
+                            | Quantity summary borders
+                            */
+
+                            $summary
+                                ->getStyle('A12:B14')
+                                ->getBorders()
+                                ->getAllBorders()
+                                ->setBorderStyle(
+                                    Border::BORDER_THIN
+                                );
+
+
+                            $summary
+                                ->getStyle('A6:A9')
+                                ->getFont()
+                                ->setBold(true);
+
+
+                            $summary
+                                ->getStyle('A12:A14')
+                                ->getFont()
+                                ->setBold(true);
+
+
+                            $summary
+                                ->getStyle('A11:B11')
+                                ->getFont()
+                                ->setBold(true);
+
+
+                            $summary
+                                ->getStyle('A16:B16')
+                                ->getFont()
+                                ->setBold(true);
+
+
+                            /*
+                            | Money format
+                            */
+
+                            $summary
+                                ->getStyle('B6:B8')
+                                ->getNumberFormat()
+                                ->setFormatCode('#,##0');
+
+
+                            /*
+                            | Quantity format
+                            */
+
+                            $summary
+                                ->getStyle('B12:B14')
+                                ->getNumberFormat()
+                                ->setFormatCode('#,##0.##');
+
+
+                            $summary
+                                ->getColumnDimension('A')
+                                ->setWidth(25);
+
+
+                            $summary
+                                ->getColumnDimension('B')
+                                ->setWidth(30);
 
 
                             /*
@@ -2597,16 +5705,55 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $sheet = $spreadsheet->createSheet();
+                            $sheet =
+                                $spreadsheet->createSheet();
 
-                            $sheet->setTitle('Transactions');
-                            $sheet->mergeCells('A1:I1');
-                            $sheet->setCellValue('A1',strtoupper($book->name ?? 'BUSINESS'));
-                            $sheet->mergeCells('A2:I2');
-                            $sheet->setCellValue('A2','TRANSACTION STATEMENT');
-                            $sheet->mergeCells( 'A3:I3');
 
-                            $sheet->setCellValue( 'A3','Generated: ' .date('d-m-Y H:i'));
+                            $sheet->setTitle(
+                                'Transactions'
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TRANSACTION SHEET TITLE
+                            |--------------------------------------------------------------------------
+                            |
+                            | We now use columns A:N
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet->mergeCells(
+                                'A1:N1'
+                            );
+
+                            $sheet->setCellValue(
+                                'A1',
+                                strtoupper(
+                                    $book->name ?? 'BUSINESS'
+                                )
+                            );
+
+
+                            $sheet->mergeCells(
+                                'A2:N2'
+                            );
+
+                            $sheet->setCellValue(
+                                'A2',
+                                'TRANSACTION STATEMENT'
+                            );
+
+
+                            $sheet->mergeCells(
+                                'A3:N3'
+                            );
+
+                            $sheet->setCellValue(
+                                'A3',
+                                'Generated: ' .
+                                date('d-m-Y H:i')
+                            );
 
 
                             /*
@@ -2616,27 +5763,48 @@
                             */
 
                             $headers = [
+
                                 'No.',
+
                                 'Date',
+
                                 'Transaction ID',
+
                                 'Category',
+
                                 'Item',
+
+                                'Qty In',
+
+                                'Qty Out',
+
+                                'Net Qty',
+
                                 'Customer',
+
                                 'Details',
+
                                 'Payment Mode',
+
                                 'Cash In',
+
                                 'Cash Out',
+
                                 'Balance'
+
                             ];
 
 
                             $column = 'A';
-                            foreach ($headers as $header) {
 
+
+                            foreach ($headers as $header)
+                            {
                                 $sheet->setCellValue(
                                     $column . '5',
                                     $header
                                 );
+
                                 $column++;
                             }
 
@@ -2647,26 +5815,27 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $sheet->getStyle(
-                                'A5:K5'
-                            )->getFont()->setBold(true);
+                            $sheet
+                                ->getStyle('A5:N5')
+                                ->getFont()
+                                ->setBold(true);
 
 
-                            $sheet->getStyle(
-                                'A5:K5'
-                            )->getAlignment()
-                            ->setHorizontal(
-                                Alignment::HORIZONTAL_CENTER
-                            );
+                            $sheet
+                                ->getStyle('A5:N5')
+                                ->getAlignment()
+                                ->setHorizontal(
+                                    Alignment::HORIZONTAL_CENTER
+                                );
 
 
-                            $sheet->getStyle(
-                                'A5:K5'
-                            )->getBorders()
-                            ->getAllBorders()
-                            ->setBorderStyle(
-                                Border::BORDER_THIN
-                            );
+                            $sheet
+                                ->getStyle('A5:N5')
+                                ->getBorders()
+                                ->getAllBorders()
+                                ->setBorderStyle(
+                                    Border::BORDER_THIN
+                                );
 
 
                             /*
@@ -2675,73 +5844,343 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $row = 6;
+                            $row    = 6;
                             $number = 1;
 
 
-                            foreach ($transactions as $transaction) {
+                            /*
+                            |--------------------------------------------------------------------------
+                            | RUNNING BALANCE
+                            |--------------------------------------------------------------------------
+                            */
 
-                                $sheet->setCellValue('A' . $row,$number);
+                            $runningBalance = 0;
+
+
+                            foreach (
+                                $transactions
+                                as $transaction
+                            )
+                            {
+                                /*
+                                |--------------------------------------------------------------------------
+                                | QUANTITY
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $quantity =
+                                    (float)(
+                                        $transaction['quantity']
+                                        ?? 0
+                                    );
+
+
+                                $qtyIn  = 0;
+                                $qtyOut = 0;
+
+
+                                $transactionType =
+                                    strtolower(
+                                        trim(
+                                            (string)(
+                                                $transaction['type']
+                                                ?? ''
+                                            )
+                                        )
+                                    );
+
+
+                                /*
+                                | Explicit stock direction.
+                                */
+
+                                if (
+                                    in_array(
+                                        $transactionType,
+                                        $quantityInTypes,
+                                        true
+                                    )
+                                )
+                                {
+                                    $qtyIn =
+                                        $quantity;
+                                }
+                                elseif (
+                                    in_array(
+                                        $transactionType,
+                                        $quantityOutTypes,
+                                        true
+                                    )
+                                )
+                                {
+                                    $qtyOut =
+                                        $quantity;
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CASH MOVEMENT
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $rowCashIn =
+                                    isset(
+                                        $transaction[
+                                            'real_cashin'
+                                        ]
+                                    )
+                                        ? (float)$transaction[
+                                            'real_cashin'
+                                        ]
+                                        : (float)(
+                                            $transaction[
+                                                'credit_amount'
+                                            ]
+                                            ?? 0
+                                        );
+
+
+                                $rowCashOut =
+                                    isset(
+                                        $transaction[
+                                            'real_cashout'
+                                        ]
+                                    )
+                                        ? (float)$transaction[
+                                            'real_cashout'
+                                        ]
+                                        : (float)(
+                                            $transaction[
+                                                'debit_amount'
+                                            ]
+                                            ?? 0
+                                        );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | FALLBACK QUANTITY DIRECTION
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if (
+                                    $quantity > 0 &&
+                                    $qtyIn == 0 &&
+                                    $qtyOut == 0 &&
+                                    !empty(
+                                        $transaction['item_id']
+                                    )
+                                )
+                                {
+                                    if (
+                                        $rowCashOut > 0 &&
+                                        $rowCashIn <= 0
+                                    )
+                                    {
+                                        $qtyIn =
+                                            $quantity;
+                                    }
+                                    elseif (
+                                        $rowCashIn > 0 &&
+                                        $rowCashOut <= 0
+                                    )
+                                    {
+                                        $qtyOut =
+                                            $quantity;
+                                    }
+                                }
+
+
+                                $rowNetQty =
+                                    $qtyIn - $qtyOut;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | RUNNING FINANCIAL BALANCE
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $runningBalance +=
+                                    $rowCashIn -
+                                    $rowCashOut;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | WRITE ROW
+                                |--------------------------------------------------------------------------
+                                */
+
+
+                                /*
+                                | A - Number
+                                */
+
                                 $sheet->setCellValue(
+                                    'A' . $row,
+                                    $number
+                                );
+
+
+                                /*
+                                | B - Date
+                                */
+
+                                $sheet->setCellValue(
+
                                     'B' . $row,
-                                    !empty($transaction['created_at'])
+
+                                    !empty(
+                                        $transaction['created_at']
+                                    )
                                         ? date(
                                             'd-m-Y H:i',
                                             strtotime(
-                                                $transaction['created_at']
+                                                $transaction[
+                                                    'created_at'
+                                                ]
                                             )
                                         )
                                         : ''
+
                                 );
 
+
+                                /*
+                                | C - Transaction ID
+                                */
 
                                 $sheet->setCellValue(
                                     'C' . $row,
-                                    $transaction['id']
+                                    $transaction['id'] ?? ''
                                 );
 
+
+                                /*
+                                | D - Category
+                                */
 
                                 $sheet->setCellValue(
                                     'D' . $row,
-                                    $transaction['category_name']
+                                    $transaction[
+                                        'category_name'
+                                    ] ?? ''
                                 );
+
+
+                                /*
+                                | E - Item
+                                */
+
                                 $sheet->setCellValue(
                                     'E' . $row,
-                                    $transaction['item_name']
+                                    $transaction[
+                                        'item_name'
+                                    ] ?? ''
                                 );
+
+
+                                /*
+                                | F - Quantity In
+                                */
 
                                 $sheet->setCellValue(
                                     'F' . $row,
-                                    $transaction['customer_name']
+                                    $qtyIn
                                 );
+
+
+                                /*
+                                | G - Quantity Out
+                                */
 
                                 $sheet->setCellValue(
                                     'G' . $row,
-                                    $transaction['details']
+                                    $qtyOut
                                 );
+
+
+                                /*
+                                | H - Net Quantity
+                                */
 
                                 $sheet->setCellValue(
                                     'H' . $row,
-                                    $transaction['paymode_name']
+                                    $rowNetQty
                                 );
+
+
+                                /*
+                                | I - Customer
+                                */
 
                                 $sheet->setCellValue(
                                     'I' . $row,
-                                    (float)$transaction['credit_amount']
+                                    $transaction[
+                                        'customer_name'
+                                    ] ?? ''
                                 );
-                                $debitt = ($transaction['debit_amount'] == $transaction['credit_amount']) ? 0 : $transaction['debit_amount'];
-                                $runningBalance = $transaction['credit_amount'] - $debitt;
-                                $sheet->setCellValue('J' . $row, (float)$debitt);
-                                $sheet->setCellValue('K' . $row,(float)$runningBalance);
+
+
+                                /*
+                                | J - Details
+                                */
+
+                                $sheet->setCellValue(
+                                    'J' . $row,
+                                    $transaction[
+                                        'details'
+                                    ] ?? ''
+                                );
+
+
+                                /*
+                                | K - Payment Mode
+                                */
+
+                                $sheet->setCellValue(
+                                    'K' . $row,
+                                    $transaction[
+                                        'paymode_name'
+                                    ] ?? ''
+                                );
+
+
+                                /*
+                                | L - Cash In
+                                */
+
+                                $sheet->setCellValue(
+                                    'L' . $row,
+                                    $rowCashIn
+                                );
+
+
+                                /*
+                                | M - Cash Out
+                                */
+
+                                $sheet->setCellValue(
+                                    'M' . $row,
+                                    $rowCashOut
+                                );
+
+
+                                /*
+                                | N - Running Balance
+                                */
+
+                                $sheet->setCellValue(
+                                    'N' . $row,
+                                    $runningBalance
+                                );
 
 
                                 $row++;
+
                                 $number++;
-
-                            }
-
-                            foreach(range('A','K') as $col){
-                                $sheet->getColumnDimension($col)->setAutoSize(true);
                             }
 
 
@@ -2751,7 +6190,8 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $totalRow = $row;
+                            $totalRow =
+                                $row;
 
 
                             $sheet->setCellValue(
@@ -2760,25 +6200,82 @@
                             );
 
 
+                            /*
+                            | Merge A:E
+                            */
+
                             $sheet->mergeCells(
-                                'A' . $totalRow . ':H' . $totalRow
+                                'A' . $totalRow .
+                                ':E' . $totalRow
                             );
 
 
+                            /*
+                            | Qty In
+                            */
+
                             $sheet->setCellValue(
-                                'I' . $totalRow,
+                                'F' . $totalRow,
+                                $totalQtyIn
+                            );
+
+
+                            /*
+                            | Qty Out
+                            */
+
+                            $sheet->setCellValue(
+                                'G' . $totalRow,
+                                $totalQtyOut
+                            );
+
+
+                            /*
+                            | Net Qty
+                            */
+
+                            $sheet->setCellValue(
+                                'H' . $totalRow,
+                                $netQuantity
+                            );
+
+
+                            /*
+                            | Merge I:K
+                            */
+
+                            $sheet->mergeCells(
+                                'I' . $totalRow .
+                                ':K' . $totalRow
+                            );
+
+
+                            /*
+                            | Cash In
+                            */
+
+                            $sheet->setCellValue(
+                                'L' . $totalRow,
                                 $cashin
                             );
 
 
+                            /*
+                            | Cash Out
+                            */
+
                             $sheet->setCellValue(
-                                'J' . $totalRow,
+                                'M' . $totalRow,
                                 $cashout
                             );
 
 
+                            /*
+                            | Balance
+                            */
+
                             $sheet->setCellValue(
-                                'K' . $totalRow,
+                                'N' . $totalRow,
                                 $cashin - $cashout
                             );
 
@@ -2789,30 +6286,54 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $sheet->getStyle(
-                                'A' . $totalRow . ':K' . $totalRow
-                            )->getFont()->setBold(true);
+                            $sheet
+                                ->getStyle(
+                                    'A' .
+                                    $totalRow .
+                                    ':N' .
+                                    $totalRow
+                                )
+                                ->getFont()
+                                ->setBold(true);
 
-                            foreach(range('A','K') as $col){
-                                $sheet->getColumnDimension($col)->setAutoSize(true);
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | QUANTITY NUMBER FORMAT
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if ($totalRow >= 6)
+                            {
+                                $sheet
+                                    ->getStyle(
+                                        'F6:H' .
+                                        $totalRow
+                                    )
+                                    ->getNumberFormat()
+                                    ->setFormatCode(
+                                        '#,##0.##'
+                                    );
                             }
 
 
                             /*
                             |--------------------------------------------------------------------------
-                            | AMOUNT FORMAT
+                            | MONEY NUMBER FORMAT
                             |--------------------------------------------------------------------------
                             */
 
-                            if ($totalRow >= 6) {
-
-                                $sheet->getStyle(
-                                    'H6:K' . $totalRow
-                                )->getNumberFormat()
-                                ->setFormatCode(
-                                    '#,##0'
-                                );
-
+                            if ($totalRow >= 6)
+                            {
+                                $sheet
+                                    ->getStyle(
+                                        'L6:N' .
+                                        $totalRow
+                                    )
+                                    ->getNumberFormat()
+                                    ->setFormatCode(
+                                        '#,##0'
+                                    );
                             }
 
 
@@ -2822,13 +6343,44 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $sheet->getStyle(
-                                'A5:K' . $totalRow
-                            )->getBorders()
-                            ->getAllBorders()
-                            ->setBorderStyle(
-                                Border::BORDER_THIN
-                            );
+                            $sheet
+                                ->getStyle(
+                                    'A5:N' .
+                                    $totalRow
+                                )
+                                ->getBorders()
+                                ->getAllBorders()
+                                ->setBorderStyle(
+                                    Border::BORDER_THIN
+                                );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ALIGN QUANTITY AND MONEY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet
+                                ->getStyle(
+                                    'F6:H' .
+                                    $totalRow
+                                )
+                                ->getAlignment()
+                                ->setHorizontal(
+                                    Alignment::HORIZONTAL_RIGHT
+                                );
+
+
+                            $sheet
+                                ->getStyle(
+                                    'L6:N' .
+                                    $totalRow
+                                )
+                                ->getAlignment()
+                                ->setHorizontal(
+                                    Alignment::HORIZONTAL_RIGHT
+                                );
 
 
                             /*
@@ -2839,23 +6391,61 @@
 
                             $widths = [
 
-                                'A' => 8,
-                                'B' => 20,
-                                'C' => 15,
-                                'D' => 22,
-                                'E' => 25,
-                                'F' => 40,
-                                'G' => 20,
-                                'H' => 18,
-                                'I' => 18,
-                                'J' => 18,
-                                'J' => 18
+                                'A' => 8,     // No.
+
+                                'B' => 20,    // Date
+
+                                'C' => 15,    // Transaction ID
+
+                                'D' => 22,    // Category
+
+                                'E' => 25,    // Item
+
+                                'F' => 14,    // Qty In
+
+                                'G' => 14,    // Qty Out
+
+                                'H' => 14,    // Net Qty
+
+                                'I' => 25,    // Customer
+
+                                'J' => 40,    // Details
+
+                                'K' => 18,    // Payment Mode
+
+                                'L' => 18,    // Cash In
+
+                                'M' => 18,    // Cash Out
+
+                                'N' => 18     // Balance
+
                             ];
 
-                            foreach ($widths as $col => $width) {
-                                $sheet->getColumnDimension($col)
+
+                            foreach (
+                                $widths
+                                as $col => $width
+                            )
+                            {
+                                $sheet
+                                    ->getColumnDimension($col)
                                     ->setWidth($width);
                             }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | WRAP LONG TEXT
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet
+                                ->getStyle(
+                                    'D5:K' .
+                                    $totalRow
+                                )
+                                ->getAlignment()
+                                ->setWrapText(true);
 
 
                             /*
@@ -2864,18 +6454,361 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $sheet->freezePane('A6');
+                            $sheet->freezePane(
+                                'A6'
+                            );
+
 
                             /*
                             |--------------------------------------------------------------------------
-                            | PRINT SETTINGS
+                            | AUTO FILTER
                             |--------------------------------------------------------------------------
                             */
 
-                            $sheet->getPageSetup()
-                                    ->setOrientation( \PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
+                            $sheet->setAutoFilter(
+                                'A5:N5'
+                            );
 
-                            $sheet->getPageSetup()->setFitToWidth(1);
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ITEM QUANTITY SUMMARY SHEET
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $itemSheet =
+                                $spreadsheet->createSheet();
+
+
+                            $itemSheet->setTitle(
+                                'Item Movement'
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | TITLE
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $itemSheet->mergeCells(
+                                'A1:F1'
+                            );
+
+
+                            $itemSheet->setCellValue(
+                                'A1',
+                                strtoupper(
+                                    $book->name ?? 'BUSINESS'
+                                )
+                            );
+
+
+                            $itemSheet->mergeCells(
+                                'A2:F2'
+                            );
+
+
+                            $itemSheet->setCellValue(
+                                'A2',
+                                'ITEM QUANTITY MOVEMENT'
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ITEM HEADERS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $itemHeaders = [
+
+                                'No.',
+
+                                'Item',
+
+                                'Transactions',
+
+                                'Qty In',
+
+                                'Qty Out',
+
+                                'Net Qty'
+
+                            ];
+
+
+                            $column = 'A';
+
+
+                            foreach (
+                                $itemHeaders
+                                as $header
+                            )
+                            {
+                                $itemSheet->setCellValue(
+                                    $column . '4',
+                                    $header
+                                );
+
+                                $column++;
+                            }
+
+
+                            $itemSheet
+                                ->getStyle('A4:F4')
+                                ->getFont()
+                                ->setBold(true);
+
+
+                            $itemSheet
+                                ->getStyle('A4:F4')
+                                ->getAlignment()
+                                ->setHorizontal(
+                                    Alignment::HORIZONTAL_CENTER
+                                );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ITEM DATA
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $itemRow =
+                                5;
+
+                            $itemNumber =
+                                1;
+
+
+                            foreach (
+                                $itemSummary
+                                as $item
+                            )
+                            {
+                                $itemNet =
+
+                                    (float)$item['qty_in']
+
+                                    -
+
+                                    (float)$item['qty_out'];
+
+
+                                $itemSheet->setCellValue(
+                                    'A' . $itemRow,
+                                    $itemNumber
+                                );
+
+
+                                $itemSheet->setCellValue(
+                                    'B' . $itemRow,
+                                    $item['name']
+                                );
+
+
+                                $itemSheet->setCellValue(
+                                    'C' . $itemRow,
+                                    $item['transactions']
+                                );
+
+
+                                $itemSheet->setCellValue(
+                                    'D' . $itemRow,
+                                    $item['qty_in']
+                                );
+
+
+                                $itemSheet->setCellValue(
+                                    'E' . $itemRow,
+                                    $item['qty_out']
+                                );
+
+
+                                $itemSheet->setCellValue(
+                                    'F' . $itemRow,
+                                    $itemNet
+                                );
+
+
+                                $itemRow++;
+
+                                $itemNumber++;
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ITEM TOTAL
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $itemTotalRow =
+                                $itemRow;
+
+
+                            $itemSheet->setCellValue(
+                                'A' . $itemTotalRow,
+                                'TOTAL'
+                            );
+
+
+                            $itemSheet->mergeCells(
+                                'A' .
+                                $itemTotalRow .
+                                ':C' .
+                                $itemTotalRow
+                            );
+
+
+                            $itemSheet->setCellValue(
+                                'D' . $itemTotalRow,
+                                $totalQtyIn
+                            );
+
+
+                            $itemSheet->setCellValue(
+                                'E' . $itemTotalRow,
+                                $totalQtyOut
+                            );
+
+
+                            $itemSheet->setCellValue(
+                                'F' . $itemTotalRow,
+                                $netQuantity
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ITEM SHEET STYLE
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $itemSheet
+                                ->getStyle(
+                                    'A4:F' .
+                                    $itemTotalRow
+                                )
+                                ->getBorders()
+                                ->getAllBorders()
+                                ->setBorderStyle(
+                                    Border::BORDER_THIN
+                                );
+
+
+                            $itemSheet
+                                ->getStyle(
+                                    'A' .
+                                    $itemTotalRow .
+                                    ':F' .
+                                    $itemTotalRow
+                                )
+                                ->getFont()
+                                ->setBold(true);
+
+
+                            $itemSheet
+                                ->getStyle(
+                                    'D5:F' .
+                                    $itemTotalRow
+                                )
+                                ->getNumberFormat()
+                                ->setFormatCode(
+                                    '#,##0.##'
+                                );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ITEM WIDTHS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $itemSheet
+                                ->getColumnDimension('A')
+                                ->setWidth(8);
+
+
+                            $itemSheet
+                                ->getColumnDimension('B')
+                                ->setWidth(30);
+
+
+                            $itemSheet
+                                ->getColumnDimension('C')
+                                ->setWidth(18);
+
+
+                            $itemSheet
+                                ->getColumnDimension('D')
+                                ->setWidth(18);
+
+
+                            $itemSheet
+                                ->getColumnDimension('E')
+                                ->setWidth(18);
+
+
+                            $itemSheet
+                                ->getColumnDimension('F')
+                                ->setWidth(18);
+
+
+                            $itemSheet->freezePane(
+                                'A5'
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | PRINT SETTINGS - TRANSACTIONS
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $sheet
+                                ->getPageSetup()
+                                ->setOrientation(
+                                    \PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE
+                                );
+
+
+                            $sheet
+                                ->getPageSetup()
+                                ->setFitToWidth(1);
+
+
+                            $sheet
+                                ->getPageSetup()
+                                ->setFitToHeight(0);
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | PRINT SETTINGS - ITEM MOVEMENT
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $itemSheet
+                                ->getPageSetup()
+                                ->setOrientation(
+                                    \PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE
+                                );
+
+
+                            $itemSheet
+                                ->getPageSetup()
+                                ->setFitToWidth(1);
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | OPEN SUMMARY SHEET FIRST
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $spreadsheet->setActiveSheetIndex(0);
 
 
                             /*
@@ -2884,31 +6817,317 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $filename ='transaction_report_' .date('Y-m-d_H-i-s') .'.xlsx';
-                            if (ob_get_length()) {
+                            $filename =
+                                'transaction_report_' .
+                                date('Y-m-d_H-i-s') .
+                                '.xlsx';
+
+
+                            if (ob_get_length())
+                            {
                                 ob_end_clean();
                             }
 
 
-                            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' );
-                            header('Content-Disposition: attachment; filename="' .$filename .'"' );
+                            header(
+                                'Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                            );
 
-                            header('Cache-Control: max-age=0');
-                            $writer = new Xlsx($spreadsheet);
+
+                            header(
+                                'Content-Disposition: attachment; filename="' .
+                                $filename .
+                                '"'
+                            );
+
+
+                            header(
+                                'Cache-Control: max-age=0'
+                            );
+
+
+                            $writer =
+                                new Xlsx(
+                                    $spreadsheet
+                                );
+
+
                             $writer->save(
                                 'php://output'
                             );
+
+
                             exit;
                         }
 
-                        if ($format === 'pdf') 
+                        if ($format === 'pdf')
                         {
+                            /*
+                            |--------------------------------------------------------------------------
+                            | QUANTITY MOVEMENT TYPES
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $quantityInTypes = [
+                                'purchase',
+                                'purchases',
+                                'stock_in',
+                                'stock in'
+                            ];
+
+                            $quantityOutTypes = [
+                                'sale',
+                                'sales',
+                                'cash_sale',
+                                'cash sale',
+                                'credit_sale',
+                                'credit sale',
+                                'stock_out',
+                                'stock out'
+                            ];
+
 
                             /*
                             |--------------------------------------------------------------------------
-                            | LOAD FPDF
+                            | PREPARE REPORT DATA
+                            |--------------------------------------------------------------------------
+                            |
+                            | We prepare quantity movement and verified cash movement before
+                            | generating the PDF.
                             |--------------------------------------------------------------------------
                             */
+
+                            $pdfTransactions = [];
+
+                            $totalQtyIn  = 0;
+                            $totalQtyOut = 0;
+
+                            $pdfCashIn  = 0;
+                            $pdfCashOut = 0;
+
+                            $itemSummary = [];
+
+
+                            foreach ($transactions as $transaction)
+                            {
+                                /*
+                                |--------------------------------------------------------------------------
+                                | QUANTITY
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $quantity =
+                                    (float)($transaction['quantity'] ?? 0);
+
+                                $qtyIn  = 0;
+                                $qtyOut = 0;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | TRANSACTION TYPE
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $transactionType =
+                                    strtolower(
+                                        trim(
+                                            (string)($transaction['type'] ?? '')
+                                        )
+                                    );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | VERIFIED CASH MOVEMENT
+                                |--------------------------------------------------------------------------
+                                |
+                                | Prefer real_cashin / real_cashout if the export query supplies them.
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $rowCashIn =
+                                    isset($transaction['real_cashin'])
+                                        ? (float)$transaction['real_cashin']
+                                        : (float)($transaction['credit_amount'] ?? 0);
+
+
+                                $rowCashOut =
+                                    isset($transaction['real_cashout'])
+                                        ? (float)$transaction['real_cashout']
+                                        : (float)($transaction['debit_amount'] ?? 0);
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | EXPLICIT QUANTITY DIRECTION
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if (
+                                    in_array(
+                                        $transactionType,
+                                        $quantityInTypes,
+                                        true
+                                    )
+                                )
+                                {
+                                    $qtyIn = $quantity;
+                                }
+                                elseif (
+                                    in_array(
+                                        $transactionType,
+                                        $quantityOutTypes,
+                                        true
+                                    )
+                                )
+                                {
+                                    $qtyOut = $quantity;
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | FALLBACK QUANTITY DIRECTION
+                                |--------------------------------------------------------------------------
+                                |
+                                | Older records may not have consistent transaction type values.
+                                |
+                                | Cash Out + Item + Qty = likely purchase => Qty In
+                                | Cash In  + Item + Qty = likely sale     => Qty Out
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if (
+                                    $quantity > 0 &&
+                                    $qtyIn == 0 &&
+                                    $qtyOut == 0 &&
+                                    !empty($transaction['item_id'])
+                                )
+                                {
+                                    if (
+                                        $rowCashOut > 0 &&
+                                        $rowCashIn <= 0
+                                    )
+                                    {
+                                        $qtyIn = $quantity;
+                                    }
+                                    elseif (
+                                        $rowCashIn > 0 &&
+                                        $rowCashOut <= 0
+                                    )
+                                    {
+                                        $qtyOut = $quantity;
+                                    }
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | NET QUANTITY
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $netQty =
+                                    $qtyIn - $qtyOut;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | TOTALS
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $totalQtyIn +=
+                                    $qtyIn;
+
+                                $totalQtyOut +=
+                                    $qtyOut;
+
+                                $pdfCashIn +=
+                                    $rowCashIn;
+
+                                $pdfCashOut +=
+                                    $rowCashOut;
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | ITEM SUMMARY
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $itemId =
+                                    (int)($transaction['item_id'] ?? 0);
+
+
+                                if ($itemId > 0)
+                                {
+                                    if (!isset($itemSummary[$itemId]))
+                                    {
+                                        $itemSummary[$itemId] = [
+
+                                            'name' =>
+                                                $transaction['item_name']
+                                                ?? 'Unnamed Item',
+
+                                            'transactions' => 0,
+
+                                            'qty_in' => 0,
+
+                                            'qty_out' => 0
+                                        ];
+                                    }
+
+
+                                    $itemSummary[$itemId]['transactions']++;
+
+                                    $itemSummary[$itemId]['qty_in'] +=
+                                        $qtyIn;
+
+                                    $itemSummary[$itemId]['qty_out'] +=
+                                        $qtyOut;
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | STORE PREPARED VALUES
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $transaction['_qty_in'] =
+                                    $qtyIn;
+
+                                $transaction['_qty_out'] =
+                                    $qtyOut;
+
+                                $transaction['_net_qty'] =
+                                    $netQty;
+
+                                $transaction['_cash_in'] =
+                                    $rowCashIn;
+
+                                $transaction['_cash_out'] =
+                                    $rowCashOut;
+
+
+                                $pdfTransactions[] =
+                                    $transaction;
+                            }
+
+
+                            $netQuantity =
+                                $totalQtyIn - $totalQtyOut;
+
+
+                            $financialBalance =
+                                $pdfCashIn - $pdfCashOut;
+
+
+                            $pdfTransactionCount =
+                                count($pdfTransactions);
+
 
                             /*
                             |--------------------------------------------------------------------------
@@ -2919,19 +7138,15 @@
                             class CashbookTransactionReportPDF extends FPDF
                             {
                                 public $businessName = '';
-                                public $reportTitle = 'TRANSACTION REPORT';
+
+                                public $reportTitle =
+                                    'TRANSACTION REPORT';
 
 
                                 /*
                                 |--------------------------------------------------------------------------
                                 | PAGE HEADER
                                 |--------------------------------------------------------------------------
-                                |
-                                | This is automatically called by FPDF whenever AddPage() is called.
-                                |
-                                | IMPORTANT:
-                                | Do NOT put transaction table headers here.
-                                |
                                 */
 
                                 function Header()
@@ -2942,10 +7157,13 @@
                                         16
                                     );
 
+
                                     $this->Cell(
                                         0,
                                         8,
-                                        strtoupper($this->businessName),
+                                        strtoupper(
+                                            $this->businessName
+                                        ),
                                         0,
                                         1,
                                         'C'
@@ -2957,6 +7175,7 @@
                                         'B',
                                         12
                                     );
+
 
                                     $this->Cell(
                                         0,
@@ -2974,10 +7193,12 @@
                                         8
                                     );
 
+
                                     $this->Cell(
                                         0,
                                         5,
-                                        'Generated: ' . date('d-m-Y H:i'),
+                                        'Generated: ' .
+                                        date('d-m-Y H:i'),
                                         0,
                                         1,
                                         'C'
@@ -2993,8 +7214,10 @@
                                 | TRANSACTION TABLE HEADER
                                 |--------------------------------------------------------------------------
                                 |
-                                | This is called manually when the transaction table begins.
+                                | Landscape A4 usable width with 8mm margins:
                                 |
+                                | 297 - 16 = 281mm
+                                |--------------------------------------------------------------------------
                                 */
 
                                 function TableHeader()
@@ -3002,23 +7225,134 @@
                                     $this->SetFont(
                                         'Arial',
                                         'B',
-                                        7
+                                        6.5
                                     );
 
 
-                                    $this->Cell(8, 7, '#', 1);
-                                    $this->Cell(28, 7, 'Date', 1);
-                                    $this->Cell(32, 7, 'Category', 1);
-                                    $this->Cell(32, 7, 'Item', 1);
-                                    $this->Cell(27, 7, 'Customer', 1);
-                                    $this->Cell(51, 7, 'Details', 1);
-                                    $this->Cell(22, 7, 'Cash In', 1, 0, 'R');
-                                    $this->Cell(22, 7, 'Cash Out', 1, 0, 'R');
-                                    $this->Cell(22, 7, 'Balance', 1, 1, 'R');
+                                    $this->Cell(
+                                        7,
+                                        7,
+                                        '#',
+                                        1,
+                                        0,
+                                        'C'
+                                    );
+
+
+                                    $this->Cell(
+                                        24,
+                                        7,
+                                        'Date',
+                                        1,
+                                        0,
+                                        'C'
+                                    );
+
+
+                                    $this->Cell(
+                                        27,
+                                        7,
+                                        'Category',
+                                        1,
+                                        0,
+                                        'C'
+                                    );
+
+
+                                    $this->Cell(
+                                        27,
+                                        7,
+                                        'Item',
+                                        1,
+                                        0,
+                                        'C'
+                                    );
+
+
+                                    $this->Cell(
+                                        13,
+                                        7,
+                                        'Qty In',
+                                        1,
+                                        0,
+                                        'R'
+                                    );
+
+
+                                    $this->Cell(
+                                        13,
+                                        7,
+                                        'Qty Out',
+                                        1,
+                                        0,
+                                        'R'
+                                    );
+
+
+                                    $this->Cell(
+                                        13,
+                                        7,
+                                        'Net',
+                                        1,
+                                        0,
+                                        'R'
+                                    );
+
+
+                                    $this->Cell(
+                                        25,
+                                        7,
+                                        'Customer',
+                                        1,
+                                        0,
+                                        'C'
+                                    );
+
+
+                                    $this->Cell(
+                                        50,
+                                        7,
+                                        'Details',
+                                        1,
+                                        0,
+                                        'C'
+                                    );
+
+
+                                    $this->Cell(
+                                        27,
+                                        7,
+                                        'Cash In',
+                                        1,
+                                        0,
+                                        'R'
+                                    );
+
+
+                                    $this->Cell(
+                                        27,
+                                        7,
+                                        'Cash Out',
+                                        1,
+                                        0,
+                                        'R'
+                                    );
+
+
+                                    $this->Cell(
+                                        28,
+                                        7,
+                                        'Balance',
+                                        1,
+                                        1,
+                                        'R'
+                                    );
+
+
                                     $this->SetFont(
                                         'Arial',
                                         '',
-                                        7
+                                        6.5
                                     );
                                 }
 
@@ -3033,11 +7367,13 @@
                                 {
                                     $this->SetY(-15);
 
+
                                     $this->SetFont(
                                         'Arial',
                                         '',
                                         7
                                     );
+
 
                                     $this->Cell(
                                         0,
@@ -3051,40 +7387,28 @@
                                     );
                                 }
 
-                                function CheckTablePageBreak($height = 6)
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | CHECK TABLE PAGE BREAK
+                                |--------------------------------------------------------------------------
+                                */
+
+                                function CheckTablePageBreak(
+                                    $height = 6
+                                )
                                 {
-                                    /*
-                                    |--------------------------------------------------------------------------
-                                    | Bottom margin
-                                    |--------------------------------------------------------------------------
-                                    */
-
-                                    $bottomMargin = 18;
+                                    $bottomMargin =
+                                        18;
 
 
-                                    /*
-                                    |--------------------------------------------------------------------------
-                                    | Available page height
-                                    |--------------------------------------------------------------------------
-                                    */
-
-                                    $pageHeight = $this->GetPageHeight();
+                                    $pageHeight =
+                                        $this->GetPageHeight();
 
 
-                                    /*
-                                    |--------------------------------------------------------------------------
-                                    | Current position
-                                    |--------------------------------------------------------------------------
-                                    */
+                                    $currentY =
+                                        $this->GetY();
 
-                                    $currentY = $this->GetY();
-
-
-                                    /*
-                                    |--------------------------------------------------------------------------
-                                    | Check whether row fits
-                                    |--------------------------------------------------------------------------
-                                    */
 
                                     if (
                                         $currentY +
@@ -3092,27 +7416,17 @@
                                         $bottomMargin
                                         >
                                         $pageHeight
-                                    ) {
-
+                                    )
+                                    {
                                         $this->AddPage();
-
-                                        /*
-                                        |--------------------------------------------------------------------------
-                                        | AddPage() already called Header()
-                                        |--------------------------------------------------------------------------
-                                        |
-                                        | Now put the transaction headings below the normal page header.
-                                        |
-                                        */
 
                                         $this->TableHeader();
 
                                         $this->SetFont(
                                             'Arial',
                                             '',
-                                            7
+                                            6.5
                                         );
-
                                     }
                                 }
                             }
@@ -3124,16 +7438,37 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $pdf =new CashbookTransactionReportPDF('L','mm','A4');
-                            $pdf->businessName = $book->name ??'BUSINESS';
-                            $pdf->SetMargins(8,8,8);
-                            $pdf->SetAutoPageBreak(true, 18);
+                            $pdf =
+                                new CashbookTransactionReportPDF(
+                                    'L',
+                                    'mm',
+                                    'A4'
+                                );
+
+
+                            $pdf->businessName =
+                                $book->name ?? 'BUSINESS';
+
+
+                            $pdf->SetMargins(
+                                8,
+                                8,
+                                8
+                            );
+
+
+                            $pdf->SetAutoPageBreak(
+                                true,
+                                18
+                            );
+
+
                             $pdf->AddPage();
 
 
                             /*
                             |--------------------------------------------------------------------------
-                            | SUMMARY
+                            | FINANCIAL SUMMARY
                             |--------------------------------------------------------------------------
                             */
 
@@ -3144,8 +7479,12 @@
                             );
 
 
+                            $summaryWidth =
+                                42;
+
+
                             $pdf->Cell(
-                                42,
+                                $summaryWidth,
                                 7,
                                 'CASH IN',
                                 1,
@@ -3155,7 +7494,7 @@
 
 
                             $pdf->Cell(
-                                42,
+                                $summaryWidth,
                                 7,
                                 'CASH OUT',
                                 1,
@@ -3165,7 +7504,7 @@
 
 
                             $pdf->Cell(
-                                42,
+                                $summaryWidth,
                                 7,
                                 'NET BALANCE',
                                 1,
@@ -3175,7 +7514,7 @@
 
 
                             $pdf->Cell(
-                                42,
+                                $summaryWidth,
                                 7,
                                 'TRANSACTIONS',
                                 1,
@@ -3192,30 +7531,10 @@
 
 
                             $pdf->Cell(
-                                42,
-                                7,
-                                number_format($cashin, 0),
-                                1,
-                                0,
-                                'C'
-                            );
-
-
-                            $pdf->Cell(
-                                42,
-                                7,
-                                number_format($cashout, 0),
-                                1,
-                                0,
-                                'C'
-                            );
-
-
-                            $pdf->Cell(
-                                42,
+                                $summaryWidth,
                                 7,
                                 number_format(
-                                    $cashin - $cashout,
+                                    $pdfCashIn,
                                     0
                                 ),
                                 1,
@@ -3225,9 +7544,153 @@
 
 
                             $pdf->Cell(
-                                42,
+                                $summaryWidth,
                                 7,
-                                $transactionCount,
+                                number_format(
+                                    $pdfCashOut,
+                                    0
+                                ),
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                number_format(
+                                    $financialBalance,
+                                    0
+                                ),
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                number_format(
+                                    $pdfTransactionCount,
+                                    0
+                                ),
+                                1,
+                                1,
+                                'C'
+                            );
+
+
+                            $pdf->Ln(3);
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | QUANTITY SUMMARY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            $pdf->SetFont(
+                                'Arial',
+                                'B',
+                                9
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                'QTY IN',
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                'QTY OUT',
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                'NET QTY',
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                'ITEMS',
+                                1,
+                                1,
+                                'C'
+                            );
+
+
+                            $pdf->SetFont(
+                                'Arial',
+                                '',
+                                9
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                number_format(
+                                    $totalQtyIn,
+                                    2
+                                ),
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                number_format(
+                                    $totalQtyOut,
+                                    2
+                                ),
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                number_format(
+                                    $netQuantity,
+                                    2
+                                ),
+                                1,
+                                0,
+                                'C'
+                            );
+
+
+                            $pdf->Cell(
+                                $summaryWidth,
+                                7,
+                                number_format(
+                                    count($itemSummary),
+                                    0
+                                ),
                                 1,
                                 1,
                                 'C'
@@ -3246,144 +7709,261 @@
                             $filterText = [];
 
 
-                            if (!empty($filters['min_date'])) {
+                            /*
+                            | DATE FROM
+                            */
 
+                            if (
+                                !empty(
+                                    $filters['min_date']
+                                )
+                            )
+                            {
                                 $filterText[] =
+
                                     'From: ' .
+
                                     date(
                                         'd-m-Y',
                                         strtotime(
                                             $filters['min_date']
                                         )
                                     );
-
                             }
 
 
-                            if (!empty($filters['max_date'])) {
+                            /*
+                            | DATE TO
+                            */
 
+                            if (
+                                !empty(
+                                    $filters['max_date']
+                                )
+                            )
+                            {
                                 $filterText[] =
+
                                     'To: ' .
+
                                     date(
                                         'd-m-Y',
                                         strtotime(
                                             $filters['max_date']
                                         )
                                     );
-
                             }
 
 
-                            if (!empty($filters['month'])) {
+                            /*
+                            | MONTH
+                            */
 
-                                $filterText[] =
-                                    'Month: ' .
-                                    $filters['month'];
+                            if (
+                                !empty(
+                                    $filters['month']
+                                )
+                            )
+                            {
+                                $monthNumber =
+                                    (int)$filters['month'];
 
+
+                                if (
+                                    $monthNumber >= 1 &&
+                                    $monthNumber <= 12
+                                )
+                                {
+                                    $filterText[] =
+
+                                        'Month: ' .
+
+                                        date(
+                                            'F',
+                                            mktime(
+                                                0,
+                                                0,
+                                                0,
+                                                $monthNumber,
+                                                1
+                                            )
+                                        );
+                                }
                             }
 
 
-                            if (!empty($filters['year'])) {
+                            /*
+                            | YEAR
+                            */
 
+                            if (
+                                !empty(
+                                    $filters['year']
+                                )
+                            )
+                            {
                                 $filterText[] =
+
                                     'Year: ' .
-                                    $filters['year'];
 
+                                    $filters['year'];
                             }
 
 
-                            if (!empty($filters['type'])) {
+                            /*
+                            | TYPE
+                            */
 
+                            if (
+                                !empty(
+                                    $filters['type']
+                                )
+                            )
+                            {
                                 $filterText[] =
+
                                     'Type: ' .
+
                                     (
-                                        $filters['type'] === 'credit'
+                                        $filters['type']
+                                        === 'credit'
+
                                         ? 'Cash In'
+
                                         : 'Cash Out'
                                     );
-
                             }
 
 
-                            if (!empty($filters['category'])) {
+                            /*
+                            | CATEGORY
+                            */
 
-                                $catSql = "
+                            if (
+                                !empty(
+                                    $filters['category']
+                                )
+                            )
+                            {
+                               $catSql = "
                                     SELECT name
                                     FROM cashbook_categories
                                     WHERE id = ?
+                                    AND book_id = ?
                                     LIMIT 1
                                 ";
 
-                                $catRes =
-                                    prepared_statements(
-                                        $catSql,
-                                        'i',
-                                        [(int)$filters['category']]
-                                    );
+                                $catRes = prepared_statements(
+                                    $catSql,
+                                    'ii',
+                                    [
+                                        (int)$filters['category'],
+                                        (int)$book->id
+                                    ]
+                                );  
 
-                                if ($catRes) {
 
+                                if ($catRes)
+                                {
                                     $cat =
                                         $catRes->fetch_assoc();
 
-                                    if ($cat) {
 
+                                    if ($cat)
+                                    {
                                         $filterText[] =
+
                                             'Category: ' .
+
                                             $cat['name'];
-
                                     }
-
                                 }
-
                             }
 
-                            if (!empty($filters['customer'])) 
-                            {
 
-                                $custSql = "
-                                    SELECT name
+                            /*
+                            | CUSTOMER
+                            */
+
+                            if (
+                                !empty(
+                                    $filters['customer']
+                                )
+                            )
+                            {
+                                $custSql = "SELECT name
                                     FROM cashbook_customers
                                     WHERE id = ?
+                                    AND book_id = ?
                                     LIMIT 1
                                 ";
 
-                                $custRes =
-                                    prepared_statements(
-                                        $custSql,
-                                        'i',
-                                        [(int)$filters['customer']]
-                                    );
+                                $custRes = prepared_statements(
+                                    $custSql,
+                                    'ii',
+                                    [
+                                        (int)$filters['customer'],
+                                        (int)$book->id
+                                    ]
+                                );
 
-                                if ($custRes) {
 
-                                    $cust =
-                                        $custRes->fetch_assoc();
-
-                                    if ($cust) {
-
-                                        $filterText[] =
-                                            'Customer: ' .
-                                            $cust['name'];
-
+                                if ($custRes)
+                                {
+                                    $cust =$custRes->fetch_assoc();
+                                    if ($cust)
+                                    {
+                                        $filterText[] ='Customer: ' . $cust['name'];
                                     }
-
                                 }
-
                             }
 
-                            if (!empty($filters['item'])) 
-                            {
-                                $itemSql = "SELECT name FROM cashbook_items WHERE id = ? LIMIT 1 ";
-                                $itemRes = prepared_statements( $itemSql,'i',[(int)$filters['item']]);
 
-                                if ($itemRes) 
+                            /*
+                            | ITEM
+                            */
+
+                            if (
+                                !empty(
+                                    $filters['item']
+                                )
+                            )
+                            {
+                                $itemSql = "
+                                    SELECT name
+                                    FROM cashbook_items
+                                    WHERE id = ?
+                                    AND book_id = ?
+                                    LIMIT 1
+                                ";
+
+                                $itemRes = prepared_statements(
+                                    $itemSql,
+                                    'ii',
+                                    [
+                                        (int)$filters['item'],
+                                        (int)$book->id
+                                    ]
+                                );
+
+                                if($itemRes)
                                 {
                                     $itm = $itemRes->fetch_assoc();
-                                    if ($cust) { $filterText[] = 'Item: ' . $itm['name'];}
+
+                                    if($itm)
+                                    {
+                                        $filterText[] =
+                                            'Item: ' . $itm['name'];
+                                    }
                                 }
                             }
 
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | PRINT FILTERS
+                            |--------------------------------------------------------------------------
+                            */
 
                             $pdf->SetFont(
                                 'Arial',
@@ -3411,13 +7991,18 @@
                             $pdf->MultiCell(
                                 0,
                                 5,
+
                                 !empty($filterText)
+
                                     ? implode(
                                         ' | ',
                                         $filterText
                                     )
+
                                     : 'All Transactions',
+
                                 0,
+
                                 'L'
                             );
 
@@ -3431,46 +8016,152 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $pdf->SetFont('Arial','',7);
-                            
-                            $number = 1;
-                            // add table header
+                            $pdf->SetFont(
+                                'Arial',
+                                '',
+                                6.5
+                            );
+
+
+                            $number =
+                                1;
+
+
+                            /*
+                            | Running financial balance.
+                            */
+
+                            $runningBalance =
+                                0;
+
+
+                            /*
+                            | Add first table header.
+                            */
+
                             $pdf->TableHeader();
 
-                            foreach ($transactions as $transaction) {
 
-                                $pdf->CheckTablePageBreak(6);
+                            foreach (
+                                $pdfTransactions
+                                as $transaction
+                            )
+                            {
+                                /*
+                                |--------------------------------------------------------------------------
+                                | PAGE BREAK
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $pdf->CheckTablePageBreak(
+                                    6
+                                );
 
 
-                                $date =!empty($transaction['created_at'])
+                                /*
+                                |--------------------------------------------------------------------------
+                                | VALUES
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $date =
+
+                                    !empty(
+                                        $transaction[
+                                            'created_at'
+                                        ]
+                                    )
+
                                         ? date(
                                             'd-m-Y H:i',
+
                                             strtotime(
-                                                $transaction['created_at']
+                                                $transaction[
+                                                    'created_at'
+                                                ]
                                             )
                                         )
+
                                         : '';
 
 
-                                $category = $transaction['category_name']?? '';
-                                $item = $transaction['item_name']?? '';
-                                $customer = $transaction['customer_name'] ?? '';
-                                $details = $transaction['details'] ?? '';
+                                $category =
+                                    $transaction[
+                                        'category_name'
+                                    ] ?? '';
+
+
+                                $item =
+                                    $transaction[
+                                        'item_name'
+                                    ] ?? '';
+
+
+                                $customer =
+                                    $transaction[
+                                        'customer_name'
+                                    ] ?? '';
+
+
+                                $details =
+                                    $transaction[
+                                        'details'
+                                    ] ?? '';
+
+
+                                $qtyIn =
+                                    (float)(
+                                        $transaction[
+                                            '_qty_in'
+                                        ]
+                                        ?? 0
+                                    );
+
+
+                                $qtyOut =
+                                    (float)(
+                                        $transaction[
+                                            '_qty_out'
+                                        ]
+                                        ?? 0
+                                    );
+
+
+                                $rowNetQty =
+                                    (float)(
+                                        $transaction[
+                                            '_net_qty'
+                                        ]
+                                        ?? 0
+                                    );
 
 
                                 $credit =
                                     (float)(
-                                        $transaction['credit_amount']
+                                        $transaction[
+                                            '_cash_in'
+                                        ]
                                         ?? 0
                                     );
 
-                                $debit = (float)( $transaction['debit_amount'] != $transaction['credit_amount']) ? $transaction['debit_amount'] : 0 ;
 
-                                $rowBalance =
+                                $debit =
                                     (float)(
-                                        $transaction['running_balance']
+                                        $transaction[
+                                            '_cash_out'
+                                        ]
                                         ?? 0
                                     );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | RUNNING BALANCE
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $runningBalance +=
+                                    $credit - $debit;
 
 
                                 /*
@@ -3479,11 +8170,37 @@
                                 |--------------------------------------------------------------------------
                                 */
 
-                                $category = mb_substr($category, 0, 28);
-                                $item = mb_substr($item,0,28);
+                                $category =
+                                    mb_substr(
+                                        $category,
+                                        0,
+                                        22
+                                    );
 
-                                $customer =  mb_substr($customer,0, 28);
-                                $details = mb_substr($details,0,58);
+
+                                $item =
+                                    mb_substr(
+                                        $item,
+                                        0,
+                                        22
+                                    );
+
+
+                                $customer =
+                                    mb_substr(
+                                        $customer,
+                                        0,
+                                        20
+                                    );
+
+
+                                $details =
+                                    mb_substr(
+                                        $details,
+                                        0,
+                                        48
+                                    );
+
 
                                 /*
                                 |--------------------------------------------------------------------------
@@ -3491,83 +8208,239 @@
                                 |--------------------------------------------------------------------------
                                 */
 
-                                $pdf->Cell(
-                                    8,
-                                    6,
-                                    $number,
-                                    1
-                                );
+
+                                /*
+                                | #
+                                */
 
                                 $pdf->Cell(
-                                    28,
+                                    7,
+                                    6,
+                                    $number,
+                                    1,
+                                    0,
+                                    'C'
+                                );
+
+
+                                /*
+                                | DATE
+                                */
+
+                                $pdf->Cell(
+                                    24,
                                     6,
                                     $date,
                                     1
                                 );
 
+
+                                /*
+                                | CATEGORY
+                                */
+
                                 $pdf->Cell(
-                                    32,
+                                    27,
                                     6,
                                     $category,
                                     1
                                 );
 
+
+                                /*
+                                | ITEM
+                                */
+
                                 $pdf->Cell(
-                                    32,
+                                    27,
                                     6,
                                     $item,
                                     1
                                 );
 
+
+                                /*
+                                | QTY IN
+                                */
+
                                 $pdf->Cell(
-                                    27,
+                                    13,
+                                    6,
+
+                                    $qtyIn > 0
+
+                                        ? (
+                                            floor($qtyIn)
+                                            == $qtyIn
+
+                                            ? number_format(
+                                                $qtyIn,
+                                                0
+                                            )
+
+                                            : number_format(
+                                                $qtyIn,
+                                                2
+                                            )
+                                        )
+
+                                        : '',
+
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+
+                                /*
+                                | QTY OUT
+                                */
+
+                                $pdf->Cell(
+                                    13,
+                                    6,
+
+                                    $qtyOut > 0
+
+                                        ? (
+                                            floor($qtyOut)
+                                            == $qtyOut
+
+                                            ? number_format(
+                                                $qtyOut,
+                                                0
+                                            )
+
+                                            : number_format(
+                                                $qtyOut,
+                                                2
+                                            )
+                                        )
+
+                                        : '',
+
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+
+                                /*
+                                | NET QTY
+                                */
+
+                                $pdf->Cell(
+                                    13,
+                                    6,
+
+                                    $rowNetQty != 0
+
+                                        ? (
+                                            floor($rowNetQty)
+                                            == $rowNetQty
+
+                                            ? number_format(
+                                                $rowNetQty,
+                                                0
+                                            )
+
+                                            : number_format(
+                                                $rowNetQty,
+                                                2
+                                            )
+                                        )
+
+                                        : '',
+
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+
+                                /*
+                                | CUSTOMER
+                                */
+
+                                $pdf->Cell(
+                                    25,
                                     6,
                                     $customer,
                                     1
                                 );
 
+
+                                /*
+                                | DETAILS
+                                */
+
                                 $pdf->Cell(
-                                    51,
+                                    50,
                                     6,
                                     $details,
                                     1
                                 );
 
+
+                                /*
+                                | CASH IN
+                                */
+
                                 $pdf->Cell(
-                                    22,
+                                    27,
                                     6,
+
                                     $credit > 0
+
                                         ? number_format(
                                             $credit,
                                             0
                                         )
+
                                         : '',
+
                                     1,
                                     0,
                                     'R'
                                 );
 
+
+                                /*
+                                | CASH OUT
+                                */
+
                                 $pdf->Cell(
-                                    22,
+                                    27,
                                     6,
+
                                     $debit > 0
+
                                         ? number_format(
                                             $debit,
                                             0
                                         )
+
                                         : '',
+
                                     1,
                                     0,
                                     'R'
                                 );
 
+
+                                /*
+                                | RUNNING BALANCE
+                                */
+
                                 $pdf->Cell(
-                                    22,
+                                    28,
                                     6,
+
                                     number_format(
-                                        $rowBalance,
+                                        $runningBalance,
                                         0
                                     ),
+
                                     1,
                                     1,
                                     'R'
@@ -3580,19 +8453,30 @@
 
                             /*
                             |--------------------------------------------------------------------------
-                            | TOTAL
+                            | TRANSACTION TOTAL
                             |--------------------------------------------------------------------------
                             */
 
-                            $pdf->CheckTablePageBreak(7);
+                            $pdf->CheckTablePageBreak(
+                                7
+                            );
+
+
                             $pdf->SetFont(
                                 'Arial',
                                 'B',
-                                8
+                                7
                             );
 
+
+                            /*
+                            | # + Date + Category + Item
+                            |
+                            | 7 + 24 + 27 + 27 = 85
+                            */
+
                             $pdf->Cell(
-                                178,
+                                85,
                                 7,
                                 'TOTAL',
                                 1,
@@ -3600,41 +8484,525 @@
                                 'R'
                             );
 
+
+                            /*
+                            | Qty In
+                            */
+
                             $pdf->Cell(
-                                22,
+                                13,
                                 7,
+
                                 number_format(
-                                    $cashin,
-                                    0
+                                    $totalQtyIn,
+                                    2
                                 ),
+
                                 1,
                                 0,
                                 'R'
                             );
 
+
+                            /*
+                            | Qty Out
+                            */
+
                             $pdf->Cell(
-                                22,
+                                13,
                                 7,
+
                                 number_format(
-                                    $cashout,
-                                    0
+                                    $totalQtyOut,
+                                    2
                                 ),
+
                                 1,
                                 0,
                                 'R'
                             );
 
+
+                            /*
+                            | Net Qty
+                            */
+
                             $pdf->Cell(
-                                22,
+                                13,
                                 7,
+
                                 number_format(
-                                    $cashin - $cashout,
+                                    $netQuantity,
+                                    2
+                                ),
+
+                                1,
+                                0,
+                                'R'
+                            );
+
+
+                            /*
+                            | Customer + Details
+                            |
+                            | 25 + 50 = 75
+                            */
+
+                            $pdf->Cell(
+                                75,
+                                7,
+                                '',
+                                1
+                            );
+
+
+                            /*
+                            | Cash In
+                            */
+
+                            $pdf->Cell(
+                                27,
+                                7,
+
+                                number_format(
+                                    $pdfCashIn,
                                     0
                                 ),
+
+                                1,
+                                0,
+                                'R'
+                            );
+
+
+                            /*
+                            | Cash Out
+                            */
+
+                            $pdf->Cell(
+                                27,
+                                7,
+
+                                number_format(
+                                    $pdfCashOut,
+                                    0
+                                ),
+
+                                1,
+                                0,
+                                'R'
+                            );
+
+
+                            /*
+                            | Balance
+                            */
+
+                            $pdf->Cell(
+                                28,
+                                7,
+
+                                number_format(
+                                    $financialBalance,
+                                    0
+                                ),
+
                                 1,
                                 1,
                                 'R'
                             );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | ITEM MOVEMENT SUMMARY
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if (!empty($itemSummary))
+                            {
+                                /*
+                                |--------------------------------------------------------------------------
+                                | NEW PAGE
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $pdf->AddPage();
+
+
+                                $pdf->SetFont(
+                                    'Arial',
+                                    'B',
+                                    11
+                                );
+
+
+                                $pdf->Cell(
+                                    0,
+                                    8,
+                                    'ITEM QUANTITY MOVEMENT SUMMARY',
+                                    0,
+                                    1,
+                                    'C'
+                                );
+
+
+                                $pdf->Ln(2);
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | ITEM TABLE HEADER
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $pdf->SetFont(
+                                    'Arial',
+                                    'B',
+                                    8
+                                );
+
+
+                                $pdf->Cell(
+                                    10,
+                                    7,
+                                    '#',
+                                    1,
+                                    0,
+                                    'C'
+                                );
+
+
+                                $pdf->Cell(
+                                    80,
+                                    7,
+                                    'Item',
+                                    1
+                                );
+
+
+                                $pdf->Cell(
+                                    40,
+                                    7,
+                                    'Transactions',
+                                    1,
+                                    0,
+                                    'C'
+                                );
+
+
+                                $pdf->Cell(
+                                    45,
+                                    7,
+                                    'Qty In',
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+
+                                $pdf->Cell(
+                                    45,
+                                    7,
+                                    'Qty Out',
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+
+                                $pdf->Cell(
+                                    45,
+                                    7,
+                                    'Net Qty',
+                                    1,
+                                    1,
+                                    'R'
+                                );
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | ITEM ROWS
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $pdf->SetFont(
+                                    'Arial',
+                                    '',
+                                    8
+                                );
+
+
+                                $itemNumber =
+                                    1;
+
+
+                                foreach (
+                                    $itemSummary
+                                    as $summary
+                                )
+                                {
+                                    /*
+                                    | Page break for item table.
+                                    */
+
+                                    if (
+                                        $pdf->GetY() + 7 + 18
+                                        >
+                                        $pdf->GetPageHeight()
+                                    )
+                                    {
+                                        $pdf->AddPage();
+
+
+                                        $pdf->SetFont(
+                                            'Arial',
+                                            'B',
+                                            8
+                                        );
+
+
+                                        $pdf->Cell(
+                                            10,
+                                            7,
+                                            '#',
+                                            1,
+                                            0,
+                                            'C'
+                                        );
+
+
+                                        $pdf->Cell(
+                                            80,
+                                            7,
+                                            'Item',
+                                            1
+                                        );
+
+
+                                        $pdf->Cell(
+                                            40,
+                                            7,
+                                            'Transactions',
+                                            1,
+                                            0,
+                                            'C'
+                                        );
+
+
+                                        $pdf->Cell(
+                                            45,
+                                            7,
+                                            'Qty In',
+                                            1,
+                                            0,
+                                            'R'
+                                        );
+
+
+                                        $pdf->Cell(
+                                            45,
+                                            7,
+                                            'Qty Out',
+                                            1,
+                                            0,
+                                            'R'
+                                        );
+
+
+                                        $pdf->Cell(
+                                            45,
+                                            7,
+                                            'Net Qty',
+                                            1,
+                                            1,
+                                            'R'
+                                        );
+
+
+                                        $pdf->SetFont(
+                                            'Arial',
+                                            '',
+                                            8
+                                        );
+                                    }
+
+
+                                    $itemNetQty =
+
+                                        (float)$summary[
+                                            'qty_in'
+                                        ]
+
+                                        -
+
+                                        (float)$summary[
+                                            'qty_out'
+                                        ];
+
+
+                                    $pdf->Cell(
+                                        10,
+                                        7,
+                                        $itemNumber,
+                                        1,
+                                        0,
+                                        'C'
+                                    );
+
+
+                                    $pdf->Cell(
+                                        80,
+                                        7,
+
+                                        mb_substr(
+                                            $summary['name'],
+                                            0,
+                                            45
+                                        ),
+
+                                        1
+                                    );
+
+
+                                    $pdf->Cell(
+                                        40,
+                                        7,
+
+                                        number_format(
+                                            $summary[
+                                                'transactions'
+                                            ],
+                                            0
+                                        ),
+
+                                        1,
+                                        0,
+                                        'C'
+                                    );
+
+
+                                    $pdf->Cell(
+                                        45,
+                                        7,
+
+                                        number_format(
+                                            $summary[
+                                                'qty_in'
+                                            ],
+                                            2
+                                        ),
+
+                                        1,
+                                        0,
+                                        'R'
+                                    );
+
+
+                                    $pdf->Cell(
+                                        45,
+                                        7,
+
+                                        number_format(
+                                            $summary[
+                                                'qty_out'
+                                            ],
+                                            2
+                                        ),
+
+                                        1,
+                                        0,
+                                        'R'
+                                    );
+
+
+                                    $pdf->Cell(
+                                        45,
+                                        7,
+
+                                        number_format(
+                                            $itemNetQty,
+                                            2
+                                        ),
+
+                                        1,
+                                        1,
+                                        'R'
+                                    );
+
+
+                                    $itemNumber++;
+                                }
+
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | ITEM TOTAL
+                                |--------------------------------------------------------------------------
+                                */
+
+                                $pdf->SetFont(
+                                    'Arial',
+                                    'B',
+                                    8
+                                );
+
+
+                                $pdf->Cell(
+                                    130,
+                                    7,
+                                    'TOTAL MOVEMENT',
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+
+                                $pdf->Cell(
+                                    45,
+                                    7,
+
+                                    number_format(
+                                        $totalQtyIn,
+                                        2
+                                    ),
+
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+
+                                $pdf->Cell(
+                                    45,
+                                    7,
+
+                                    number_format(
+                                        $totalQtyOut,
+                                        2
+                                    ),
+
+                                    1,
+                                    0,
+                                    'R'
+                                );
+
+
+                                $pdf->Cell(
+                                    45,
+                                    7,
+
+                                    number_format(
+                                        $netQuantity,
+                                        2
+                                    ),
+
+                                    1,
+                                    1,
+                                    'R'
+                                );
+                            }
 
 
                             /*
@@ -3644,12 +9012,18 @@
                             */
 
                             $filename =
+
                                 'transaction_report_' .
-                                date('Y-m-d_H-i-s') .
+
+                                date(
+                                    'Y-m-d_H-i-s'
+                                ) .
+
                                 '.pdf';
 
 
-                            if (ob_get_length()) {
+                            if (ob_get_length())
+                            {
                                 ob_end_clean();
                             }
 
@@ -3661,7 +9035,6 @@
 
 
                             exit;
-
                         }
                     break;
             }
