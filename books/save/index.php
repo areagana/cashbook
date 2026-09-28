@@ -402,9 +402,9 @@
                                                 <div class="col p-2">
                                                     <select name="role_id" id="role_id" class="form-control">
                                                         <option hidden>Select</option>
-                                                        <?php while($rw = $sql->fetch_assoc()):?>
+                                                        <?php while($rw = $sql->fetch_assoc()): if($rw['name'] !='superadministrator'):?>
                                                             <option value="<?=$rw['id'];?>"><?=$rw['display_name'];?></option>
-                                                        <?php endwhile;?>
+                                                        <?php endif; endwhile;?>
                                                     </select>
                                                 </div>
                                             </div>
@@ -468,9 +468,9 @@
                                                     <select name="role_id" id="role_id" class="form-control">
                                                         <option value="<?=$member->role_id;?>" selected><?=$member->role_name;?></option>
                                                         <option hidden>Select</option>
-                                                        <?php while($rw = $sql->fetch_assoc()):?>
+                                                        <?php while($rw = $sql->fetch_assoc()): if($rw['name'] !='superadministrator'):?>
                                                             <option value="<?=$rw['id'];?>"><?=$rw['display_name'];?></option>
-                                                        <?php endwhile;?>
+                                                        <?php endif; endwhile;?>
                                                     </select>
                                                 </div>
                                             </div>
