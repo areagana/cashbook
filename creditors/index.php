@@ -297,7 +297,7 @@
                 </div>
 
 
-                <?php if(hasRole(['owner','partner','staff'])):?>
+                <?php if(hasRole(['owner','partner','staff','superadministrator'])):?>
 
                     <div class="col-md-4 p-2 text-md-right">
 
@@ -781,11 +781,11 @@
 
                                             <td class="text-right">
 
-                                                <?php if(hasRole(['owner','partner','staff'])):?>
+                                                <?php if(hasRole(['owner','partner','staff','superadministrator'])):?>
 
                                                     <span class="hover-display text-sms">
 
-                                                        <?php if(hasRole(['owner','partner'])):?>
+                                                        <?php if(hasRole(['owner','partner','superadministrator'])):?>
 
                                                             <button
                                                                 class="btn btn-sm btn-outline-info edit-creditor text-muted"

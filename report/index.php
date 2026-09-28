@@ -93,7 +93,7 @@ if (isVerified()) {
             </div>
             <!-- CASH OUT -->
 
-            <div class="col-xl-2 col-md-2 col-sm-3 mb-3">
+            <div class="col-xl-3 col-md-2 col-sm-3 mb-3">
                 <div class="card shadow-sm border-left-danger h-100">
                     <div class="card-body">
                         <div class="row no-gutters align-items-center">
@@ -152,48 +152,28 @@ if (isVerified()) {
                 </div>
 
             </div>
-            <!-- QTY -->
-            <div class="col-xl-2 col-md-2 col-sm-3 mb-3">
-                <div class="card shadow-sm border-left-primary h-100">
+
+            <!-- TRANSACTIONS -->
+            <div class="col-xl-3 col-md-2 col-sm-3 mb-3">
+                <div class="card shadow-sm border-left-secondary h-100">
                     <div class="card-body">
                         <div class="row no-gutters align-items-center">
                             <div class="col mr-2">
-                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                    Quantity
+                                <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">
+                                    Transactions
                                 </div>
-                                <div class="h4 mb-0 font-weight-bold text-gray-800" id="report-quantity">
+                                <div class="h4 mb-0 font-weight-bold text-gray-800"
+                                    id="summary-transactions">
                                     0
                                 </div>
                             </div>
                             <div class="col-auto">
-                                <i class="fa fa-cubes fa-2x text-primary"></i>
+                                <i class="fa fa-exchange fa-2x text-secondary"></i>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <!-- TRANSACTIONS -->
-        <div class="col-xl-2 col-md-2 col-sm-3 mb-3">
-            <div class="card shadow-sm border-left-secondary h-100">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">
-                                Transactions
-                            </div>
-                            <div class="h4 mb-0 font-weight-bold text-gray-800"
-                                id="summary-transactions">
-                                0
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fa fa-exchange fa-2x text-secondary"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
         </div>
     </div>
 </div>

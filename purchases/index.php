@@ -245,7 +245,7 @@
                     </small>
                 </div>
 
-                <?php if(hasRole(['owner','partner'])):?>
+                <?php if(hasRole(['owner','partner','superadministrator'])):?>
                     <button
                         class="btn btn-success btn-flat btn-click mt-2 mt-md-0"
                         data-title="record purchase"
@@ -512,7 +512,7 @@
                             <td class="text-right"><?=$money($r['unit_price']);?></td>
                             <td class="text-right font-weight-bold"><?=$money($r['total']);?></td>
                             <td class="text-center">
-                                <?php if(hasRole(['owner','partner'])):?>
+                                <?php if(hasRole(['owner','partner','superadministrator'])):?>
                                     <span class="hover-display text-sms">
                                         <!-- Existing edit/delete controls intentionally remain disabled,
                                              as in the original page. -->

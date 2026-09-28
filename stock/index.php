@@ -28,7 +28,7 @@
                                 <h3 class="p-2"><?=strToUpper($book->name);?> - STOCK</h3>
                             </div>
                             <div class="col p-2">
-                                <?php if(hasRole(['owner','partner'])):?>
+                                <?php if(hasRole(['owner','partner','superadministrator'])):?>
                                     <div class="col p-3">
                                         <button class="btn btn-sm btn-flat btn-outline-success btn-click right" data-title='add stock Item' data-section='item'><i class="fa fa-plus-circle"></i> Add Stock Item</button>
                                     </div>

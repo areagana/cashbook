@@ -7,6 +7,14 @@
         session_destroy();
     }
 
+    $styleVersion = file_exists(__DIR__ . '/../assets/style.css')
+        ? filemtime(__DIR__ . '/../assets/style.css')
+        : time();
+
+    $scriptVersion = file_exists(__DIR__ . '/../assets/script.js')
+        ? filemtime(__DIR__ . '/../assets/script.js')
+        : time();
+
     // function prepared_statements($stat, $binds = '', $vars = [])
     // {
     //     global $server;
@@ -288,7 +296,9 @@
     function routeFind($id)
     {
         global $server;
-        $sql = "SELECT * FROM cashbook_routes WHERE id = ?";
+        $sql = "SELECT cr.*,crm.name as manager FROM cashbook_routes cr
+                    LEFT JOIN cashbook_route_managers crm ON crm.id = cr.managers
+                WHERE cr.id = ?";
         $res = prepared_statements($sql,'i',[$id]);
         $row = $res->fetch_assoc();
         return myObject($row);
@@ -459,7 +469,6 @@
         }
 
         $role = mysqli_fetch_assoc($query);
-
         return in_array($role['name'], $array);
     }
 
@@ -856,135 +865,483 @@
     //header and footer functions
     function pageHeader($header = false)
     {
+        global $styleVersion;
+        /*
+        ==========================================================
+        DETERMINE SIDEBAR
+        ==========================================================
+        */
+
+        $hasBookContext =
+            isset($_REQUEST['book_id']) ||
+            isset($_REQUEST['bkid']) ||
+            isset($_REQUEST['bsid']);
+
         ?>
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <meta name="theme-color" content="#F31725">
-                <meta name="mobile-web-app-capable" content="yes">
-                <meta name="apple-mobile-web-app-capable" content="yes">
-                <meta name="apple-mobile-web-app-status-bar-style"content="default">
-                <meta name="apple-mobile-web-app-title" content="Cashbook">
-                <link rel="apple-touch-icon"href="/cashbook/icons/icon-192.png">
-                <link rel="apple-touch-icon" sizes="180x180" href="/cashbook/icons/apple-touch-icon.png">
-                <link rel="icon" type="image/png" sizes="32x32" href="/cashbook/icons/favicon-32x32.png">
-                <link rel="icon" type="image/png" sizes="16x16" href="/cashbook/icons/favicon-16x16.png">
 
-                <title><?=($header) ? $header : "Cashbook";?></title>
-                <link rel="manifest" href="/cashbook/manifest.json">
-                
-                <!-- Bootstrap 4 -->
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.18/css/bootstrap-select.min.css">
-                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css">
-                
+        <!DOCTYPE html>
+        <html lang="en">
 
-                <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous"> -->
+        <head>
 
-                <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
-                <!-- Fontawesome -->
-                <link rel="stylesheet" href="../assets/fontawesome-free-5.14.0-web/css/all.css">
+            <meta charset="UTF-8">
 
-                <!-- Custom CSS -->
-                <link rel="stylesheet" href="../assets/css/custom.css">
-                <link rel="stylesheet" href="../assets/style.css">
-                <link rel="stylesheet" href="../assets/css/xdialog.3.4.0.min.css"> 
-                
-                <!-- linie icons -->
-                <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/line/lineicons.css" />
-                <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css" />
+            <meta
+                name="viewport"
+                content="width=device-width, initial-scale=1.0"
+            >
 
-                <!-- select 2 css -->
-                <link rel='stylesheet' href='https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css'>
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css"> 
-            </head>
-            <body>
-                <div class="wrapper">
-                    <?=(isset($_REQUEST['book_id']) || isset($_REQUEST['bkid']) || isset($_REQUEST['bsid'])) ? sideBar() : ""; ?>
-                    <div class="main">
-                        <nav class="navbar navbar-expand-lg bg-success">
-                            <div class="container-fluid">
-                                <a class="navbar-brand text-white" href="../">FR(U)-CASHBOOK</a>
-                                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarText" aria-controls="navbarText" aria-expanded="false" aria-label="Toggle navigation">
-                                    <span class="navbar-toggler-icon"></span>
-                                    </button>
-                                <div class="collapse navbar-collapse" id="navbarText">
-                                    <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                                        <li class="nav-item">
-                                            
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <form class="form-inline my-2 my-lg-0">
-                                <div class="dropdown">
-                                    <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                        <i class="fa fa-user"></i> <?=$_SESSION['auth']->name;?>
-                                    </button>
-                                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                                        <a class="dropdown-item" href="#">Action</a>
-                                        <a class="dropdown-item" href="#">Profile</a>
-                                        <div class="dropdown-divider"></div>
-                                        <a class="dropdown-item text-danger" href="../?logout=1"><strong>Logout</strong></a>
+            <meta
+                name="theme-color"
+                content="#198754"
+            >
+
+            <meta
+                name="mobile-web-app-capable"
+                content="yes"
+            >
+
+            <meta
+                name="apple-mobile-web-app-capable"
+                content="yes"
+            >
+
+            <meta
+                name="apple-mobile-web-app-status-bar-style"
+                content="default"
+            >
+
+            <meta
+                name="apple-mobile-web-app-title"
+                content="FR(U)-CASHBOOK"
+            >
+
+
+            <!-- ICONS -->
+
+            <link
+                rel="apple-touch-icon"
+                href="/cashbook/icons/icon-192.png"
+            >
+
+            <link
+                rel="apple-touch-icon"
+                sizes="180x180"
+                href="/cashbook/icons/apple-touch-icon.png"
+            >
+
+            <link
+                rel="icon"
+                type="image/png"
+                sizes="32x32"
+                href="/cashbook/icons/favicon-32x32.png"
+            >
+
+            <link
+                rel="icon"
+                type="image/png"
+                sizes="16x16"
+                href="/cashbook/icons/favicon-16x16.png"
+            >
+
+
+            <title>
+                <?= $header ? htmlspecialchars($header) . ' | FR(U)-CASHBOOK' : 'FR(U)-CASHBOOK';
+                ?>
+            </title>
+
+
+            <link
+                rel="manifest"
+                href="/cashbook/manifest.json"
+            >
+
+
+            <!-- BOOTSTRAP -->
+
+            <link
+                rel="stylesheet"
+                href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.18/css/bootstrap-select.min.css"
+            >
+
+            <link
+                rel="stylesheet"
+                href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css"
+            >
+
+            <link
+                rel="stylesheet"
+                href="../assets/css/bootstrap.min.css"
+            >
+
+
+            <!-- FONT AWESOME -->
+
+            <link
+                rel="stylesheet"
+                href="../assets/fontawesome-free-5.14.0-web/css/all.css"
+            >
+
+
+            <!-- CUSTOM CSS -->
+
+            <link
+                rel="stylesheet"
+                href="../assets/css/custom.css"
+            >
+
+            <link
+                rel="stylesheet"
+                href="../assets/style.css?v=<?=$styleVersion;?>"
+            >
+
+            <link
+                rel="stylesheet"
+                href="../assets/css/xdialog.3.4.0.min.css"
+            >
+
+
+            <!-- LINE ICONS -->
+
+            <link
+                rel="stylesheet"
+                href="https://cdn.lineicons.com/5.1/line/lineicons.css"
+            >
+
+            <link
+                rel="stylesheet"
+                href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css"
+            >
+
+
+            <!-- DATATABLES -->
+
+            <link
+                rel="stylesheet"
+                href="https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css"
+            >
+
+
+            <!-- SELECT2 -->
+
+            <link
+                rel="stylesheet"
+                href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css"
+            >
+
+        </head>
+
+
+        <body>
+
+            <div class="wrapper">
+
+                <?php
+
+                /*
+                ======================================================
+                SIDEBAR SELECTION
+                ======================================================
+
+                IMPORTANT:
+
+                Book context has priority.
+
+                This allows a superadministrator to enter a book for
+                support and still receive the normal book sidebar.
+
+                ======================================================
+                */
+
+                // Book takes highest priority.
+                if ($hasBookContext) {
+                    sideBar();
+                }
+                // System administration.
+                elseif (hasRole(['superadministrator'])) {
+                    superAdminSideBar();
+                }
+                // Normal authenticated business workspace.
+                else {
+                    businessSideBar();
+                }
+
+                ?>
+                <div class="main">
+                    <!-- =============================================
+                        TOP NAVIGATION
+                    ============================================== -->
+
+                    <nav class="navbar navbar-expand-lg navbar-dark bg-success">
+
+                        <div class="container-fluid">
+
+
+                            <!-- BRAND -->
+
+                            <a
+                                class="navbar-brand text-white"
+                                href="../"
+                            >
+                                <strong>FR(U)-CASHBOOK</strong>
+                            </a>
+
+
+                            <?php if (!$hasBookContext && hasRole(['superadministrator'])): ?>
+
+                                <span
+                                    class="badge badge-light ml-2 d-none d-md-inline"
+                                >
+
+                                    <i class="fa fa-shield-alt mr-1"></i>
+
+                                    SYSTEM ADMINISTRATION
+
+                                </span>
+
+                            <?php endif; ?>
+
+
+                            <div class="ml-auto">
+
+
+                                <?php if (
+                                    isset($_SESSION['auth']) &&
+                                    isset($_SESSION['auth']->name)
+                                ): ?>
+
+
+                                    <div class="dropdown">
+
+
+                                        <button
+                                            class="btn btn-sm btn-outline-light dropdown-toggle"
+                                            type="button"
+                                            id="userDropdown"
+                                            data-toggle="dropdown"
+                                            aria-haspopup="true"
+                                            aria-expanded="false"
+                                        >
+
+                                            <i class="fa fa-user-circle mr-1"></i>
+
+                                            <?=htmlspecialchars(
+                                                $_SESSION['auth']->name
+                                            );?>
+
+                                        </button>
+
+
+                                        <div
+                                            class="dropdown-menu dropdown-menu-right"
+                                            aria-labelledby="userDropdown"
+                                        >
+
+
+                                            <div class="px-3 py-2">
+
+                                                <small class="text-muted">
+                                                    Signed in as
+                                                </small>
+
+                                                <br>
+
+                                                <strong>
+
+                                                    <?=htmlspecialchars(
+                                                        $_SESSION['auth']->name
+                                                    );?>
+
+                                                </strong>
+
+                                            </div>
+
+
+                                            <div class="dropdown-divider"></div>
+
+
+                                            <a
+                                                class="dropdown-item"
+                                                href="../profile/"
+                                            >
+
+                                                <i class="fa fa-user mr-2"></i>
+
+                                                Profile
+
+                                            </a>
+
+
+                                            <?php if (
+                                                hasRole(['superadministrator'])
+                                            ): ?>
+
+                                                <a
+                                                    class="dropdown-item"
+                                                    href="../settings/"
+                                                >
+
+                                                    <i class="fa fa-cog mr-2"></i>
+
+                                                    Settings
+
+                                                </a>
+
+                                            <?php endif; ?>
+
+
+                                            <div class="dropdown-divider"></div>
+
+
+                                            <a
+                                                class="dropdown-item text-danger"
+                                                href="../?logout=1"
+                                            >
+
+                                                <i class="fa fa-sign-out-alt mr-2"></i>
+
+                                                <strong>Logout</strong>
+
+                                            </a>
+
+
+                                        </div>
+
                                     </div>
-                                </div>
-                            </form>
-                        </nav>
-                        <?php sessionMessage();?>
-                
+
+
+                                <?php endif; ?>
+
+
+                            </div>
+
+                        </div>
+
+                    </nav>
+
+
+                    <?php sessionMessage(); ?>
+
         <?php
     }
 
     function pageFooter()
     {
-        ?>           </div> <!-- end main -->
-                </div> <!-- end wrapper -->
-                    <script src="../assets/js/jquery-3.5.1.min.js"></script>
-                    <!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script> -->
-                    
-                    <!-- select 2 scripts -->
-                    <!-- <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> -->
-                    <script src="../assets/js/bootstrap.min.js"></script>
-                    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-                    <script src ="https://cdn.datatables.net/2.3.8/js/dataTables.min.js" ></script>
-                    <script src="../assets/js/xdialog.3.4.0.min.js"></script>
-                    <script src="../assets/js/select2.min.js" defer></script>
-                    <script src="../assets/js/custom.js"></script>
-                    <script src="../assets/script.js"></script>
-                    <script>
-                        if ('serviceWorker' in navigator) {
+        global $scriptVersion;
+        ?>
 
-                            window.addEventListener('load', function () {
+                </div>
+                <!-- END MAIN -->
 
-                                navigator.serviceWorker
-                                    .register('/cashbook/service-worker.js')
-                                    .then(function (registration) {
+            </div>
+            <!-- END WRAPPER -->
+
+
+            <!-- =====================================================
+                CORE JAVASCRIPT
+            ====================================================== -->
+
+            <script src="../assets/js/jquery-3.5.1.min.js"></script>
+
+            <script src="../assets/js/bootstrap.min.js"></script>
+
+
+            <!-- =====================================================
+                CHART JS
+            ====================================================== -->
+
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+
+            <!-- =====================================================
+                DATATABLES
+            ====================================================== -->
+
+            <script src="https://cdn.datatables.net/2.3.8/js/dataTables.min.js"></script>
+
+
+            <!-- =====================================================
+                XDIALOG
+            ====================================================== -->
+
+            <script src="../assets/js/xdialog.3.4.0.min.js"></script>
+
+
+            <!-- =====================================================
+                SELECT2
+            ====================================================== -->
+
+            <script
+                src="../assets/js/select2.min.js"
+                defer
+            ></script>
+
+
+            <!-- =====================================================
+                APPLICATION JS
+            ====================================================== -->
+
+            <script src="../assets/js/custom.js"></script>
+
+            <script src="../assets/script.js?v=<?=$scriptVersion;?>"></script>
+
+
+            <!-- =====================================================
+                SERVICE WORKER
+            ====================================================== -->
+
+            <script>
+
+                if ('serviceWorker' in navigator) {
+
+                    window.addEventListener(
+                        'load',
+                        function ()
+                        {
+
+                            navigator.serviceWorker
+                                .register(
+                                    '/cashbook/service-worker.js'
+                                )
+
+                                .then(
+                                    function (registration)
+                                    {
 
                                         console.log(
                                             'Cashbook Service Worker registered:',
                                             registration.scope
                                         );
 
-                                    })
-                                    .catch(function (error) {
+                                    }
+                                )
+
+                                .catch(
+                                    function (error)
+                                    {
 
                                         console.error(
                                             'Cashbook Service Worker registration failed:',
                                             error
                                         );
 
-                                    });
-                            });
+                                    }
+                                );
 
                         }
-                    </script>
-            </body>
+                    );
+
+                }
+
+            </script>
+
+
+        </body>
+
         </html>
+
         <?php
     }
-
-
 
     function sideBar()
     {
@@ -1272,6 +1629,202 @@
             </div>
 
         </aside>
+        <?php
+    }
+
+    function superAdminSideBar()
+    {
+        ?>
+            <!-- Mobile menu button -->
+            <button id="mobile-menu-btn" type="button" aria-label="Open navigation" aria-expanded="false">
+                <i class="fa fa-bars"></i>
+            </button>
+
+            <!-- Mobile overlay -->
+            <div id="sidebar-overlay"></div>
+
+            <!-- Super Admin Sidebar -->
+            <aside id="sidebar" class="expand">
+
+                <div class="sidebar-header">
+
+                    <!-- Desktop toggle -->
+                    <button id="toggle-btn" type="button" aria-label="Toggle navigation" aria-expanded="true">
+                        <i class="fa fa-bars"></i>
+                    </button>
+
+                    <!-- Logo -->
+                    <div class="sidebar-logo">
+                        <a href="../">
+                            <span>CASHBOOK</span>
+                        </a>
+                    </div>
+
+                    <!-- Mobile close -->
+                    <button id="mobile-close-btn" type="button" aria-label="Close navigation">
+                        <i class="fa fa-times"></i>
+                    </button>
+
+                </div>
+
+                <ul class="sidebar-nav">
+
+                    <!-- Dashboard -->
+                    <li class="sidebar-item">
+                        <a href="../super/" class="sidebar-link">
+                            <i class="fa fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+
+                    <!-- Books -->
+                    <li class="sidebar-item">
+                        <a href="../" class="sidebar-link">
+                            <i class="fa fa-book"></i>
+                            <span>Books</span>
+                        </a>
+                    </li>
+
+                    <!-- Users -->
+                    <li class="sidebar-item">
+                        <a href="../users/" class="sidebar-link">
+                            <i class="fa fa-users"></i>
+                            <span>Users</span>
+                        </a>
+                    </li>
+
+                    <!-- Support -->
+                    <li class="sidebar-item">
+                        <a href="../support/" class="sidebar-link">
+                            <i class="fa fa-headphones"></i>
+                            <span>Support</span>
+                        </a>
+                    </li>
+
+                    <!-- System Activity -->
+                    <li class="sidebar-item">
+                        <a href="../activity/" class="sidebar-link">
+                            <i class="fa fa-history"></i>
+                            <span>System Activity</span>
+                        </a>
+                    </li>
+
+                    <!-- Settings -->
+                    <li class="sidebar-item">
+                        <a href="../settings/" class="sidebar-link">
+                            <i class="fa fa-cog"></i>
+                            <span>Settings</span>
+                        </a>
+                    </li>
+
+                </ul>
+
+                <!-- Sidebar Footer -->
+                <div class="sidebar-footer">
+                    <a href="../?logout=1">
+                        <i class="fa fa-sign-out-alt"></i>
+                        <span>Logout</span>
+                    </a>
+                </div>
+
+            </aside>
+        <?php
+    }
+
+    function businessSideBar()
+    {
+        ?>
+            <button
+                id="mobile-menu-btn"
+                type="button"
+                aria-label="Open navigation"
+                aria-expanded="false"
+            >
+                <i class="fa fa-bars"></i>
+            </button>
+
+            <div id="sidebar-overlay"></div>
+
+            <aside id="sidebar" class="expand">
+
+                <div class="sidebar-header">
+
+                    <button
+                        id="toggle-btn"
+                        type="button"
+                        aria-label="Toggle navigation"
+                        aria-expanded="true"
+                    >
+                        <i class="fa fa-bars"></i>
+                    </button>
+
+                    <div class="sidebar-logo">
+                        <a href="../">
+                            <span>CASHBOOK</span>
+                        </a>
+                    </div>
+
+                    <button
+                        id="mobile-close-btn"
+                        type="button"
+                        aria-label="Close navigation"
+                    >
+                        <i class="fa fa-times"></i>
+                    </button>
+
+                </div>
+
+
+                <ul class="sidebar-nav">
+
+                    <li class="sidebar-item">
+                        <a href="../" class="sidebar-link">
+                            <i class="fa fa-home"></i>
+                            <span>Home</span>
+                        </a>
+                    </li>
+
+                    <li class="sidebar-item">
+                        <a href="../books/" class="sidebar-link">
+                            <i class="fa fa-book"></i>
+                            <span>Business Books</span>
+                        </a>
+                    </li>
+
+                    <li class="sidebar-item">
+                        <a href="#" class="sidebar-link new-profile">
+                            <i class="fa fa-building"></i>
+                            <span>Business Profile</span>
+                        </a>
+                    </li>
+
+                    <li class="sidebar-item">
+                        <a href="#" class="sidebar-link new-team">
+                            <i class="fa fa-users"></i>
+                            <span>Team</span>
+                        </a>
+                    </li>
+
+                    <li class="sidebar-item">
+                        <a href="#" class="sidebar-link new-settings">
+                            <i class="fa fa-cog"></i>
+                            <span>Settings</span>
+                        </a>
+                    </li>
+
+                </ul>
+
+
+                <div class="sidebar-footer">
+
+                    <a href="../?logout=1">
+                        <i class="fa fa-sign-out-alt"></i>
+                        <span>Logout</span>
+                    </a>
+
+                </div>
+
+            </aside>
         <?php
     }
 
@@ -2412,13 +2965,10 @@
         */
 
         if (!empty($filters['min_date'])) {
-
             $where[] = "DATE(ct.created_at) >= ?";
             $types .= 's';
             $params[] = $filters['min_date'];
-
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -2427,11 +2977,9 @@
         */
 
         if (!empty($filters['max_date'])) {
-
             $where[] = "DATE(ct.created_at) <= ?";
             $types .= 's';
             $params[] = $filters['max_date'];
-
         }
 
 
@@ -2502,11 +3050,9 @@
             !empty($filters['category']) &&
             is_numeric($filters['category'])
         ) {
-
             $where[] = "ct.category_id = ?";
             $types .= 'i';
             $params[] = (int)$filters['category'];
-
         }
 
 
@@ -2516,37 +3062,24 @@
         |--------------------------------------------------------------------------
         */
 
-        if (
-            !empty($filters['customer']) &&
-            is_numeric($filters['customer'])
-        ) {
-
+        if (!empty($filters['customer']) && is_numeric($filters['customer']))
+        {
             $where[] = "ct.customer_id = ?";
             $types .= 'i';
             $params[] = (int)$filters['customer'];
-
         }
 
-        if (
-            !empty($filters['item']) &&
-            is_numeric($filters['item'])
-        ) {
-
+        if (!empty($filters['item']) && is_numeric($filters['item'])) {
             $where[] = "ct.item_id = ?";
             $types .= 'i';
             $params[] = (int)$filters['item'];
-
         }
 
 
         return [
-
             'where'  => implode(' AND ', $where),
-
             'types'  => $types,
-
             'params' => $params
-
         ];
     }
 ?>

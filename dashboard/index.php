@@ -3,7 +3,7 @@
 // ini_set('display_errors', 1);
 // ini_set('display_startup_errors', 1);
 require_once(__DIR__.'/../assets/functions.php');
-if (isVerified()) 
+if (isVerified() && hasRole(['owner','partner','superadministrator'])) 
 {
         pageHeader('Cashbook Dashboard');
         $id_enc   = request('bkid');

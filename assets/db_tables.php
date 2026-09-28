@@ -447,7 +447,8 @@
             'staff'=>'STAFF',
             'cashier'=>'CASHIER',
             'stock_manager'=>'STOCK MANAGER',
-            'route_manager'=>'ROUTE MANAGER'
+            'route_manager'=>'ROUTE MANAGER',
+            'superadministrator'=>'SUPER ADMIN'
         ];
 
         $sql = "INSERT INTO cashbook_roles SET name =?, display_name =?";

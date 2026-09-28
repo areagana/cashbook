@@ -1,241 +1,2643 @@
 <?php
-    require_once(__dir__.'/../assets/functions.php');
-    if(isVerified())
+
+require_once(__DIR__.'/../assets/functions.php');
+
+
+/*
+|--------------------------------------------------------------------------
+| AUTHENTICATION
+|--------------------------------------------------------------------------
+*/
+
+if (!isVerified())
+{
+    redirect('../');
+    exit;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| PAGE HEADER
+|--------------------------------------------------------------------------
+|
+| pageHeader() will determine which sidebar should be displayed.
+|
+*/
+
+pageHeader('Home');
+
+
+/*
+|--------------------------------------------------------------------------
+| BUSINESS
+|--------------------------------------------------------------------------
+*/
+
+$business = businessFind(auth());
+
+if (!$business && isset(auth()->business_id))
+{
+    $business = businessFindId(auth()->business_id);
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| VALIDATE BUSINESS
+|--------------------------------------------------------------------------
+*/
+
+if (!$business)
+{
+    ?>
+
+        <div class="container-fluid p-4">
+
+            <div class="alert alert-warning">
+
+                <h5>
+                    <i class="fa fa-exclamation-triangle"></i>
+                    Business Profile Not Found
+                </h5>
+
+                <p class="mb-0">
+                    We could not find a business profile attached to your account.
+                    Please contact your administrator.
+                </p>
+
+            </div>
+
+        </div>
+
+    <?php
+
+    pageFooter();
+
+    exit;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| BUSINESS BOOKS
+|--------------------------------------------------------------------------
+*/
+
+$books = [];
+
+$totalCredits = 0;
+$totalDebits = 0;
+$totalBalance = 0;
+
+
+$stmt = "
+    SELECT *
+    FROM cashbook_books
+    WHERE business_id = ?
+    ORDER BY id DESC
+";
+
+
+$bookResult = prepared_statements(
+    $stmt,
+    'i',
+    [$business->id]
+);
+
+
+/*
+|--------------------------------------------------------------------------
+| BOOK BALANCES
+|--------------------------------------------------------------------------
+*/
+
+$cashins = "
+    SELECT
+        COALESCE(SUM(amount),0) AS credits
+    FROM cashbook_cashins
+    WHERE book_id = ?
+";
+
+
+$cashouts = "
+    SELECT
+        COALESCE(SUM(amount),0) AS debits
+    FROM cashbook_cashouts
+    WHERE book_id = ?
+";
+
+
+if ($bookResult)
+{
+    while ($book = $bookResult->fetch_assoc())
     {
-        pageHeader('Home');
-        $business = (businessFind(auth())) ?? businessFindId(auth()->business_id) ;
-        ?>
-                    <div class="container">
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <h1 class="p-1"><?=$business->name;?></h1>
-                            </div>
-                            <?php if(hasRole(['owner'])):?>
-                                <div class="col p-4">
-                                    <button class="btn btn-outline-primary new-profile" data-id="<?=$business->id;?>"><i class="fa fa-user"></i>Business Profile</button>
-                                    <button class="btn btn-outline-secondary new-settings"></i> <i class="fa fa-cog"></i> Settings</button>
-                                    <button class="btn btn-outline-info new-team"><i class="fa fa-plus-circle"></i> Add Team</button>
-                                </div>
-                            <?php endif;?>
-                        </div>
-                        <hr>
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <h2 class="p-2">BUSINESS BOOKS</h2>
-                            </div>
-                            <?php if(hasRole(['owner','partner'])):?>
-                                <div class="col-md-3 p-4">
-                                    <button class="btn btn-outline-info new-book right"><i class="fa fa-plus-circle"></i> Add Book</button>
-                                </div>
-                            <?php endif;?>
-                        </div>
-                        <hr>
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <?php
-                                    $stmt = "SELECT * FROM cashbook_books cb WHERE business_id =?  ORDER BY id desc";
-                                    $stmt = prepared_statements($stmt,'i',[$business->id]);
 
-                                    //fetch total transactions for the book
-                                    $cashins ="SELECT sum(amount) as credits FROM cashbook_cashins WHERE book_id = ?";
-                                    $cashouts ="SELECT sum(amount) as debits FROM cashbook_cashouts WHERE book_id = ?";
-                                    while($rw = $stmt->fetch_assoc()):
-                                            $cashinbk= prepared_statements($cashins,'i',[$rw['id']]);
-                                            $r = $cashinbk->fetch_assoc();
+        /*
+        |--------------------------------------------------------------------------
+        | CASH IN
+        |--------------------------------------------------------------------------
+        */
 
-                                            $cashoutbk= prepared_statements($cashouts,'i',[$rw['id']]);
-                                            $ro = $cashoutbk->fetch_assoc();
+        $cashinResult = prepared_statements(
+            $cashins,
+            'i',
+            [$book['id']]
+        );
 
-                                            $credits = $r['credits']; $debits = $ro['debits'];
-                                            $bal = number_format(($credits - $debits),0);
-                                        ?>  
-                                        <div class="row mx-1 border h3 rounded-3">
-                                            <div class="col p-4">
-                                                <?=$rw['name'];?>
-                                            </div>
-                                            <div class="col-md-3 p-4 text-muted text-right text-sm border-left">
-                                                Bal: <?=$bal;?>/=
-                                            </div>
-                                            <div class="col-md-3 p-4 border-left inline-block">
-                                                <a href='../dashboard/?bkid=<?=encryptor('encrypt',$rw['id']);?>' class="btn btn-sm btn-outline-primary btn-flat right"> Dashboard</a>
-                                                <a href='../books/?bkid=<?=encryptor('encrypt',$rw['id']);?>' class="btn btn-sm btn-outline-success btn-flat right">Details</a>
-                                            </div>
-                                        </div>
-                                        <?php
-                                    endwhile;
-                                ?>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- side modal for a cash in -->
-                    <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-newbook'>
-                        <div class="side-modal-header">
-                            <h3 class="side-modal-title text-dark">CREATE NEW BUSINESS BOOK</h3>
-                            <button type='button' class='side-modal-close'>&times;</button>
-                        </div>
-                        <div class="side-modal-content">
-                            <form action="../books/save/index.php" method="post">
-                                <input type="hidden" name="business_id" value="<?=$business->id;?>">
-                                <div class="form-row">
-                                    <div class="col-md-3 p-2">
-                                        <label for="book_title">BOOK TITLE</label>
-                                    </div>
-                                    <div class="col p-2">
-                                        <input type="text" name="book_title" id="book_title" class="form-control">
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="col-md-3 p-2">
-                                        <label for="book_details">BOOK DETAILS</label>
-                                    </div>
-                                    <div class="col p-2">
-                                        <input type="text" name="book_details" id="book_details" class="form-control">
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="col p-2">
-                                        <button type="submit" name='saveNewBook' class="btn btn-flat btn-primary right">SUBMIT</button>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                    
-                    <!-- business profile -->
-                    <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-new-profile'>
-                        <div class="side-modal-header">
-                            <h3 class="side-modal-title text-dark">BUSINESS PROFILE</h3>
-                            <button type='button' class='side-modal-close'>&times;</button>
-                        </div>
-                        <div class="side-modal-content">
-                            <form id='newBusinessForm' method="post" enctype='multipart/form-data'>
-                                <div class="row mx-1">
-                                    <div class="col-md-3 p-3">
-                                        <label for="profile">
-                                            <img src="../images/profile.jpg" alt="" id='profilePreview' srcset="" width='90%' class='border rounded-3' height="100%">
-                                        </label>
-                                        <input type="file" name="profile" id="profile" opacity='0%' class='hidden'>
-                                        <input type="hidden" name="action" value="businessProfile">
-                                        <input type="hidden" name="business_id" value="<?=$business->id;?>">
-                                    </div>
-                                    <div class="col p-2">
-                                        <div class="form-row">
-                                            <div class="col-md-4 p-2">
-                                                <label for="name">BUSINESS NAME:</label>
-                                            </div>
-                                            <div class="col p-2">
-                                                <input type="text" name="name" id="name" value='<?=$business->name;?>' class="form-control">
-                                            </div>
-                                        </div>
-                                        <div class="form-row">
-                                            <div class="col-md-4 p-2">
-                                                <label for="email">EMAIL:</label>
-                                            </div>
-                                            <div class="col p-2">
-                                                <input type="text" name="email" id="email" value='<?=$business->email;?>' class="form-control">
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <hr>
-                                <div class="form-row">
-                                    <div class="col-md-3 p-2">
-                                        <label for="address">ADDRESS:</label>
-                                    </div>
-                                    <div class="col p-2">
-                                        <input type="text" name="address" id="address" value='<?=$business->address;?>' class="form-control">
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="col-md-3 p-2">
-                                        <label for="contact1">CONTACT1:</label>
-                                    </div>
-                                    <div class="col p-2">
-                                        <input type="text" name="contact1" id="contact1" value='<?=$business->contact1;?>' class="form-control">
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="col-md-3 p-2">
-                                        <label for="contact2">CONTACT2:</label>
-                                    </div>
-                                    <div class="col p-2">
-                                        <input type="text" name="contact2" id="contact2" value='<?=$business->contact2;?>' class="form-control">
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="col-md-3 p-2">
-                                        <label for="reg_no">REGN NO:</label>
-                                    </div>
-                                    <div class="col p-2">
-                                        <input type="text" name="reg_no" id="reg_no" value='<?=$business->reg_no;?>' class="form-control">
-                                    </div>
-                                </div>
-                                <hr>
-                                <div class="form-row">
-                                    <div class="col p-2">
-                                        <button type="submit" class="btn btn-flat btn-primary right saveNewBusiness">SUBMIT</button>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
 
-                    <!-- side modal for a cash out -->
-                    <div class="p-2 bg-white side-modal-tall absolute border shadow" id='side-modal-cashout'>
-                        <div class="side-modal-header">
-                            <h3 class="side-modal-title">CASHOUT</h3>
-                            <button type='button' class='side-modal-close'>&times;</button>
-                        </div>
-                        <div class="side-modal-content">
-                            
-                        </div>
-                    </div>
-                    
-                    <script src="../assets/js/jquery-3.5.1.min.js"></script>
-                    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/js/bootstrap.min.js"></script>
+        $cashinRow = $cashinResult
+            ? $cashinResult->fetch_assoc()
+            : ['credits' => 0];
 
-                    <script src="../assets/fontawesome-free-5.14.0-web/js/all.min.js"></script>
-                    <script src="../assets/js/xdialog.3.4.0.min.js"></script>
-                    <script src="../assets/js/custom.js"></script>
 
-                    <script>
-                        $(document).on('click', '.new-book', function(){
-                            $('#side-modal-newbook').show();
-                        });
+        $credits = (float)($cashinRow['credits'] ?? 0);
 
-                        $(document).on('click', '.new-profile', function(){
-                            $('#side-modal-new-profile').show();
-                        });
 
-                        $(document).on('click', '.side-modal-close', function(){
-                            $(this).closest('.absolute').hide();
-                        });
+        /*
+        |--------------------------------------------------------------------------
+        | CASH OUT
+        |--------------------------------------------------------------------------
+        */
 
-                        document.addEventListener("DOMContentLoaded", function () {
-                            const form = document.getElementById("newBusinessForm");
-                            if (!form) return;
-                            form.addEventListener("submit", function (e) {
-                                e.preventDefault();
-                                const formData = new FormData(form);
-                                fetch("save/index.php", {
-                                    method: "POST",
-                                    body: formData
-                                })
-                                .then(res => res.text())
-                                .then(response => {
-                                    xdialog.alert("Business profile saved");
-                                    window.location.reload();
-                                })
-                                .catch(err => console.error(err));
-                            });
+        $cashoutResult = prepared_statements(
+            $cashouts,
+            'i',
+            [$book['id']]
+        );
 
-                        });
-                    </script>
-                </body>
-                </html>
-        <?php
-    }else{
-        redirect('../');
+
+        $cashoutRow = $cashoutResult
+            ? $cashoutResult->fetch_assoc()
+            : ['debits' => 0];
+
+
+        $debits = (float)($cashoutRow['debits'] ?? 0);
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | BALANCE
+        |--------------------------------------------------------------------------
+        */
+
+        $balance = $credits - $debits;
+
+
+        $book['credits'] = $credits;
+
+        $book['debits'] = $debits;
+
+        $book['balance'] = $balance;
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | TOTALS
+        |--------------------------------------------------------------------------
+        */
+
+        $totalCredits += $credits;
+
+        $totalDebits += $debits;
+
+        $totalBalance += $balance;
+
+
+        $books[] = $book;
     }
+}
+
+
+$totalBooks = count($books);
+
+?>
+
+
+<style>
+
+    /*
+    |--------------------------------------------------------------------------
+    | BUSINESS HOME
+    |--------------------------------------------------------------------------
+    */
+
+    .business-home
+    {
+        padding: 20px 20px 40px;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | WELCOME HEADER
+    |--------------------------------------------------------------------------
+    */
+
+    .business-welcome
+    {
+        position: relative;
+
+        overflow: hidden;
+
+        padding: 30px;
+
+        margin-bottom: 24px;
+
+        background:
+            linear-gradient(
+                135deg,
+                #0e2238 0%,
+                #123b52 55%,
+                #087f5b 100%
+            );
+
+        color: #ffffff;
+
+        border-radius: 12px;
+
+        box-shadow:
+            0 8px 25px rgba(0,0,0,.08);
+    }
+
+
+    .business-welcome::after
+    {
+        content: "";
+
+        position: absolute;
+
+        width: 220px;
+        height: 220px;
+
+        right: -80px;
+        top: -100px;
+
+        border-radius: 50%;
+
+        background:
+            rgba(255,255,255,.06);
+    }
+
+
+    .business-welcome::before
+    {
+        content: "";
+
+        position: absolute;
+
+        width: 150px;
+        height: 150px;
+
+        right: 100px;
+        bottom: -100px;
+
+        border-radius: 50%;
+
+        background:
+            rgba(255,255,255,.04);
+    }
+
+
+    .welcome-content
+    {
+        position: relative;
+
+        z-index: 2;
+    }
+
+
+    .welcome-label
+    {
+        margin-bottom: 6px;
+
+        font-size: 11px;
+
+        font-weight: 700;
+
+        letter-spacing: 1.5px;
+
+        text-transform: uppercase;
+
+        color:
+            rgba(255,255,255,.65);
+    }
+
+
+    .business-welcome h1
+    {
+        margin: 0 0 8px;
+
+        font-size: 29px;
+
+        font-weight: 700;
+    }
+
+
+    .business-welcome p
+    {
+        max-width: 720px;
+
+        margin: 0;
+
+        color:
+            rgba(255,255,255,.78);
+
+        font-size: 14px;
+
+        line-height: 1.7;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | WELCOME ACTIONS
+    |--------------------------------------------------------------------------
+    */
+
+    .welcome-actions
+    {
+        position: relative;
+
+        z-index: 2;
+
+        display: flex;
+
+        align-items: center;
+
+        justify-content: flex-end;
+
+        gap: 8px;
+
+        flex-wrap: wrap;
+    }
+
+
+    .welcome-action-btn
+    {
+        display: inline-flex;
+
+        align-items: center;
+
+        gap: 7px;
+
+        padding: 9px 13px;
+
+        border:
+            1px solid rgba(255,255,255,.30);
+
+        border-radius: 4px;
+
+        background:
+            rgba(255,255,255,.08);
+
+        color: #ffffff;
+
+        font-size: 12px;
+
+        font-weight: 600;
+
+        cursor: pointer;
+
+        transition:
+            background .2s ease,
+            color .2s ease;
+    }
+
+
+    .welcome-action-btn:hover
+    {
+        background: #ffffff;
+
+        color: #0e2238;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | SUMMARY CARDS
+    |--------------------------------------------------------------------------
+    */
+
+    .business-summary-card
+    {
+        height: 100%;
+
+        padding: 19px;
+
+        background: #ffffff;
+
+        border: 1px solid #e8edf2;
+
+        border-radius: 8px;
+
+        box-shadow:
+            0 3px 14px rgba(15,23,42,.04);
+    }
+
+
+    .summary-top
+    {
+        display: flex;
+
+        justify-content: space-between;
+
+        align-items: center;
+    }
+
+
+    .summary-icon
+    {
+        width: 40px;
+
+        height: 40px;
+
+        display: flex;
+
+        align-items: center;
+
+        justify-content: center;
+
+        border-radius: 7px;
+
+        background: #eef8f5;
+
+        color: #087f5b;
+
+        font-size: 17px;
+    }
+
+
+    .summary-title
+    {
+        color: #718096;
+
+        font-size: 11px;
+
+        font-weight: 700;
+
+        letter-spacing: .7px;
+
+        text-transform: uppercase;
+    }
+
+
+    .summary-number
+    {
+        margin-top: 7px;
+
+        color: #172b3a;
+
+        font-size: 23px;
+
+        font-weight: 700;
+    }
+
+
+    .summary-description
+    {
+        margin-top: 3px;
+
+        color: #9aa5b1;
+
+        font-size: 11px;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | MAIN CARDS
+    |--------------------------------------------------------------------------
+    */
+
+    .business-panel
+    {
+        background: #ffffff;
+
+        border: 1px solid #e8edf2;
+
+        border-radius: 8px;
+
+        box-shadow:
+            0 3px 14px rgba(15,23,42,.04);
+
+        overflow: hidden;
+    }
+
+
+    .business-panel-header
+    {
+        display: flex;
+
+        align-items: center;
+
+        justify-content: space-between;
+
+        gap: 15px;
+
+        padding: 18px 20px;
+
+        border-bottom:
+            1px solid #edf1f5;
+    }
+
+
+    .business-panel-header h2
+    {
+        margin: 0;
+
+        color: #172b3a;
+
+        font-size: 17px;
+
+        font-weight: 700;
+    }
+
+
+    .business-panel-header p
+    {
+        margin: 4px 0 0;
+
+        color: #8492a6;
+
+        font-size: 12px;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | BOOK LIST
+    |--------------------------------------------------------------------------
+    */
+
+    .business-book-list
+    {
+        padding: 5px 20px 15px;
+    }
+
+
+    .business-book
+    {
+        display: flex;
+
+        align-items: center;
+
+        gap: 15px;
+
+        padding: 16px 0;
+
+        border-bottom:
+            1px solid #edf1f5;
+    }
+
+
+    .business-book:last-child
+    {
+        border-bottom: none;
+    }
+
+
+    .business-book-icon
+    {
+        width: 45px;
+
+        height: 45px;
+
+        min-width: 45px;
+
+        display: flex;
+
+        align-items: center;
+
+        justify-content: center;
+
+        background: #edf9f5;
+
+        color: #087f5b;
+
+        border-radius: 7px;
+
+        font-size: 17px;
+    }
+
+
+    .business-book-info
+    {
+        flex: 1;
+
+        min-width: 0;
+    }
+
+
+    .business-book-name
+    {
+        color: #172b3a;
+
+        font-size: 15px;
+
+        font-weight: 700;
+    }
+
+
+    .business-book-description
+    {
+        margin-top: 3px;
+
+        color: #8492a6;
+
+        font-size: 11px;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | BOOK BALANCE
+    |--------------------------------------------------------------------------
+    */
+
+    .business-book-balance
+    {
+        min-width: 155px;
+
+        text-align: right;
+    }
+
+
+    .business-book-balance small
+    {
+        display: block;
+
+        margin-bottom: 2px;
+
+        color: #8492a6;
+
+        font-size: 9px;
+
+        font-weight: 700;
+
+        letter-spacing: .6px;
+
+        text-transform: uppercase;
+    }
+
+
+    .business-book-balance strong
+    {
+        font-size: 15px;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | BOOK ACTIONS
+    |--------------------------------------------------------------------------
+    */
+
+    .business-book-actions
+    {
+        min-width: 185px;
+
+        text-align: right;
+
+        white-space: nowrap;
+    }
+
+
+    .business-book-actions .btn
+    {
+        margin-left: 4px;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | GUIDE PANEL
+    |--------------------------------------------------------------------------
+    */
+
+    .business-guide
+    {
+        padding: 20px;
+    }
+
+
+    .business-guide-title
+    {
+        margin-bottom: 5px;
+
+        color: #172b3a;
+
+        font-size: 16px;
+
+        font-weight: 700;
+    }
+
+
+    .business-guide-intro
+    {
+        margin-bottom: 12px;
+
+        color: #8492a6;
+
+        font-size: 12px;
+
+        line-height: 1.6;
+    }
+
+
+    .business-guide-step
+    {
+        display: flex;
+
+        gap: 11px;
+
+        padding: 13px 0;
+
+        border-bottom:
+            1px solid #edf1f5;
+    }
+
+
+    .business-guide-step:last-child
+    {
+        border-bottom: none;
+    }
+
+
+    .guide-icon
+    {
+        width: 34px;
+
+        height: 34px;
+
+        min-width: 34px;
+
+        display: flex;
+
+        align-items: center;
+
+        justify-content: center;
+
+        background: #f2f5f8;
+
+        color: #087f5b;
+
+        border-radius: 6px;
+    }
+
+
+    .business-guide-step strong
+    {
+        display: block;
+
+        margin-bottom: 2px;
+
+        color: #172b3a;
+
+        font-size: 12px;
+    }
+
+
+    .business-guide-step span
+    {
+        color: #8492a6;
+
+        font-size: 11px;
+
+        line-height: 1.5;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | EMPTY STATE
+    |--------------------------------------------------------------------------
+    */
+
+    .empty-business-books
+    {
+        padding: 50px 20px;
+
+        text-align: center;
+    }
+
+
+    .empty-business-books .empty-icon
+    {
+        margin-bottom: 15px;
+
+        color: #cbd5df;
+
+        font-size: 42px;
+    }
+
+
+    .empty-business-books h3
+    {
+        margin-bottom: 7px;
+
+        color: #34495e;
+
+        font-size: 17px;
+    }
+
+
+    .empty-business-books p
+    {
+        max-width: 420px;
+
+        margin:
+            0 auto 18px;
+
+        color: #8492a6;
+
+        font-size: 12px;
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | MOBILE
+    |--------------------------------------------------------------------------
+    */
+
+    @media(max-width: 991px)
+    {
+
+        .business-home
+        {
+            padding:
+                15px 12px 30px;
+        }
+
+
+        .business-welcome
+        {
+            padding: 23px;
+        }
+
+
+        .welcome-actions
+        {
+            justify-content:
+                flex-start;
+
+            margin-top: 20px;
+        }
+
+    }
+
+
+    @media(max-width: 767px)
+    {
+
+        .business-welcome
+        {
+            padding: 20px;
+        }
+
+
+        .business-welcome h1
+        {
+            font-size: 23px;
+        }
+
+
+        .welcome-action-btn
+        {
+            padding: 8px 10px;
+        }
+
+
+        .business-panel-header
+        {
+            align-items:
+                flex-start;
+
+            flex-direction:
+                column;
+        }
+
+
+        .business-book
+        {
+            align-items:
+                flex-start;
+
+            flex-wrap: wrap;
+        }
+
+
+        .business-book-info
+        {
+            width:
+                calc(100% - 60px);
+        }
+
+
+        .business-book-balance
+        {
+            width: 100%;
+
+            min-width: 0;
+
+            padding-left: 60px;
+
+            text-align: left;
+        }
+
+
+        .business-book-actions
+        {
+            width: 100%;
+
+            min-width: 0;
+
+            padding-left: 55px;
+
+            text-align: left;
+        }
+
+    }
+
+
+    @media(max-width: 480px)
+    {
+
+        .business-home
+        {
+            padding:
+                10px 8px 25px;
+        }
+
+
+        .business-welcome
+        {
+            border-radius: 7px;
+        }
+
+
+        .business-summary-card,
+        .business-panel
+        {
+            border-radius: 6px;
+        }
+
+
+        .business-book-actions
+        {
+            padding-left: 0;
+
+            display: flex;
+
+            gap: 5px;
+        }
+
+
+        .business-book-actions .btn
+        {
+            flex: 1;
+
+            margin-left: 0;
+        }
+
+
+        .business-book-balance
+        {
+            padding-left: 0;
+        }
+
+    }
+
+</style>
+
+
+
+<!-- ================================================================
+     BUSINESS HOME
+================================================================ -->
+
+<div class="container-fluid business-home">
+
+
+    <!-- ============================================================
+         WELCOME
+    ============================================================= -->
+
+    <div class="business-welcome">
+
+        <div class="row align-items-center">
+
+            <div class="col-lg-7 welcome-content">
+
+                <div class="welcome-label">
+                    Business Workspace
+                </div>
+
+
+                <h1>
+                    Welcome to
+                    <?=htmlspecialchars($business->name);?>
+                </h1>
+
+
+                <p>
+                    Your business books keep your financial and operational
+                    records organised. Select a book below to continue managing
+                    transactions, customers, stock, invoices and reports.
+                </p>
+
+            </div>
+
+
+            <?php if(hasRole(['owner'])): ?>
+
+                <div class="col-lg-5">
+
+                    <div class="welcome-actions">
+
+
+                        <button
+                            type="button"
+                            class="welcome-action-btn new-profile"
+                            data-id="<?=$business->id;?>"
+                        >
+
+                            <i class="fa fa-building"></i>
+
+                            Business Profile
+
+                        </button>
+
+
+                        <button
+                            type="button"
+                            class="welcome-action-btn new-settings"
+                        >
+
+                            <i class="fa fa-cog"></i>
+
+                            Settings
+
+                        </button>
+
+
+                        <button
+                            type="button"
+                            class="welcome-action-btn new-team"
+                        >
+
+                            <i class="fa fa-user-plus"></i>
+
+                            Add Team
+
+                        </button>
+
+
+                    </div>
+
+                </div>
+
+            <?php endif; ?>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- ============================================================
+         SUMMARY
+    ============================================================= -->
+
+    <div class="row">
+
+
+        <!-- BOOKS -->
+
+        <div class="col-md-6 col-xl-4 mb-3">
+
+            <div class="business-summary-card">
+
+                <div class="summary-top">
+
+                    <div>
+
+                        <div class="summary-title">
+                            Business Books
+                        </div>
+
+
+                        <div class="summary-number">
+                            <?=number_format($totalBooks);?>
+                        </div>
+
+                    </div>
+
+
+                    <div class="summary-icon">
+
+                        <i class="fa fa-book"></i>
+
+                    </div>
+
+                </div>
+
+
+                <div class="summary-description">
+
+                    Active books attached to this business
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- BALANCE -->
+
+        <div class="col-md-6 col-xl-4 mb-3">
+
+            <div class="business-summary-card">
+
+                <div class="summary-top">
+
+                    <div>
+
+                        <div class="summary-title">
+                            Combined Balance
+                        </div>
+
+
+                        <div
+                            class="summary-number
+                            <?=$totalBalance < 0
+                                ? 'text-danger'
+                                : 'text-success';?>"
+                        >
+
+                            <?=number_format(
+                                $totalBalance,
+                                0
+                            );?>/=
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="summary-icon">
+
+                        <i class="fa fa-wallet"></i>
+
+                    </div>
+
+                </div>
+
+
+                <div class="summary-description">
+
+                    Cash in less cash out across all books
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- WORKSPACE -->
+
+        <div class="col-md-6 col-xl-4 mb-3">
+
+            <div class="business-summary-card">
+
+                <div class="summary-top">
+
+                    <div>
+
+                        <div class="summary-title">
+                            Workspace
+                        </div>
+
+
+                        <div
+                            class="summary-number"
+                            style="font-size:19px;"
+                        >
+                            Ready
+                        </div>
+
+                    </div>
+
+
+                    <div class="summary-icon">
+
+                        <i class="fa fa-check-circle"></i>
+
+                    </div>
+
+                </div>
+
+
+                <div class="summary-description">
+
+                    Select a book below to continue working
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+
+
+    <!-- ============================================================
+         BOOKS + GUIDE
+    ============================================================= -->
+
+    <div class="row mt-2">
+
+
+        <!-- ========================================================
+             BUSINESS BOOKS
+        ========================================================= -->
+
+        <div class="col-xl-8 mb-4">
+
+            <div class="business-panel">
+
+
+                <div class="business-panel-header">
+
+                    <div>
+
+                        <h2>
+
+                            <i
+                                class="fa fa-book
+                                text-success mr-2"
+                            ></i>
+
+                            Business Books
+
+                        </h2>
+
+
+                        <p>
+
+                            Select the book you want to work with.
+
+                        </p>
+
+                    </div>
+
+
+                    <?php
+                    if(hasRole(['owner','partner'])):
+                    ?>
+
+                        <button
+                            type="button"
+                            class="
+                                btn
+                                btn-sm
+                                btn-success
+                                btn-flat
+                                new-book
+                            "
+                        >
+
+                            <i
+                                class="
+                                    fa
+                                    fa-plus-circle
+                                    mr-1
+                                "
+                            ></i>
+
+                            Add Book
+
+                        </button>
+
+                    <?php endif; ?>
+
+                </div>
+
+
+
+                <?php if($totalBooks > 0): ?>
+
+
+                    <div class="business-book-list">
+
+
+                        <?php foreach($books as $book): ?>
+
+
+                            <?php
+
+                            $encryptedBookId =
+                                encryptor(
+                                    'encrypt',
+                                    $book['id']
+                                );
+
+
+                            $balanceClass =
+                                $book['balance'] < 0
+                                ? 'text-danger'
+                                : 'text-success';
+
+                            ?>
+
+
+                            <div class="business-book">
+
+
+                                <!-- ICON -->
+
+                                <div class="business-book-icon">
+
+                                    <i class="fa fa-book"></i>
+
+                                </div>
+
+
+
+                                <!-- DETAILS -->
+
+                                <div class="business-book-info">
+
+
+                                    <div class="business-book-name">
+
+                                        <?=htmlspecialchars(
+                                            $book['name']
+                                        );?>
+
+                                    </div>
+
+
+                                    <div
+                                        class="
+                                            business-book-description
+                                        "
+                                    >
+
+                                        <?php
+
+                                        if(
+                                            isset($book['details']) &&
+                                            trim($book['details']) != ''
+                                        )
+                                        {
+
+                                            echo htmlspecialchars(
+                                                $book['details']
+                                            );
+
+                                        }
+                                        else
+                                        {
+
+                                            echo
+                                                'Open this book to manage '
+                                                .'its business records.';
+
+                                        }
+
+                                        ?>
+
+                                    </div>
+
+
+                                </div>
+
+
+
+                                <!-- BALANCE -->
+
+                                <div class="business-book-balance">
+
+                                    <small>
+                                        Current Balance
+                                    </small>
+
+
+                                    <strong
+                                        class="<?=$balanceClass;?>"
+                                    >
+
+                                        <?=number_format(
+                                            $book['balance'],
+                                            0
+                                        );?>/=
+
+                                    </strong>
+
+                                </div>
+
+
+
+                                <!-- ACTIONS -->
+
+                                <div class="business-book-actions">
+
+
+                                    <a
+                                        href="
+                                            ../dashboard/?bkid=<?=
+                                            $encryptedBookId;
+                                            ?>
+                                        "
+                                        class="
+                                            btn
+                                            btn-sm
+                                            btn-outline-secondary
+                                            btn-flat
+                                        "
+                                    >
+
+                                        <i
+                                            class="
+                                                fa
+                                                fa-info-circle
+                                            "
+                                        ></i>
+
+                                        Dashboard
+
+                                    </a>
+
+
+                                    <a
+                                        href="
+                                            ../books/?bkid=<?=
+                                            $encryptedBookId;
+                                            ?>
+                                            
+                                        "
+                                        class="
+                                            btn
+                                            btn-sm
+                                            btn-success
+                                            btn-flat
+                                        "
+                                    >
+
+                                        Open
+
+                                        <i
+                                            class="
+                                                fa
+                                                fa-arrow-right
+                                                ml-1
+                                            "
+                                        ></i>
+
+                                    </a>
+
+
+                                </div>
+
+
+                            </div>
+
+
+                        <?php endforeach; ?>
+
+
+                    </div>
+
+
+                <?php else: ?>
+
+
+                    <!-- EMPTY STATE -->
+
+                    <div class="empty-business-books">
+
+
+                        <div class="empty-icon">
+
+                            <i class="fa fa-book-open"></i>
+
+                        </div>
+
+
+                        <h3>
+                            No Business Books Yet
+                        </h3>
+
+
+                        <p>
+
+                            A business book is where your transactions,
+                            customers, stock and other records are managed.
+
+                            Create your first book to get started.
+
+                        </p>
+
+
+                        <?php
+                        if(hasRole(['owner','partner'])):
+                        ?>
+
+                            <button
+                                type="button"
+                                class="
+                                    btn
+                                    btn-success
+                                    btn-flat
+                                    new-book
+                                "
+                            >
+
+                                <i
+                                    class="
+                                        fa
+                                        fa-plus-circle
+                                        mr-1
+                                    "
+                                ></i>
+
+                                Create First Book
+
+                            </button>
+
+                        <?php endif; ?>
+
+
+                    </div>
+
+
+                <?php endif; ?>
+
+
+            </div>
+
+        </div>
+
+
+
+        <!-- ========================================================
+             GETTING AROUND
+        ========================================================= -->
+
+        <div class="col-xl-4 mb-4">
+
+            <div class="business-panel">
+
+                <div class="business-guide">
+
+
+                    <div class="business-guide-title">
+
+                        <i
+                            class="
+                                fa
+                                fa-compass
+                                text-success
+                                mr-2
+                            "
+                        ></i>
+
+                        Getting Around
+
+                    </div>
+
+
+                    <div class="business-guide-intro">
+
+                        Your business is organised into books.
+                        Each book has its own operational records.
+
+                    </div>
+
+
+
+                    <!-- STEP 1 -->
+
+                    <div class="business-guide-step">
+
+                        <div class="guide-icon">
+
+                            <i class="fa fa-book"></i>
+
+                        </div>
+
+
+                        <div>
+
+                            <strong>
+                                Choose a Book
+                            </strong>
+
+                            <span>
+
+                                Select the business book whose
+                                records you want to work with.
+
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- STEP 2 -->
+
+                    <div class="business-guide-step">
+
+                        <div class="guide-icon">
+
+                            <i
+                                class="
+                                    fa
+                                    fa-tachometer-alt
+                                "
+                            ></i>
+
+                        </div>
+
+
+                        <div>
+
+                            <strong>
+                                Open its Dashboard
+                            </strong>
+
+                            <span>
+
+                                The dashboard gives you balances,
+                                trends and recent activity.
+
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- STEP 3 -->
+
+                    <div class="business-guide-step">
+
+                        <div class="guide-icon">
+
+                            <i class="fa fa-bars"></i>
+
+                        </div>
+
+
+                        <div>
+
+                            <strong>
+                                Use the Book Sidebar
+                            </strong>
+
+                            <span>
+
+                                Access customers, creditors,
+                                stock, purchases, invoices,
+                                reports and other book tools.
+
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <?php if(hasRole(['owner'])): ?>
+
+
+                        <!-- STEP 4 -->
+
+                        <div class="business-guide-step">
+
+                            <div class="guide-icon">
+
+                                <i class="fa fa-users"></i>
+
+                            </div>
+
+
+                            <div>
+
+                                <strong>
+                                    Manage Your Team
+                                </strong>
+
+                                <span>
+
+                                    Add and manage the people who
+                                    help operate your business.
+
+                                </span>
+
+                            </div>
+
+                        </div>
+
+
+                    <?php endif; ?>
+
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+
+</div>
+
+
+
+<!-- ================================================================
+     CREATE BUSINESS BOOK MODAL
+================================================================ -->
+
+<div
+    class="
+        p-2
+        bg-white
+        side-modal-tall
+        absolute
+        border
+        shadow
+    "
+    id="side-modal-newbook"
+>
+
+
+    <div class="side-modal-header">
+
+
+        <div>
+
+            <h3
+                class="
+                    side-modal-title
+                    text-dark
+                    mb-1
+                "
+            >
+
+                CREATE BUSINESS BOOK
+
+            </h3>
+
+
+            <small class="text-muted">
+
+                Create a separate workspace for
+                business records.
+
+            </small>
+
+        </div>
+
+
+        <button
+            type="button"
+            class="side-modal-close"
+        >
+            &times;
+        </button>
+
+
+    </div>
+
+
+
+    <div class="side-modal-content">
+
+
+        <form
+            action="../books/save/index.php"
+            method="post"
+        >
+
+
+            <input
+                type="hidden"
+                name="business_id"
+                value="<?=$business->id;?>"
+            >
+
+
+
+            <div class="form-group">
+
+
+                <label for="book_title">
+
+                    BOOK TITLE
+
+                </label>
+
+
+                <input
+                    type="text"
+                    name="book_title"
+                    id="book_title"
+                    class="form-control"
+                    placeholder="
+                        e.g. Main Business Book
+                    "
+                    required
+                >
+
+
+            </div>
+
+
+
+            <div class="form-group">
+
+
+                <label for="book_details">
+
+                    BOOK DETAILS
+
+                </label>
+
+
+                <input
+                    type="text"
+                    name="book_details"
+                    id="book_details"
+                    class="form-control"
+                    placeholder="
+                        Brief description of this book
+                    "
+                >
+
+
+            </div>
+
+
+
+            <div class="text-right pt-2">
+
+
+                <button
+                    type="submit"
+                    name="saveNewBook"
+                    class="
+                        btn
+                        btn-flat
+                        btn-success
+                    "
+                >
+
+                    <i
+                        class="
+                            fa
+                            fa-save
+                            mr-1
+                        "
+                    ></i>
+
+                    CREATE BOOK
+
+                </button>
+
+
+            </div>
+
+
+        </form>
+
+
+    </div>
+
+
+</div>
+
+
+
+<!-- ================================================================
+     BUSINESS PROFILE MODAL
+================================================================ -->
+
+<div
+    class="
+        p-2
+        bg-white
+        side-modal-tall
+        absolute
+        border
+        shadow
+    "
+    id="side-modal-new-profile"
+>
+
+
+    <div class="side-modal-header">
+
+
+        <div>
+
+
+            <h3
+                class="
+                    side-modal-title
+                    text-dark
+                    mb-1
+                "
+            >
+
+                BUSINESS PROFILE
+
+            </h3>
+
+
+            <small class="text-muted">
+
+                Update your business information.
+
+            </small>
+
+
+        </div>
+
+
+        <button
+            type="button"
+            class="side-modal-close"
+        >
+            &times;
+        </button>
+
+
+    </div>
+
+
+
+    <div class="side-modal-content">
+
+
+        <form
+            id="newBusinessForm"
+            method="post"
+            enctype="multipart/form-data"
+        >
+
+
+            <input
+                type="hidden"
+                name="action"
+                value="businessProfile"
+            >
+
+
+            <input
+                type="hidden"
+                name="business_id"
+                value="<?=$business->id;?>"
+            >
+
+
+
+            <!-- PROFILE / MAIN DETAILS -->
+
+            <div class="row mx-1">
+
+
+                <div class="col-md-3 p-3">
+
+
+                    <label
+                        for="profile"
+                        class="d-block"
+                    >
+
+
+                        <img
+                            src="../images/profile.jpg"
+                            alt="Business Profile"
+                            id="profilePreview"
+                            width="90%"
+                            class="border"
+                        >
+
+
+                    </label>
+
+
+                    <input
+                        type="file"
+                        name="profile"
+                        id="profile"
+                        class="hidden"
+                        accept="image/*"
+                    >
+
+
+                </div>
+
+
+
+                <div class="col-md-9 p-2">
+
+
+                    <div class="form-group">
+
+
+                        <label for="name">
+
+                            BUSINESS NAME
+
+                        </label>
+
+
+                        <input
+                            type="text"
+                            name="name"
+                            id="name"
+                            value="<?=
+                                htmlspecialchars(
+                                    $business->name ?? ''
+                                );
+                            ?>"
+                            class="form-control"
+                            required
+                        >
+
+
+                    </div>
+
+
+
+                    <div class="form-group">
+
+
+                        <label for="email">
+
+                            EMAIL
+
+                        </label>
+
+
+                        <input
+                            type="email"
+                            name="email"
+                            id="email"
+                            value="<?=
+                                htmlspecialchars(
+                                    $business->email ?? ''
+                                );
+                            ?>"
+                            class="form-control"
+                        >
+
+
+                    </div>
+
+
+                </div>
+
+
+            </div>
+
+
+
+            <hr>
+
+
+
+            <!-- ADDRESS -->
+
+            <div class="form-group">
+
+
+                <label for="address">
+
+                    ADDRESS
+
+                </label>
+
+
+                <input
+                    type="text"
+                    name="address"
+                    id="address"
+                    value="<?=
+                        htmlspecialchars(
+                            $business->address ?? ''
+                        );
+                    ?>"
+                    class="form-control"
+                >
+
+
+            </div>
+
+
+
+            <!-- CONTACTS -->
+
+            <div class="form-row">
+
+
+                <div class="form-group col-md-6">
+
+
+                    <label for="contact1">
+
+                        PRIMARY CONTACT
+
+                    </label>
+
+
+                    <input
+                        type="text"
+                        name="contact1"
+                        id="contact1"
+                        value="<?=
+                            htmlspecialchars(
+                                $business->contact1 ?? ''
+                            );
+                        ?>"
+                        class="form-control"
+                    >
+
+
+                </div>
+
+
+
+                <div class="form-group col-md-6">
+
+
+                    <label for="contact2">
+
+                        ALTERNATIVE CONTACT
+
+                    </label>
+
+
+                    <input
+                        type="text"
+                        name="contact2"
+                        id="contact2"
+                        value="<?=
+                            htmlspecialchars(
+                                $business->contact2 ?? ''
+                            );
+                        ?>"
+                        class="form-control"
+                    >
+
+
+                </div>
+
+
+            </div>
+
+
+
+            <!-- REGISTRATION -->
+
+            <div class="form-group">
+
+
+                <label for="reg_no">
+
+                    REGISTRATION NUMBER
+
+                </label>
+
+
+                <input
+                    type="text"
+                    name="reg_no"
+                    id="reg_no"
+                    value="<?=
+                        htmlspecialchars(
+                            $business->reg_no ?? ''
+                        );
+                    ?>"
+                    class="form-control"
+                >
+
+
+            </div>
+
+
+
+            <hr>
+
+
+
+            <div class="text-right">
+
+
+                <button
+                    type="submit"
+                    class="
+                        btn
+                        btn-flat
+                        btn-success
+                        saveNewBusiness
+                    "
+                >
+
+                    <i
+                        class="
+                            fa
+                            fa-save
+                            mr-1
+                        "
+                    ></i>
+
+                    SAVE PROFILE
+
+                </button>
+
+
+            </div>
+
+
+        </form>
+
+
+    </div>
+
+
+</div>
+
+
+
+<!-- ================================================================
+     PAGE JAVASCRIPT
+================================================================ -->
+
+<script>
+
+document.addEventListener(
+    'DOMContentLoaded',
+    function ()
+    {
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | OPEN CREATE BOOK
+        |--------------------------------------------------------------------------
+        */
+
+        document
+            .querySelectorAll('.new-book')
+            .forEach(
+                function (button)
+                {
+
+                    button.addEventListener(
+                        'click',
+                        function ()
+                        {
+
+                            const modal =
+                                document.getElementById(
+                                    'side-modal-newbook'
+                                );
+
+
+                            if (modal)
+                            {
+                                modal.style.display =
+                                    'block';
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | OPEN BUSINESS PROFILE
+        |--------------------------------------------------------------------------
+        */
+
+        document
+            .querySelectorAll('.new-profile')
+            .forEach(
+                function (button)
+                {
+
+                    button.addEventListener(
+                        'click',
+                        function (event)
+                        {
+
+                            event.preventDefault();
+
+
+                            const modal =
+                                document.getElementById(
+                                    'side-modal-new-profile'
+                                );
+
+
+                            if (modal)
+                            {
+                                modal.style.display =
+                                    'block';
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | CLOSE SIDE MODALS
+        |--------------------------------------------------------------------------
+        */
+
+        document
+            .querySelectorAll('.side-modal-close')
+            .forEach(
+                function (button)
+                {
+
+                    button.addEventListener(
+                        'click',
+                        function ()
+                        {
+
+                            const modal =
+                                button.closest(
+                                    '.absolute'
+                                );
+
+
+                            if (modal)
+                            {
+                                modal.style.display =
+                                    'none';
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | PROFILE IMAGE PREVIEW
+        |--------------------------------------------------------------------------
+        */
+
+        const profileInput =
+            document.getElementById(
+                'profile'
+            );
+
+
+        const profilePreview =
+            document.getElementById(
+                'profilePreview'
+            );
+
+
+        if (
+            profileInput &&
+            profilePreview
+        )
+        {
+
+            profileInput.addEventListener(
+                'change',
+                function ()
+                {
+
+                    if (
+                        !this.files ||
+                        !this.files[0]
+                    )
+                    {
+                        return;
+                    }
+
+
+                    const reader =
+                        new FileReader();
+
+
+                    reader.onload =
+                        function (event)
+                        {
+
+                            profilePreview.src =
+                                event.target.result;
+
+                        };
+
+
+                    reader.readAsDataURL(
+                        this.files[0]
+                    );
+
+                }
+            );
+
+        }
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | SAVE BUSINESS PROFILE
+        |--------------------------------------------------------------------------
+        */
+
+        const businessForm =
+            document.getElementById(
+                'newBusinessForm'
+            );
+
+
+        if (businessForm)
+        {
+
+            businessForm.addEventListener(
+                'submit',
+                function (event)
+                {
+
+                    event.preventDefault();
+
+
+                    const submitButton =
+                        businessForm.querySelector(
+                            'button[type="submit"]'
+                        );
+
+
+                    const formData =
+                        new FormData(
+                            businessForm
+                        );
+
+
+                    if (submitButton)
+                    {
+
+                        submitButton.disabled =
+                            true;
+
+
+                        submitButton.innerHTML =
+                            '<i class="fa fa-spinner fa-spin mr-1"></i> SAVING...';
+
+                    }
+
+
+
+                    fetch(
+                        'save/index.php',
+                        {
+
+                            method: 'POST',
+
+                            body: formData
+
+                        }
+                    )
+
+                    .then(
+                        function (response)
+                        {
+
+                            if (!response.ok)
+                            {
+
+                                throw new Error(
+                                    'HTTP ' +
+                                    response.status
+                                );
+
+                            }
+
+
+                            return response.text();
+
+                        }
+                    )
+
+                    .then(
+                        function ()
+                        {
+
+                            xdialog.alert(
+                                'Business profile saved successfully.'
+                            );
+
+
+                            setTimeout(
+                                function ()
+                                {
+
+                                    window.location.reload();
+
+                                },
+                                800
+                            );
+
+                        }
+                    )
+
+                    .catch(
+                        function (error)
+                        {
+
+                            console.error(
+                                'Business profile error:',
+                                error
+                            );
+
+
+                            xdialog.alert(
+                                'Unable to save the business profile. Please try again.'
+                            );
+
+                        }
+                    )
+
+                    .finally(
+                        function ()
+                        {
+
+                            if (submitButton)
+                            {
+
+                                submitButton.disabled =
+                                    false;
+
+
+                                submitButton.innerHTML =
+                                    '<i class="fa fa-save mr-1"></i> SAVE PROFILE';
+
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+        }
+
+
+    }
+);
+
+</script>
+
+
+<?php
+
+/*
+|--------------------------------------------------------------------------
+| PAGE FOOTER
+|--------------------------------------------------------------------------
+|
+| Important:
+| Do NOT load jQuery, Bootstrap, FontAwesome, custom.js or script.js again
+| on this page. pageFooter() handles our global assets and their versioning.
+|
+*/
+
+pageFooter();
+
 ?>

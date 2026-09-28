@@ -591,11 +591,16 @@ body.sidebar-open {
     ----------------------------------------------------------
     */
 
-    #sidebar.expand {
+    #sidebar.mobile-open {
         width: 280px;
         min-width: 280px;
 
         transform: translateX(0);
+    }
+
+    /* Mobile visibility is independent of desktop collapse state. */
+    #sidebar.mobile-open {
+        transform: translateX(0) !important;
     }
 
 
@@ -606,7 +611,7 @@ body.sidebar-open {
     ----------------------------------------------------------
     */
 
-    #sidebar:not(.expand) {
+    #sidebar:not(.mobile-open) {
         width: 280px;
         min-width: 280px;
 
@@ -1080,36 +1085,388 @@ body.sidebar-open {
    SMALL PHONES
    ========================================================== */
 
-@media (max-width: 480px) {
+/* ==========================================================
+   MOBILE SIDEBAR
+   ========================================================== */
 
-    #sidebar {
-        width: 270px;
-        min-width: 270px;
+@media (max-width: 990px) {
+
+    /*
+    ----------------------------------------------------------
+    SIDEBAR
+    ----------------------------------------------------------
+    */
+
+    #sidebar,
+    #sidebar.expand,
+    #sidebar:not(.expand) {
+
+        position: fixed !important;
+
+        top: 0 !important;
+        left: 0 !important;
+
+        width: 280px !important;
+        min-width: 280px !important;
+
+        height: 100vh !important;
+
+        transform: translateX(-100%) !important;
+
+        background: #0e2238 !important;
+
+        z-index: 10500 !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+
+        visibility: visible !important;
+
+        transition: transform 0.25s ease-in-out !important;
+
+        box-shadow:
+            5px 0 20px rgba(0,0,0,0.25);
     }
 
-    #sidebar.expand {
-        width: 270px;
-        min-width: 270px;
+
+    /*
+    ----------------------------------------------------------
+    OPEN MOBILE SIDEBAR
+    ----------------------------------------------------------
+    */
+
+    #sidebar.mobile-open,
+    #sidebar.expand.mobile-open,
+    #sidebar:not(.expand).mobile-open {
+
+        transform: translateX(0) !important;
+
     }
 
-    .sidebar-header {
-        padding: 10px 12px;
+
+    /*
+    ----------------------------------------------------------
+    RESTORE CONTENT HIDDEN BY DESKTOP COLLAPSE
+    ----------------------------------------------------------
+    */
+
+    #sidebar .sidebar-logo,
+    #sidebar:not(.expand) .sidebar-logo {
+
+        display: flex !important;
+
     }
+
+
+    #sidebar .sidebar-link,
+    #sidebar:not(.expand) .sidebar-link {
+
+        justify-content: flex-start !important;
+
+    }
+
+
+    #sidebar .sidebar-link span,
+    #sidebar:not(.expand) .sidebar-link span {
+
+        display: inline !important;
+
+    }
+
+
+    #sidebar .sidebar-link i,
+    #sidebar:not(.expand) .sidebar-link i {
+
+        margin-right: 12px !important;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    SIDEBAR FOOTER
+    ----------------------------------------------------------
+    */
+
+    #sidebar .sidebar-footer a,
+    #sidebar:not(.expand) .sidebar-footer a {
+
+        justify-content: flex-start !important;
+
+    }
+
+
+    #sidebar .sidebar-footer a span,
+    #sidebar:not(.expand) .sidebar-footer a span {
+
+        display: inline !important;
+
+    }
+
+
+    #sidebar .sidebar-footer a i,
+    #sidebar:not(.expand) .sidebar-footer a i {
+
+        margin-right: 12px !important;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    SIDEBAR HEADER
+    ----------------------------------------------------------
+    */
+
+    #sidebar .sidebar-header {
+
+        min-height: 65px;
+
+        padding: 12px 14px;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    HIDE DESKTOP TOGGLE ON MOBILE
+    ----------------------------------------------------------
+    */
+
+    #toggle-btn {
+
+        display: none !important;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    MOBILE CLOSE BUTTON
+    ----------------------------------------------------------
+    */
+
+    #mobile-close-btn {
+
+        display: flex !important;
+
+        align-items: center;
+        justify-content: center;
+
+        flex-shrink: 0;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    NAVIGATION
+    ----------------------------------------------------------
+    */
+
+    #sidebar .sidebar-nav {
+
+        display: block !important;
+
+        width: 100%;
+
+        padding: 10px;
+
+        overflow-y: auto;
+
+    }
+
+
+    #sidebar .sidebar-nav li {
+
+        display: block;
+
+        width: 100%;
+
+    }
+
+
+    #sidebar .sidebar-nav li a {
+
+        display: flex !important;
+
+        width: 100%;
+
+        min-height: 50px;
+
+        padding: 13px 14px;
+
+        font-size: 14px;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    MAIN CONTENT
+    ----------------------------------------------------------
+    */
+
+    .main {
+
+        width: 100% !important;
+
+        margin-left: 0 !important;
+
+        min-width: 0;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    MOBILE MENU BUTTON
+    ----------------------------------------------------------
+    */
 
     #mobile-menu-btn {
+
+        position: fixed !important;
+
+        top: 12px;
+        left: 12px;
+
+        width: 42px;
+        height: 42px;
+
+        display: flex !important;
+
+        align-items: center;
+        justify-content: center;
+
+        border: none;
+
+        border-radius: 7px;
+
+        background: #0e2238 !important;
+
+        color: #ffffff !important;
+
+        z-index: 10600 !important;
+
+        box-shadow:
+            0 3px 10px rgba(0,0,0,0.20);
+
+        cursor: pointer;
+
+    }
+
+
+    #mobile-menu-btn i {
+
+        color: #ffffff !important;
+
+        font-size: 18px;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    OVERLAY
+    ----------------------------------------------------------
+    */
+
+    #sidebar-overlay {
+
+        display: block !important;
+
+        position: fixed;
+
+        inset: 0;
+
+        width: 100%;
+        height: 100vh;
+
+        background: rgba(0,0,0,0.45);
+
+        z-index: 10400;
+
+        opacity: 0;
+
+        visibility: hidden;
+
+        pointer-events: none;
+
+        transition:
+            opacity 0.25s ease,
+            visibility 0.25s ease;
+
+    }
+
+
+    #sidebar-overlay.active {
+
+        opacity: 1;
+
+        visibility: visible;
+
+        pointer-events: auto;
+
+    }
+
+
+    /*
+    ----------------------------------------------------------
+    DROPDOWNS
+    ----------------------------------------------------------
+    */
+
+    #sidebar .sidebar-item .sidebar-dropdown {
+
+        position: static !important;
+
+        width: 100%;
+
+        min-width: 0;
+
+        background: transparent;
+
+        box-shadow: none;
+
+    }
+
+
+    #sidebar .sidebar-link[data-toggle="collapse"]::after {
+
+        display: inline-block;
+
+    }
+
+}
+
+
+/* ==========================================================
+   SMALL MOBILE DEVICES
+   ========================================================== */
+
+@media (max-width: 480px) {
+
+    #sidebar,
+    #sidebar.expand,
+    #sidebar:not(.expand),
+    #sidebar.mobile-open {
+
+        width: 270px !important;
+
+        min-width: 270px !important;
+
+    }
+
+
+    #mobile-menu-btn {
+
         width: 40px;
+
         height: 40px;
+
     }
 
-    .cb-hero {
-        border-radius: 14px;
-
-        padding: 18px;
-    }
-
-    .metric-value {
-        font-size: 21px;
-    }
 }
 
 

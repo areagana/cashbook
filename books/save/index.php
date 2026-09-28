@@ -41,6 +41,7 @@
                 case 'fetchForm':
                         $category = request('section');
                         $bkid =  request('book_id');
+                        $book = bookFind($bkid);
 
                         switch($category)
                         {
@@ -990,6 +991,23 @@
                                                 <input type="text" name="details" id="details" class="form-control">
                                             </div>
                                         </div>
+                                        <div class="row mx-1">
+                                            <div class="col-md-3 p-2">
+                                                <label for="manager">Manager:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <?php 
+                                                    $sql = "SELECT * FROM cashbook_route_managers WHERE book_id = ? ORDER BY name asc";
+                                                    $res = prepared_statements($sql,'i',[$book->id]);
+                                                ?>
+                                                <select name="manager" id="manager" class="form-control">
+                                                    <option value="">-- select --</option>
+                                                    <?php  while($re = $res->fetch_assoc()):?>
+                                                        <option value="<?=$re['id'];?>"><?=$re['name'];?></option>
+                                                    <?php endwhile;?>
+                                                </select>
+                                            </div>
+                                        </div>
                                         <div class="roww mx-1">
                                             <div class="col p-2">
                                                 <button  type='submit' class="btn btn-flat btn-primary right saveRoute">Save</button>
@@ -1022,6 +1040,23 @@
                                             </div>
                                             <div class="col p-2">
                                                 <input type="text" name="details" value="<?=$route->details;?>" id="details" class="form-control">
+                                            </div>
+                                        </div>
+                                        <div class="row mx-1">
+                                            <div class="col-md-3 p-2">
+                                                <label for="manager">Manager:</label>
+                                            </div>
+                                            <div class="col p-2">
+                                                <?php 
+                                                    $sql = "SELECT * FROM cashbook_route_managers WHERE book_id = ? ORDER BY name asc";
+                                                    $res = prepared_statements($sql,'i',[$book->id]);
+                                                ?>
+                                                <select name="manager" id="manager" class="form-control">
+                                                    <option value="">-- select --</option>
+                                                    <?php  while($re = $res->fetch_assoc()):?>
+                                                        <option value="<?=$re['id'];?>"><?=$re['name'];?></option>
+                                                    <?php endwhile;?>
+                                                </select>
                                             </div>
                                         </div>
                                         <div class="roww mx-1">
@@ -2929,23 +2964,156 @@
                                 
                             break;
                         case 'newRouteSave':
-                                $book_id = request('book_id');
-                                $name = request('name');
-                                $details = request('details');
-                                $user_id = auth()->id;
-                                $route_id = request('route_id') ?? "";
+                            /*
+                            |--------------------------------------------------------------------------
+                            | REQUEST DATA
+                            |--------------------------------------------------------------------------
+                            */
 
-                                if(empty($route_id))
+                            $book_id = (int)request('book_id');
+
+                            $name = trim(
+                                request('name') ?? ''
+                            );
+
+                            $details = trim(
+                                request('details') ?? ''
+                            );
+
+                            $user_id = (int)auth()->id;
+
+                            $route_id = (int)(
+                                request('route_id') ?? 0
+                            );
+
+                            $manager = (int)(
+                                request('manager') ?? 0
+                            );
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | VALIDATION
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if($book_id <= 0)
+                            {
+                                echo "Invalid book.";
+                                break;
+                            }
+
+
+                            if($name === '')
+                            {
+                                echo "Route name is required.";
+                                break;
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | CREATE ROUTE
+                            |--------------------------------------------------------------------------
+                            */
+
+                            if($route_id <= 0)
+                            {
+
+                                $sql = "
+
+                                    INSERT INTO cashbook_routes
+
+                                    SET
+                                        book_id = ?,
+                                        name = ?,
+                                        details = ?,
+                                        user_id = ?,
+                                        managers = ?
+
+                                ";
+
+
+                                $saved = prepared_statements(
+                                    $sql,
+                                    'issii',
+                                    [
+                                        $book_id,
+                                        $name,
+                                        $details,
+                                        $user_id,
+                                        $manager
+                                    ]
+                                );
+
+
+                                if($saved)
                                 {
-                                    $sql = "INSERT INTO cashbook_routes SET book_id = ?, name = ?,details = ?, user_id = ?";
-                                    prepared_statements($sql,'issi',[$book_id,$name,$details,$user_id]);    
                                     $record_id = $server->insert_id;
-                                }else{
-                                    $sql = "UPDATE cashbook_routes SET name = ?,details = ?, user_id = ? WHERE id = ?";
-                                    prepared_statements($sql,'ssii',[$name,$details,$user_id,$route_id]);
-                                }                                
-                                
-                            break;
+
+                                    echo "Route saved successfully.";
+                                }
+                                else
+                                {
+                                    echo "Unable to save route.";
+                                }
+
+                            }
+
+
+                            /*
+                            |--------------------------------------------------------------------------
+                            | UPDATE ROUTE
+                            |--------------------------------------------------------------------------
+                            */
+
+                            else
+                            {
+
+                                $sql = "
+
+                                    UPDATE cashbook_routes
+
+                                    SET
+                                        name = ?,
+                                        details = ?,
+                                        user_id = ?,
+                                        managers = ?
+
+                                    WHERE id = ?
+
+                                    AND book_id = ?
+
+                                ";
+
+
+                                $saved = prepared_statements(
+                                    $sql,
+                                    'ssiiii',
+                                    [
+                                        $name,
+                                        $details,
+                                        $user_id,
+                                        $manager,
+                                        $route_id,
+                                        $book_id
+                                    ]
+                                );
+
+
+                                if($saved)
+                                {
+                                    echo "Route updated successfully.";
+                                }
+                                else
+                                {
+                                    echo "Unable to update route.";
+                                }
+
+                            }
+
+
+                        break;
                         case 'newPurchaseSave':
                                 $item_id = request('item_id');
                                 $type = request('purchase_type');
@@ -5090,7 +5258,6 @@
                         $where = $filterData['where'];
                         $types =  $filterData['types'];
                         $params =  $filterData['params'];
-
                         $book = bookFind($book_id);
 
                         /*
@@ -5099,39 +5266,138 @@
                         |--------------------------------------------------------------------------
                         */
 
-                        $sql = "SELECT ct.id, ct.created_at, ct.type, ct.details, ct.item_id,  ct.credit_amount,  ct.debit_amount,
-                                    COALESCE(cc.name,'') AS category_name,
-                                    COALESCE(cu.name,'') AS customer_name,
-                                    COALESCE(pm.name,'') AS paymode_name,
-                                    COALESCE(ci.name,'') AS item_name
-                                FROM cashbook_transactions ct
-                                LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id
-                                LEFT JOIN cashbook_customers cu ON cu.id = ct.customer_id
-                                LEFT JOIN cashbook_paymodes pm  ON pm.id = ct.paymode_id
-                                LEFT JOIN cashbook_items ci  ON ci.id = ct.item_id
-                                WHERE {$where}
+                        // $sql = "SELECT
+                        //         ct.id,
+                        //         ct.created_at,
+                        //         ct.type,
+                        //         ct.details,
+                        //         ct.item_id,
+                        //         ct.credit_amount,
+                        //         ct.debit_amount,
 
-                                AND (
-                                        (
-                                        ct.credit_amount > 0
-                                        AND EXISTS (
-                                            SELECT 1
-                                            FROM cashbook_cashins ci
-                                            WHERE ci.transaction_id = ct.id
-                                        )
-                                    )
-                                    OR
-                                    (
-                                        ct.debit_amount > 0
-                                        AND EXISTS (
-                                            SELECT 1
-                                            FROM cashbook_cashouts co
-                                            WHERE co.transaction_id = ct.id
-                                        )
-                                    )
+                        //         COALESCE(cc.name, '') AS category_name,
+                        //         COALESCE(cu.name, '') AS customer_name,
+                        //         COALESCE(pm.name, '') AS paymode_name,
+                        //         COALESCE(it.name, '') AS item_name
+
+                        //     FROM cashbook_transactions ct
+
+                        //     LEFT JOIN cashbook_categories cc
+                        //         ON cc.id = ct.category_id
+                        //         AND cc.book_id = ct.book_id
+
+                        //     LEFT JOIN cashbook_customers cu
+                        //         ON cu.id = ct.customer_id
+                        //         AND cu.book_id = ct.book_id
+
+                        //     LEFT JOIN cashbook_paymodes pm
+                        //         ON pm.id = ct.paymode_id
+                        //         AND pm.book_id = ct.book_id
+
+                        //     LEFT JOIN cashbook_items it
+                        //         ON it.id = ct.item_id
+                        //         AND it.book_id = ct.book_id
+
+                        //     WHERE {$where}
+
+                        //     AND (
+                        //         (
+                        //             ct.credit_amount > 0
+                        //             AND EXISTS (
+                        //                 SELECT 1
+                        //                 FROM cashbook_cashins cin
+                        //                 WHERE cin.transaction_id = ct.id
+                        //                 AND cin.book_id = ct.book_id
+                        //             )
+                        //         )
+
+                        //         OR
+
+                        //         (
+                        //             ct.debit_amount > 0
+                        //             AND EXISTS (
+                        //                 SELECT 1
+                        //                 FROM cashbook_cashouts cout
+                        //                 WHERE cout.transaction_id = ct.id
+                        //                 AND cout.book_id = ct.book_id
+                        //             )
+                        //         )
+                        //     )
+
+                        //     ORDER BY ct.created_at ASC, ct.id ASC";
+
+                        $sql = "SELECT
+                            ct.id,
+                            ct.created_at,
+                            ct.type,
+                            ct.details,
+                            ct.item_id,
+                            ct.credit_amount,
+                            ct.debit_amount,
+
+                            COALESCE(cc.name, '') AS category_name,
+                            COALESCE(cu.name, '') AS customer_name,
+                            COALESCE(pm.name, '') AS paymode_name,
+                            COALESCE(it.name, '') AS item_name,
+
+                            /* STOCK INFORMATION */
+                            COALESCE(cs.quantity_in, 0) AS quantity_in,
+                            COALESCE(cs.quantity_out, 0) AS quantity_out,
+                            COALESCE(cs.balance, 0) AS stock_balance,
+                            COALESCE(cs.unit_cost, 0) AS unit_cost,
+                            COALESCE(cs.total_cost, 0) AS total_cost,
+                            COALESCE(cs.transaction_type, '') AS stock_transaction_type
+
+                        FROM cashbook_transactions ct
+
+                        LEFT JOIN cashbook_categories cc
+                            ON cc.id = ct.category_id
+                            AND cc.book_id = ct.book_id
+
+                        LEFT JOIN cashbook_customers cu
+                            ON cu.id = ct.customer_id
+                            AND cu.book_id = ct.book_id
+
+                        LEFT JOIN cashbook_paymodes pm
+                            ON pm.id = ct.paymode_id
+                            AND pm.book_id = ct.book_id
+
+                        LEFT JOIN cashbook_items it
+                            ON it.id = ct.item_id
+                            AND it.book_id = ct.book_id
+
+                        /* LINK TRANSACTION TO STOCK MOVEMENT */
+                        LEFT JOIN cashbook_stocks cs
+                            ON cs.reference = ct.id
+                            AND cs.book_id = ct.book_id
+                            AND cs.item_id = ct.item_id
+
+                        WHERE {$where}
+
+                        AND (
+                            (
+                                ct.credit_amount > 0
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM cashbook_cashins cin
+                                    WHERE cin.transaction_id = ct.id
+                                    AND cin.book_id = ct.book_id
                                 )
-                                ORDER BY ct.id, ct.created_at ASC
-                        ";
+                            )
+
+                            OR
+
+                            (
+                                ct.debit_amount > 0
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM cashbook_cashouts cout
+                                    WHERE cout.transaction_id = ct.id
+                                    AND cout.book_id = ct.book_id
+                                )
+                            )
+                        )
+                        ORDER BY ct.created_at ASC, ct.id ASC";
 
                         $res =prepared_statements($sql,$types,$params);
                         if (!$res) {
@@ -5705,13 +5971,10 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $sheet =
-                                $spreadsheet->createSheet();
+                            $sheet = $spreadsheet->createSheet();
 
 
-                            $sheet->setTitle(
-                                'Transactions'
-                            );
+                            $sheet->setTitle('Transactions');
 
 
                             /*
@@ -5857,10 +6120,7 @@
                             $runningBalance = 0;
 
 
-                            foreach (
-                                $transactions
-                                as $transaction
-                            )
+                            foreach ($transactions as $transaction)
                             {
                                 /*
                                 |--------------------------------------------------------------------------
@@ -5868,16 +6128,9 @@
                                 |--------------------------------------------------------------------------
                                 */
 
-                                $quantity =
-                                    (float)(
-                                        $transaction['quantity']
-                                        ?? 0
-                                    );
-
-
+                                $quantity = (float)($transaction['quantity'] ?? 0);
                                 $qtyIn  = 0;
                                 $qtyOut = 0;
-
 
                                 $transactionType =
                                     strtolower(
@@ -5888,33 +6141,17 @@
                                             )
                                         )
                                     );
-
-
                                 /*
                                 | Explicit stock direction.
                                 */
 
-                                if (
-                                    in_array(
-                                        $transactionType,
-                                        $quantityInTypes,
-                                        true
-                                    )
-                                )
+                                if (in_array($transactionType,$quantityInTypes,true))
                                 {
-                                    $qtyIn =
-                                        $quantity;
+                                    $qtyIn = $quantity;
                                 }
-                                elseif (
-                                    in_array(
-                                        $transactionType,
-                                        $quantityOutTypes,
-                                        true
-                                    )
-                                )
+                                elseif (in_array($transactionType,$quantityOutTypes,true))
                                 {
-                                    $qtyOut =
-                                        $quantity;
+                                    $qtyOut = $quantity;
                                 }
 
 
@@ -5924,40 +6161,17 @@
                                 |--------------------------------------------------------------------------
                                 */
 
-                                $rowCashIn =
-                                    isset(
-                                        $transaction[
-                                            'real_cashin'
-                                        ]
-                                    )
-                                        ? (float)$transaction[
-                                            'real_cashin'
-                                        ]
-                                        : (float)(
-                                            $transaction[
-                                                'credit_amount'
-                                            ]
-                                            ?? 0
-                                        );
+                                $rowCashIn = isset($transaction['real_cashin'])
+                                        ? (float)$transaction['real_cashin']
+                                        : (float)($transaction['credit_amount' ] ?? 0);
 
 
-                                $rowCashOut =
-                                    isset(
-                                        $transaction[
-                                            'real_cashout'
-                                        ]
-                                    )
-                                        ? (float)$transaction[
-                                            'real_cashout'
-                                        ]
-                                        : (float)(
-                                            $transaction[
-                                                'debit_amount'
-                                            ]
-                                            ?? 0
-                                        );
+                                $rowCashOut = isset($transaction['real_cashout'])
+                                        ? (float)$transaction['real_cashout']
+                                        : (float)($transaction['debit_amount'] ?? 0 );
 
-
+                                if($rowCashOut == $rowCashIn) $rowCashOut = 0;
+                                
                                 /*
                                 |--------------------------------------------------------------------------
                                 | FALLBACK QUANTITY DIRECTION
@@ -5968,32 +6182,21 @@
                                     $quantity > 0 &&
                                     $qtyIn == 0 &&
                                     $qtyOut == 0 &&
-                                    !empty(
-                                        $transaction['item_id']
-                                    )
+                                    !empty($transaction['item_id'])
                                 )
                                 {
-                                    if (
-                                        $rowCashOut > 0 &&
-                                        $rowCashIn <= 0
-                                    )
+                                    if ($rowCashOut > 0 && $rowCashIn <= 0)
                                     {
-                                        $qtyIn =
-                                            $quantity;
+                                        $qtyIn = $quantity;
                                     }
-                                    elseif (
-                                        $rowCashIn > 0 &&
-                                        $rowCashOut <= 0
-                                    )
+                                    elseif ($rowCashIn > 0 && $rowCashOut <= 0)
                                     {
-                                        $qtyOut =
-                                            $quantity;
+                                        $qtyOut = $quantity;
                                     }
                                 }
 
 
-                                $rowNetQty =
-                                    $qtyIn - $qtyOut;
+                                $rowNetQty = $qtyIn - $qtyOut;
 
 
                                 /*
@@ -6190,8 +6393,7 @@
                             |--------------------------------------------------------------------------
                             */
 
-                            $totalRow =
-                                $row;
+                            $totalRow =$row;
 
 
                             $sheet->setCellValue(
@@ -6916,8 +7118,7 @@
                                 |--------------------------------------------------------------------------
                                 */
 
-                                $quantity =
-                                    (float)($transaction['quantity'] ?? 0);
+                                $quantity = (float)($transaction['quantity'] ?? 0);
 
                                 $qtyIn  = 0;
                                 $qtyOut = 0;
@@ -7028,8 +7229,7 @@
                                 |--------------------------------------------------------------------------
                                 */
 
-                                $netQty =
-                                    $qtyIn - $qtyOut;
+                                $netQty = $qtyIn - $qtyOut;
 
 
                                 /*
@@ -7116,17 +7316,9 @@
                                     $transaction;
                             }
 
-
-                            $netQuantity =
-                                $totalQtyIn - $totalQtyOut;
-
-
-                            $financialBalance =
-                                $pdfCashIn - $pdfCashOut;
-
-
-                            $pdfTransactionCount =
-                                count($pdfTransactions);
+                            $netQuantity =  $totalQtyIn - $totalQtyOut;
+                            $financialBalance = $pdfCashIn - $pdfCashOut;
+                            $pdfTransactionCount = count($pdfTransactions);
 
 
                             /*
@@ -7138,10 +7330,7 @@
                             class CashbookTransactionReportPDF extends FPDF
                             {
                                 public $businessName = '';
-
-                                public $reportTitle =
-                                    'TRANSACTION REPORT';
-
+                                public $reportTitle = 'TRANSACTION REPORT';
 
                                 /*
                                 |--------------------------------------------------------------------------
@@ -7865,17 +8054,10 @@
 
                                 if ($catRes)
                                 {
-                                    $cat =
-                                        $catRes->fetch_assoc();
-
-
+                                    $cat =$catRes->fetch_assoc();
                                     if ($cat)
                                     {
-                                        $filterText[] =
-
-                                            'Category: ' .
-
-                                            $cat['name'];
+                                        $filterText[] = 'Category: ' . $cat['name'];
                                     }
                                 }
                             }
@@ -7885,11 +8067,7 @@
                             | CUSTOMER
                             */
 
-                            if (
-                                !empty(
-                                    $filters['customer']
-                                )
-                            )
+                            if (!empty($filters['customer']))
                             {
                                 $custSql = "SELECT name
                                     FROM cashbook_customers
@@ -7898,16 +8076,7 @@
                                     LIMIT 1
                                 ";
 
-                                $custRes = prepared_statements(
-                                    $custSql,
-                                    'ii',
-                                    [
-                                        (int)$filters['customer'],
-                                        (int)$book->id
-                                    ]
-                                );
-
-
+                                $custRes = prepared_statements($custSql,'ii',[(int)$filters['customer'],(int)$book->id]);
                                 if ($custRes)
                                 {
                                     $cust =$custRes->fetch_assoc();
@@ -7929,8 +8098,7 @@
                                 )
                             )
                             {
-                                $itemSql = "
-                                    SELECT name
+                                $itemSql = "SELECT name
                                     FROM cashbook_items
                                     WHERE id = ?
                                     AND book_id = ?
@@ -8023,16 +8191,14 @@
                             );
 
 
-                            $number =
-                                1;
+                            $number =  1;
 
 
                             /*
                             | Running financial balance.
                             */
 
-                            $runningBalance =
-                                0;
+                            $runningBalance = 0;
 
 
                             /*
@@ -8042,10 +8208,7 @@
                             $pdf->TableHeader();
 
 
-                            foreach (
-                                $pdfTransactions
-                                as $transaction
-                            )
+                            foreach ( $pdfTransactions as $transaction)
                             {
                                 /*
                                 |--------------------------------------------------------------------------
@@ -8152,7 +8315,8 @@
                                         ]
                                         ?? 0
                                     );
-
+                                
+                                if($debit == $credit) $debit = 0;
 
                                 /*
                                 |--------------------------------------------------------------------------
@@ -8160,8 +8324,7 @@
                                 |--------------------------------------------------------------------------
                                 */
 
-                                $runningBalance +=
-                                    $credit - $debit;
+                                $runningBalance += $credit - $debit;
 
 
                                 /*
