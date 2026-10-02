@@ -33,10 +33,12 @@ function saDate($value): string {
 /* =========================================================
    PLATFORM SUMMARY
    ========================================================= */
+$totalBusinesses = (int)saScalar("SELECT COUNT(*) AS total FROM cashbook_business_profile");
 $totalBooks = (int)saScalar("SELECT COUNT(*) AS total FROM cashbook_books");
 $totalUsers = (int)saScalar("SELECT COUNT(*) AS total FROM cashbook_users");
 $totalTransactions = (int)saScalar("SELECT COUNT(*) AS total FROM cashbook_transactions");
 $activeBooks30 = (int)saScalar("SELECT COUNT(DISTINCT book_id) AS total FROM cashbook_transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+$newBusinessesMonth = (int)saScalar("SELECT COUNT(*) AS total FROM cashbook_business_profile WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')");
 $newBooksMonth = (int)saScalar("SELECT COUNT(*) AS total FROM cashbook_books WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')");
 $newUsersMonth = (int)saScalar("SELECT COUNT(*) AS total FROM cashbook_users WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')");
 $transactionsToday = (int)saScalar("SELECT COUNT(*) AS total FROM cashbook_transactions WHERE DATE(created_at) = CURDATE()");
@@ -65,6 +67,24 @@ for($m=1;$m<=12;$m++) {
    SUPPORT / OPERATIONS DATA
    We SELECT b.* so this page remains tolerant of extra book fields.
    ========================================================= */
+$businesses = saRows(mysqli_query($server, "SELECT bp.*,
+        COALESCE(bs.book_count,0) AS book_count,
+        COALESCE(us.user_count,0) AS user_count,
+        bs.latest_book
+    FROM cashbook_business_profile bp
+    LEFT JOIN (
+        SELECT business_id, COUNT(*) AS book_count, MAX(created_at) AS latest_book
+        FROM cashbook_books
+        GROUP BY business_id
+    ) bs ON bs.business_id = bp.id
+    LEFT JOIN (
+        SELECT business_id, COUNT(*) AS user_count
+        FROM cashbook_users
+        GROUP BY business_id
+    ) us ON us.business_id = bp.id
+    ORDER BY bp.id DESC
+    LIMIT 20"));
+
 $recentBooks = saRows(mysqli_query($server, "SELECT b.*, COALESCE(x.transactions,0) transactions, x.last_activity
     FROM cashbook_books b
     LEFT JOIN (
@@ -100,10 +120,11 @@ $recentUsers = saRows(mysqli_query($server, "SELECT * FROM cashbook_users ORDER 
     <div class="sa-hero">
         <div class="row align-items-center">
             <div class="col-lg-8">
-                <h2><i class="fa fa-shield"></i> FR(U)-CASHBOOK Super Admin</h2>
+                <h2><i class="fa fa-shield"></i> KashHub Super Admin</h2>
                 <p>Platform overview, book monitoring, user support and operational activity.</p>
             </div>
             <div class="col-lg-4 text-lg-end mt-3 mt-lg-0">
+                <a href="../businesses/" class="btn btn-sm btn-outline-light support-btn"><i class="fa fa-building"></i> Businesses</a>
                 <a href="../books/" class="btn btn-sm btn-outline-light support-btn"><i class="fa fa-book"></i> All Books</a>
                 <a href="../users/" class="btn btn-sm btn-outline-light support-btn"><i class="fa fa-users"></i> All Users</a>
             </div>
@@ -111,15 +132,15 @@ $recentUsers = saRows(mysqli_query($server, "SELECT * FROM cashbook_users ORDER 
     </div>
 
     <div class="row g-3 mb-3">
-        <div class="col-md-6 col-xl-3"><div class="sa-card metric-card"><div class="d-flex justify-content-between"><div><div class="metric-label">Total Books</div><div class="metric-value"><?=number_format($totalBooks);?></div><div class="metric-sub">+<?=number_format($newBooksMonth);?> created this month</div></div><div class="metric-icon"><i class="fa fa-book"></i></div></div></div></div>
+        <div class="col-md-6 col-xl-3"><div class="sa-card metric-card"><div class="d-flex justify-content-between"><div><div class="metric-label">Businesses</div><div class="metric-value"><?=number_format($totalBusinesses);?></div><div class="metric-sub">+<?=number_format($newBusinessesMonth);?> added this month</div></div><div class="metric-icon"><i class="fa fa-building"></i></div></div></div></div>
+        <div class="col-md-6 col-xl-3"><div class="sa-card metric-card"><div class="d-flex justify-content-between"><div><div class="metric-label">Total Books</div><div class="metric-value"><?=number_format($totalBooks);?></div><div class="metric-sub">Across all businesses</div></div><div class="metric-icon"><i class="fa fa-book"></i></div></div></div></div>
         <div class="col-md-6 col-xl-3"><div class="sa-card metric-card"><div class="d-flex justify-content-between"><div><div class="metric-label">Total Users</div><div class="metric-value"><?=number_format($totalUsers);?></div><div class="metric-sub">+<?=number_format($newUsersMonth);?> registered this month</div></div><div class="metric-icon"><i class="fa fa-users"></i></div></div></div></div>
-        <div class="col-md-6 col-xl-3"><div class="sa-card metric-card"><div class="d-flex justify-content-between"><div><div class="metric-label">Active Books</div><div class="metric-value status-live"><?=number_format($activeBooks30);?></div><div class="metric-sub">Transaction activity in last 30 days</div></div><div class="metric-icon"><i class="fa fa-line-chart"></i></div></div></div></div>
-        <div class="col-md-6 col-xl-3"><div class="sa-card metric-card"><div class="d-flex justify-content-between"><div><div class="metric-label">Transactions</div><div class="metric-value"><?=number_format($totalTransactions);?></div><div class="metric-sub"><?=number_format($transactionsToday);?> recorded today</div></div><div class="metric-icon"><i class="fa fa-exchange"></i></div></div></div></div>
+        <div class="col-md-6 col-xl-3"><div class="sa-card metric-card"><div class="d-flex justify-content-between"><div><div class="metric-label">Active Books</div><div class="metric-value status-live"><?=number_format($activeBooks30);?></div><div class="metric-sub">Activity in the last 30 days</div></div><div class="metric-icon"><i class="fa fa-line-chart"></i></div></div></div></div>
     </div>
 
     <div class="row g-3 mb-3">
         <div class="col-md-4"><div class="sa-card metric-card"><div class="metric-label">Dormant / No recent activity</div><div class="metric-value status-dormant"><?=number_format($dormantBooks);?></div><div class="metric-sub">Books without transaction activity in the last 30 days</div></div></div>
-        <div class="col-md-4"><div class="sa-card metric-card"><div class="metric-label">New Books This Month</div><div class="metric-value"><?=number_format($newBooksMonth);?></div><div class="metric-sub">Platform adoption indicator</div></div></div>
+        <div class="col-md-4"><div class="sa-card metric-card"><div class="metric-label">Transactions</div><div class="metric-value"><?=number_format($totalTransactions);?></div><div class="metric-sub"><?=number_format($transactionsToday);?> recorded today</div></div></div>
         <div class="col-md-4"><div class="sa-card metric-card"><div class="metric-label">New Users This Month</div><div class="metric-value"><?=number_format($newUsersMonth);?></div><div class="metric-sub">Recently registered accounts</div></div></div>
     </div>
 
@@ -132,27 +153,36 @@ $recentUsers = saRows(mysqli_query($server, "SELECT * FROM cashbook_users ORDER 
         <div class="col-xl-8">
             <div class="sa-card p-3 h-100">
                 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
-                    <div><h5 class="section-title">Book Support Centre</h5><div class="section-sub">Recent books, activity and direct support access</div></div>
-                    <input type="search" id="bookSearch" class="form-control form-control-sm search-box" placeholder="Search books...">
+                    <div><h5 class="section-title">Business Directory</h5><div class="section-sub">Businesses on KashHub with book and user totals — no financial records exposed here</div></div>
+                    <input type="search" id="businessSearch" class="form-control form-control-sm search-box" placeholder="Search businesses...">
                 </div>
-                <div class="table-responsive"><table class="table mb-0" id="booksTable"><thead><tr><th>Book</th><th>Created</th><th>Transactions</th><th>Last Activity</th><th>Status</th><th class="text-end">Support</th></tr></thead><tbody>
-                <?php if($recentBooks): foreach($recentBooks as $b):
-                    $bookId=(int)($b['id']??0); $name=saField($b,['name','book_name','title'],'Book #'.$bookId); $last=$b['last_activity']??null; ?>
-                    <tr>
-                        <td><strong><?=htmlspecialchars($name);?></strong><div class="small text-muted">Book #<?=$bookId;?></div></td>
-                        <td><?=saDate(saField($b,['created_at','date_created']));?></td>
-                        <td><?=number_format((int)($b['transactions']??0));?></td>
-                        <td><?=saDate($last);?></td>
-                        <td><?php if($last && strtotime($last)>=strtotime('-30 days')):?><span class="status-live"><i class="fa fa-circle"></i> Active</span><?php else:?><span class="status-dormant"><i class="fa fa-circle"></i> Dormant</span><?php endif;?></td>
-                        <td class="text-end"><a class="btn btn-sm btn-outline-primary support-btn" href="../books/?bkid=<?=urlencode(encryptor('encrypt',$bookId));?>"><i class="fa fa-life-ring"></i> Open / Support</a></td>
-                    </tr>
-                <?php endforeach; else:?><tr><td colspan="6" class="empty-state">No books found.</td></tr><?php endif;?>
-                </tbody></table></div>
+                <div class="table-responsive">
+                    <table class="table mb-0" id="businessTable">
+                        <thead><tr><th>Business</th><th>Contact</th><th>Books</th><th>Users</th><th>Latest Book</th><th class="text-end">Manage</th></tr></thead>
+                        <tbody>
+                        <?php if($businesses): foreach($businesses as $biz):
+                            $businessId=(int)($biz['id']??0);
+                            $businessName=saField($biz,['name','business_name'],'Business #'.$businessId);
+                            $email=saField($biz,['email'],'');
+                            $contact=saField($biz,['contact1','contact2'],''); ?>
+                            <tr>
+                                <td><strong><?=htmlspecialchars($businessName);?></strong><div class="small text-muted">Business #<?=$businessId;?><?=!empty($biz['reg_no'])?' · '.htmlspecialchars($biz['reg_no']):'';?></div></td>
+                                <td><?=htmlspecialchars($contact ?: '—');?><div class="small text-muted"><?=htmlspecialchars($email);?></div></td>
+                                <td><span class="sa-badge"><?=number_format((int)($biz['book_count']??0));?> book<?=((int)($biz['book_count']??0)===1?'':'s');?></span></td>
+                                <td><?=number_format((int)($biz['user_count']??0));?></td>
+                                <td><?=saDate($biz['latest_book']??null);?></td>
+                                <td class="text-end"><a class="btn btn-sm btn-outline-primary support-btn" href="../businesses/?id=<?=urlencode(encryptor('encrypt',$businessId));?>"><i class="fa fa-building"></i> View</a></td>
+                            </tr>
+                        <?php endforeach; else:?><tr><td colspan="6" class="empty-state">No businesses found.</td></tr><?php endif;?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
         <div class="col-xl-4">
             <div class="sa-card h-100">
                 <div class="p-3"><h5 class="section-title">Quick Administration</h5><div class="section-sub">Common support actions</div></div>
+                <a class="quick-link" href="../businesses/"><i class="fa fa-building fa-fw"></i> Browse businesses <i class="fa fa-angle-right float-end"></i></a>
                 <a class="quick-link" href="../books/"><i class="fa fa-book fa-fw"></i> Browse all books <i class="fa fa-angle-right float-end"></i></a>
                 <a class="quick-link" href="../users/"><i class="fa fa-users fa-fw"></i> Manage users <i class="fa fa-angle-right float-end"></i></a>
                 <a class="quick-link" href="../logs/"><i class="fa fa-history fa-fw"></i> System activity / logs <i class="fa fa-angle-right float-end"></i></a>
@@ -197,8 +227,8 @@ new Chart(document.getElementById('activityChart'), {
     type:'line', data:{labels:saData.labels,datasets:[{label:'Transactions',data:saData.transactions,borderColor:'rgba(37,99,235,.9)',backgroundColor:'rgba(37,99,235,.12)',fill:true,tension:.35}]},
     options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
 });
-document.getElementById('bookSearch')?.addEventListener('input', function(){
+document.getElementById('businessSearch')?.addEventListener('input', function(){
     const q=this.value.toLowerCase().trim();
-    document.querySelectorAll('#booksTable tbody tr').forEach(row=>{ row.style.display=row.innerText.toLowerCase().includes(q)?'':'none'; });
+    document.querySelectorAll('#businessTable tbody tr').forEach(row=>{ row.style.display=row.innerText.toLowerCase().includes(q)?'':'none'; });
 });
 </script>

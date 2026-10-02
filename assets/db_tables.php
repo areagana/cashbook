@@ -233,9 +233,13 @@
         $table ='cashbook_books';
         $columns =[
             'name'=>'varchar(255) null',
+            'logo' => 'VARCHAR(255) NULL',
+            'favicon' => 'VARCHAR(255) NULL',
             'business_id'=>'int(11) null',
             'Details'=>'varchar(255) null',
-            'user_id'=>'int(11) null'
+            'user_id'=>'int(11) null',
+            'primary_color' => 'VARCHAR(20) NULL',
+            'secondary_color' => 'VARCHAR(20) NULL'
         ];
         create_table($table,$columns);
     }

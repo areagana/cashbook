@@ -14,84 +14,6 @@
     $scriptVersion = file_exists(__DIR__ . '/../assets/script.js')
         ? filemtime(__DIR__ . '/../assets/script.js')
         : time();
-
-    // function prepared_statements($stat, $binds = '', $vars = [])
-    // {
-    //     global $server;
-
-    //     if(empty($stat))
-    //     {
-    //         return false;
-    //     }
-
-    //     $stmt = $server->prepare($stat);
-
-    //     if(!$stmt)
-    //     {
-    //         die("Prepare failed: " . $server->error);
-    //     }
-
-    //     /*
-    //     =====================================
-    //     BIND PARAMETERS
-    //     =====================================
-    //     */
-
-    //     if(!empty($binds) && !empty($vars))
-    //     {
-    //         $stmt->bind_param($binds, ...$vars);
-    //     }
-
-    //     /*
-    //     =====================================
-    //     EXECUTE
-    //     =====================================
-    //     */
-
-    //     if(!$stmt->execute())
-    //     {
-    //         die("Execute failed: " . $stmt->error);
-    //     }
-
-    //     /*
-    //     =====================================
-    //     DETECT QUERY TYPE
-    //     =====================================
-    //     */
-
-    //     $queryType = strtoupper(strtok(trim($stat), " "));
-
-    //     /*
-    //     =====================================
-    //     SELECT QUERIES
-    //     =====================================
-    //     */
-
-    //     if($queryType == 'SELECT')
-    //     {
-    //         return $stmt->get_result();
-    //     }
-
-    //     /*
-    //     =====================================
-    //     INSERT QUERIES
-    //     =====================================
-    //     */
-
-    //     if($queryType == 'INSERT')
-    //     {
-    //         return $stmt->insert_id;
-    //     }
-
-    //     /*
-    //     =====================================
-    //     UPDATE / DELETE
-    //     =====================================
-    //     */
-
-    //     return $stmt->affected_rows;
-    // }
-
     function prepared_statements($stat, $binds = '', $vars = [])
     {
         global $server;
@@ -913,7 +835,7 @@
 
             <meta
                 name="apple-mobile-web-app-title"
-                content="FR(U)-CASHBOOK"
+                content="KashHub"
             >
 
 
@@ -946,7 +868,7 @@
 
 
             <title>
-                <?= $header ? htmlspecialchars($header) . ' | FR(U)-CASHBOOK' : 'FR(U)-CASHBOOK';
+                <?= $header ? htmlspecialchars($header) . ' | KashHub' : 'KashHub';
                 ?>
             </title>
 
@@ -1083,7 +1005,7 @@
                                 class="navbar-brand text-white"
                                 href="../"
                             >
-                                <strong>FR(U)-CASHBOOK</strong>
+                                <strong>KashHub</strong>
                             </a>
 
 
@@ -1348,9 +1270,9 @@
         global $book;
 
         /*
-        ==========================================================
-        GET BOOK ID
-        ==========================================================
+        |--------------------------------------------------------------------------
+        | GET BOOK ID
+        |--------------------------------------------------------------------------
         */
 
         $encryptedBookId =
@@ -1363,15 +1285,23 @@
             return;
         }
 
+
+        /*
+        |--------------------------------------------------------------------------
+        | DECRYPT BOOK ID
+        |--------------------------------------------------------------------------
+        */
+
         $book_id = encryptor(
             'decrypt',
             $encryptedBookId
         );
 
+
         /*
-        ==========================================================
-        FIND BOOK
-        ==========================================================
+        |--------------------------------------------------------------------------
+        | FIND BOOK
+        |--------------------------------------------------------------------------
         */
 
         $book = $book ?? bookFind($book_id);
@@ -1380,10 +1310,56 @@
             return;
         }
 
+
         /*
-        ==========================================================
-        ENCRYPT BOOK ID ONCE
-        ==========================================================
+        |--------------------------------------------------------------------------
+        | FIND BUSINESS THAT OWNS THIS BOOK
+        |--------------------------------------------------------------------------
+        |
+        | IMPORTANT:
+        | The company logo belongs to cashbook_business_profile,
+        | NOT cashbook_books.
+        |
+        */
+
+        $business = null;
+
+        if (!empty($book->business_id)) {
+            $business = businessFindId($book->business_id);
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | BUSINESS INFORMATION
+        |--------------------------------------------------------------------------
+        */
+
+        $businessName =
+            !empty($business->name)
+            ? $business->name
+            : 'Business';
+
+
+        $bookName =
+            !empty($book->name)
+            ? $book->name
+            : 'Business Book';
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | BUSINESS LOGO
+        |--------------------------------------------------------------------------
+        */
+
+        $businessLogo = businessLogo($business);
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ENCRYPT BOOK ID ONCE
+        |--------------------------------------------------------------------------
         */
 
         $bsid = encryptor(
@@ -1391,56 +1367,97 @@
             $book->id
         );
 
-        /*
-        ==========================================================
-        SIDEBAR
-        ==========================================================
-        */
         ?>
 
-        <!-- =====================================================
-            MOBILE MENU BUTTON
-            ===================================================== -->
+        <!-- =============================================================
+            MOBILE MENU
+        ============================================================== -->
 
-        <button id="mobile-menu-btn" type="button" aria-label="Open navigation" aria-expanded="false">
+        <button
+            id="mobile-menu-btn"
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded="false"
+        >
             <i class="fa fa-bars"></i>
         </button>
 
 
-        <!-- =====================================================
+        <!-- =============================================================
             MOBILE OVERLAY
-            ===================================================== -->
+        ============================================================== -->
 
         <div id="sidebar-overlay"></div>
 
 
-        <!-- =====================================================
+        <!-- =============================================================
             SIDEBAR
-            ===================================================== -->
+        ============================================================== -->
 
         <aside id="sidebar" class="expand">
 
-            <!-- =================================================
-                HEADER
-                ================================================= -->
+
+            <!-- =========================================================
+                SIDEBAR HEADER
+            ========================================================== -->
 
             <div class="sidebar-header">
 
-                <!-- Desktop toggle -->
-                <button id="toggle-btn" type="button" aria-label="Toggle navigation" aria-expanded="true">
+
+                <!-- DESKTOP TOGGLE -->
+
+                <button
+                    id="toggle-btn"
+                    type="button"
+                    aria-label="Toggle navigation"
+                    aria-expanded="true"
+                >
                     <i class="fa fa-bars"></i>
                 </button>
 
 
-                <!-- Logo -->
+                <!-- =====================================================
+                    COMPANY BRAND
+                ====================================================== -->
+
                 <div class="sidebar-logo">
-                    <a href="../">
-                        <span>CASHBOOK</span>
+
+                    <a
+                        href="../dashboard/?bkid=<?=$bsid;?>"
+                        class="sidebar-company-brand"
+                        title="<?=htmlspecialchars($businessName);?>"
+                    >
+
+                        <div class="sidebar-company-logo-wrap">
+
+                            <img
+                                src="<?=htmlspecialchars($businessLogo);?>"
+                                alt="<?=htmlspecialchars($businessName);?>"
+                                class="sidebar-company-logo"
+                            >
+
+                        </div>
+
+
+                        <div class="sidebar-company-details">
+
+                            <span class="sidebar-company-name">
+                                <?=htmlspecialchars($businessName);?>
+                            </span>
+
+                            <span class="sidebar-book-name">
+                                <?=htmlspecialchars($bookName);?>
+                            </span>
+
+                        </div>
+
                     </a>
+
                 </div>
 
 
-                <!-- Mobile close -->
+                <!-- MOBILE CLOSE -->
+
                 <button
                     id="mobile-close-btn"
                     type="button"
@@ -1448,57 +1465,82 @@
                 >
                     <i class="fa fa-times"></i>
                 </button>
+
             </div>
 
 
-            <!-- =================================================
+            <!-- =========================================================
                 NAVIGATION
-                ================================================= -->
+            ========================================================== -->
 
             <ul class="sidebar-nav">
-                <!-- Dashboard -->
+
+
+                <!-- DASHBOARD -->
+                <?php if(hasRole(['superadministrator'])):?>
+                    <li class="sidebar-item">
+                        <a  href="../super/?bkid=<?=$bsid;?>" class="sidebar-link">
+                            <i class="fa fa-shield-alt"></i>
+                            <span>Super Admin Dashboard</span>
+                        </a>
+                    </li>
+                <?php endif;?>
+                <?php if(hasRole(['owner','partner','superadministrator'])):?>
+                    <li class="sidebar-item">
+                        <a  href="../dashboard/?bkid=<?=$bsid;?>" class="sidebar-link">
+                            <i class="fa fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                <?php endif;?>
                 <li class="sidebar-item">
-                    <a href="../" class="sidebar-link">
-                        <i class="fa fa-home"></i>
-                        <span>Dashboard</span>
+                    <a href="../home/?bkid=<?=$bsid;?>" class="sidebar-link">
+                        <i class="fa fa-building"></i>
+                        <span>Home</span>
                     </a>
                 </li>
 
 
-                <!-- Customers -->
+                <!-- CUSTOMERS -->
+
                 <li class="sidebar-item">
 
-                    <a href="../customers/?bsid=<?= $bsid; ?>" class="sidebar-link" >
-                        <i class="fa fa-user"></i>
+                    <a
+                        href="../customers/?bsid=<?=$bsid;?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-user-friends"></i>
+
                         <span>Customers</span>
                     </a>
 
                 </li>
 
 
-                <!-- Creditors -->
+                <!-- CREDITORS -->
+
                 <li class="sidebar-item">
 
                     <a
-                        href="../creditors/?bsid=<?= $bsid; ?>"
+                        href="../creditors/?bsid=<?=$bsid;?>"
                         class="sidebar-link"
                     >
-                        <i class="fa fa-user"></i>
-
+                        <i class="fa fa-hand-holding-usd"></i>
                         <span>Creditors</span>
                     </a>
 
                 </li>
 
 
-                <!-- Stock -->
+                <!-- STOCK -->
+
                 <li class="sidebar-item">
 
                     <a
-                        href="../stock/?bkid=<?= $bsid; ?>"
+                        href="../stock/?bkid=<?=$bsid;?>"
                         class="sidebar-link"
                     >
-                        <i class="fa fa-box"></i>
+                        <i class="fa fa-warehouse"></i>
 
                         <span>Stock</span>
                     </a>
@@ -1506,29 +1548,44 @@
                 </li>
 
 
-                <!-- Items -->
-                <li class="sidebar-item">
-                    <a href="../items/?bsid=<?= $bsid; ?>" class="sidebar-link">
-                        <i class="fa fa-box"></i>
-                        <span>Items</span>
-                    </a>
-                </li>
+                <!-- ITEMS -->
 
-
-                <!-- Purchases -->
-                <li class="sidebar-item">
-                    <a href="../purchases/?bsid=<?= $bsid; ?>" class="sidebar-link">
-                        <i class="fa fa-shopping-cart"></i>
-                        <span>Purchases</span>
-                    </a>
-                </li>
-
-
-                <!-- Members -->
                 <li class="sidebar-item">
 
                     <a
-                        href="../members/?bkid=<?= $bsid; ?>"
+                        href="../items/?bsid=<?=$bsid;?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-box-open"></i>
+
+                        <span>Items</span>
+                    </a>
+
+                </li>
+
+
+                <!-- PURCHASES -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="../purchases/?bsid=<?=$bsid;?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-shopping-cart"></i>
+
+                        <span>Purchases</span>
+                    </a>
+
+                </li>
+
+
+                <!-- USERS -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="../members/?bkid=<?=$bsid;?>"
                         class="sidebar-link"
                     >
                         <i class="fa fa-users"></i>
@@ -1539,29 +1596,44 @@
                 </li>
 
 
-                <!-- Categories -->
-                <li class="sidebar-item">
-                    <a href="../category/?bkid=<?= $bsid; ?>" class="sidebar-link">
-                        <i class="fa fa-tags"></i>
-                        <span>Categories</span>
-                    </a>
-                </li>
+                <!-- CATEGORIES -->
 
-
-                <!-- Pay Modes -->
-                <li class="sidebar-item">
-                    <a href="../modes/?bsid=<?= $bsid; ?>"  class="sidebar-link">
-                        <i class="fa fa-handshake"></i>
-                        <span>Pay Modes</span>
-                    </a>
-                </li>
-
-
-                <!-- Invoices -->
                 <li class="sidebar-item">
 
                     <a
-                        href="../invoices/?bsid=<?= $bsid; ?>"
+                        href="../category/?bkid=<?=$bsid;?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-tags"></i>
+
+                        <span>Categories</span>
+                    </a>
+
+                </li>
+
+
+                <!-- PAY MODES -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="../modes/?bsid=<?=$bsid;?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-handshake"></i>
+
+                        <span>Pay Modes</span>
+                    </a>
+
+                </li>
+
+
+                <!-- INVOICES -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="../invoices/?bsid=<?=$bsid;?>"
                         class="sidebar-link"
                     >
                         <i class="fa fa-file-invoice"></i>
@@ -1571,20 +1643,29 @@
 
                 </li>
 
-                <!-- Invoices -->
-                <li class="sidebar-item">
-                    <a href="../report/?bkid=<?= $bsid; ?>" class="sidebar-link">
-                        <i class="fa fa-file-invoice"></i>
-                        <span>Report</span>
-                    </a>
-                </li>
 
+                <!-- REPORT -->
 
-                <!-- Routes -->
                 <li class="sidebar-item">
 
                     <a
-                        href="../routes/?bsid=<?= $bsid; ?>"
+                        href="../report/?bkid=<?=$bsid;?>"
+                        class="sidebar-link"
+                    >
+                        <i class="fa fa-chart-bar"></i>
+
+                        <span>Reports</span>
+                    </a>
+
+                </li>
+
+
+                <!-- ROUTES -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="../routes/?bsid=<?=$bsid;?>"
                         class="sidebar-link"
                     >
                         <i class="fa fa-route"></i>
@@ -1595,11 +1676,12 @@
                 </li>
 
 
-                <!-- Route Managers -->
+                <!-- ROUTE MANAGERS -->
+
                 <li class="sidebar-item">
 
                     <a
-                        href="../route_managers/?bsid=<?= $bsid; ?>"
+                        href="../route_managers/?bsid=<?=$bsid;?>"
                         class="sidebar-link"
                     >
                         <i class="fa fa-users-cog"></i>
@@ -1612,11 +1694,20 @@
             </ul>
 
 
-            <!-- =================================================
-                FOOTER
-                ================================================= -->
+            <!-- =========================================================
+                SIDEBAR FOOTER / KASHHUB BRAND
+            ========================================================== -->
 
             <div class="sidebar-footer">
+
+                <div class="sidebar-powered-by">
+
+                    <span>Powered by</span>
+
+                    <strong>KashHub</strong>
+
+                </div>
+
 
                 <a href="../?logout=1">
 
@@ -1629,203 +1720,523 @@
             </div>
 
         </aside>
+
         <?php
     }
 
     function superAdminSideBar()
     {
+        /*
+        |--------------------------------------------------------------------------
+        | KASHHUB PLATFORM BRANDING
+        |--------------------------------------------------------------------------
+        | Super Admin represents KashHub itself.
+        | Do not resolve a business or book logo here.
+        */
+
+        $kashHubLogo = '/cashbook/assets/images/kashhub/logo.png';
+
         ?>
-            <!-- Mobile menu button -->
-            <button id="mobile-menu-btn" type="button" aria-label="Open navigation" aria-expanded="false">
-                <i class="fa fa-bars"></i>
-            </button>
 
-            <!-- Mobile overlay -->
-            <div id="sidebar-overlay"></div>
+        <!-- Mobile menu button -->
+        <button
+            id="mobile-menu-btn"
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded="false"
+        >
+            <i class="fa fa-bars"></i>
+        </button>
 
-            <!-- Super Admin Sidebar -->
-            <aside id="sidebar" class="expand">
+        <!-- Mobile overlay -->
+        <div id="sidebar-overlay"></div>
 
-                <div class="sidebar-header">
 
-                    <!-- Desktop toggle -->
-                    <button id="toggle-btn" type="button" aria-label="Toggle navigation" aria-expanded="true">
-                        <i class="fa fa-bars"></i>
-                    </button>
+        <!-- ============================================================
+            SUPER ADMIN SIDEBAR
+        ============================================================= -->
+        <aside id="sidebar" class="expand">
 
-                    <!-- Logo -->
-                    <div class="sidebar-logo">
-                        <a href="../">
-                            <span>CASHBOOK</span>
-                        </a>
+            <!-- ========================================================
+                HEADER
+            ========================================================= -->
+            <div class="sidebar-header">
+
+                <!-- Desktop toggle -->
+                <button
+                    id="toggle-btn"
+                    type="button"
+                    aria-label="Toggle navigation"
+                    aria-expanded="true"
+                >
+                    <i class="fa fa-bars"></i>
+                </button>
+
+
+                <!-- KashHub Brand -->
+                <div class="sidebar-logo">
+
+                    <a
+                        href="../super/"
+                        class="sidebar-company-brand"
+                        title="KashHub Administration"
+                    >
+
+                        <div class="sidebar-company-logo-wrap">
+                            <img
+                                src="<?= htmlspecialchars($kashHubLogo); ?>"
+                                alt="KashHub"
+                                class="sidebar-company-logo"
+                            >
+                        </div>
+
+                        <div class="sidebar-company-details">
+
+                            <span class="sidebar-company-name">
+                                KashHub
+                            </span>
+
+                            <span class="sidebar-book-name">
+                                System Administration
+                            </span>
+
+                        </div>
+
+                    </a>
+
+                </div>
+
+
+                <!-- Mobile close -->
+                <button
+                    id="mobile-close-btn"
+                    type="button"
+                    aria-label="Close navigation"
+                >
+                    <i class="fa fa-times"></i>
+                </button>
+
+            </div>
+
+
+            <!-- ========================================================
+                NAVIGATION
+            ========================================================= -->
+            <ul class="sidebar-nav">
+
+                <li class="sidebar-item">
+                    <a
+                        href="../super/"
+                        class="sidebar-link"
+                        title="Dashboard"
+                    >
+                        <i class="fa fa-home"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+
+
+                <li class="sidebar-item">
+                    <a
+                        href="../books/"
+                        class="sidebar-link"
+                        title="Books"
+                    >
+                        <i class="fa fa-book"></i>
+                        <span>Books</span>
+                    </a>
+                </li>
+
+
+                <li class="sidebar-item">
+                    <a
+                        href="../businesses/"
+                        class="sidebar-link"
+                        title="Businesses"
+                    >
+                        <i class="fa fa-building"></i>
+                        <span>Businesses</span>
+                    </a>
+                </li>
+
+
+                <li class="sidebar-item">
+                    <a
+                        href="../users/"
+                        class="sidebar-link"
+                        title="System Users"
+                    >
+                        <i class="fa fa-users"></i>
+                        <span>System Users</span>
+                    </a>
+                </li>
+
+
+                <li class="sidebar-item">
+                    <a
+                        href="../support/"
+                        class="sidebar-link"
+                        title="Support"
+                    >
+                        <i class="fa fa-headphones"></i>
+                        <span>Support</span>
+                    </a>
+                </li>
+
+
+                <li class="sidebar-item">
+                    <a
+                        href="../activity/"
+                        class="sidebar-link"
+                        title="System Activity"
+                    >
+                        <i class="fa fa-history"></i>
+                        <span>System Activity</span>
+                    </a>
+                </li>
+
+
+                <li class="sidebar-item">
+                    <a
+                        href="../settings/"
+                        class="sidebar-link"
+                        title="System Settings"
+                    >
+                        <i class="fa fa-cog"></i>
+                        <span>Settings</span>
+                    </a>
+                </li>
+
+            </ul>
+
+
+            <!-- ========================================================
+                FOOTER
+            ========================================================= -->
+            <div class="sidebar-footer">
+
+                <div class="sidebar-admin-context">
+
+                    <div class="sidebar-admin-icon">
+                        <i class="fa fa-shield-alt"></i>
                     </div>
 
-                    <!-- Mobile close -->
-                    <button id="mobile-close-btn" type="button" aria-label="Close navigation">
-                        <i class="fa fa-times"></i>
-                    </button>
+                    <div class="sidebar-admin-details">
+                        <span>Administration</span>
+                        <strong>KashHub Platform</strong>
+                    </div>
 
                 </div>
 
-                <ul class="sidebar-nav">
 
-                    <!-- Dashboard -->
-                    <li class="sidebar-item">
-                        <a href="../super/" class="sidebar-link">
-                            <i class="fa fa-home"></i>
-                            <span>Dashboard</span>
-                        </a>
-                    </li>
+                <a
+                    href="../?logout=1"
+                    class="sidebar-logout"
+                    title="Logout"
+                >
+                    <i class="fa fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
 
-                    <!-- Books -->
-                    <li class="sidebar-item">
-                        <a href="../" class="sidebar-link">
-                            <i class="fa fa-book"></i>
-                            <span>Books</span>
-                        </a>
-                    </li>
+            </div>
 
-                    <!-- Users -->
-                    <li class="sidebar-item">
-                        <a href="../users/" class="sidebar-link">
-                            <i class="fa fa-users"></i>
-                            <span>Users</span>
-                        </a>
-                    </li>
+        </aside>
 
-                    <!-- Support -->
-                    <li class="sidebar-item">
-                        <a href="../support/" class="sidebar-link">
-                            <i class="fa fa-headphones"></i>
-                            <span>Support</span>
-                        </a>
-                    </li>
-
-                    <!-- System Activity -->
-                    <li class="sidebar-item">
-                        <a href="../activity/" class="sidebar-link">
-                            <i class="fa fa-history"></i>
-                            <span>System Activity</span>
-                        </a>
-                    </li>
-
-                    <!-- Settings -->
-                    <li class="sidebar-item">
-                        <a href="../settings/" class="sidebar-link">
-                            <i class="fa fa-cog"></i>
-                            <span>Settings</span>
-                        </a>
-                    </li>
-
-                </ul>
-
-                <!-- Sidebar Footer -->
-                <div class="sidebar-footer">
-                    <a href="../?logout=1">
-                        <i class="fa fa-sign-out-alt"></i>
-                        <span>Logout</span>
-                    </a>
-                </div>
-
-            </aside>
         <?php
     }
 
     function businessSideBar()
     {
+        /*
+        |--------------------------------------------------------------------------
+        | FIND CURRENT BUSINESS
+        |--------------------------------------------------------------------------
+        */
+
+        $business = businessFind(auth());
+
+        if (
+            !$business &&
+            isset(auth()->business_id) &&
+            !empty(auth()->business_id)
+        ) {
+            $business = businessFindId(
+                auth()->business_id
+            );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | BUSINESS BRANDING
+        |--------------------------------------------------------------------------
+        */
+
+        $businessName =
+            !empty($business->name)
+            ? $business->name
+            : 'My Business';
+
+
+        $businessLogo =
+            businessLogo($business);
+
         ?>
-            <button
-                id="mobile-menu-btn"
-                type="button"
-                aria-label="Open navigation"
-                aria-expanded="false"
-            >
-                <i class="fa fa-bars"></i>
-            </button>
 
-            <div id="sidebar-overlay"></div>
+        <!-- =============================================================
+            MOBILE MENU BUTTON
+        ============================================================== -->
 
-            <aside id="sidebar" class="expand">
+        <button
+            id="mobile-menu-btn"
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded="false"
+        >
+            <i class="fa fa-bars"></i>
+        </button>
 
-                <div class="sidebar-header">
 
-                    <button
-                        id="toggle-btn"
-                        type="button"
-                        aria-label="Toggle navigation"
-                        aria-expanded="true"
+        <!-- MOBILE OVERLAY -->
+
+        <div id="sidebar-overlay"></div>
+
+
+        <!-- =============================================================
+            BUSINESS SIDEBAR
+        ============================================================== -->
+
+        <aside id="sidebar" class="expand">
+
+
+            <!-- =========================================================
+                HEADER
+            ========================================================== -->
+
+            <div class="sidebar-header">
+
+
+                <!-- DESKTOP TOGGLE -->
+
+                <button
+                    id="toggle-btn"
+                    type="button"
+                    aria-label="Toggle navigation"
+                    aria-expanded="true"
+                >
+                    <i class="fa fa-bars"></i>
+                </button>
+
+
+                <!-- =====================================================
+                    BUSINESS BRAND
+                ====================================================== -->
+
+                <div class="sidebar-logo">
+
+                    <a
+                        href="../"
+                        class="sidebar-company-brand"
+                        title="<?=htmlspecialchars($businessName);?>"
                     >
-                        <i class="fa fa-bars"></i>
-                    </button>
 
-                    <div class="sidebar-logo">
-                        <a href="../">
-                            <span>CASHBOOK</span>
-                        </a>
-                    </div>
+                        <div class="sidebar-company-logo-wrap">
 
-                    <button
-                        id="mobile-close-btn"
-                        type="button"
-                        aria-label="Close navigation"
-                    >
-                        <i class="fa fa-times"></i>
-                    </button>
+                            <img
+                                src="<?=htmlspecialchars($businessLogo);?>"
+                                alt="<?=htmlspecialchars($businessName);?>"
+                                class="sidebar-company-logo"
+                            >
 
-                </div>
+                        </div>
 
 
-                <ul class="sidebar-nav">
+                        <div class="sidebar-company-details">
 
-                    <li class="sidebar-item">
-                        <a href="../" class="sidebar-link">
-                            <i class="fa fa-home"></i>
-                            <span>Home</span>
-                        </a>
-                    </li>
+                            <span class="sidebar-company-name">
+                                <?=htmlspecialchars($businessName);?>
+                            </span>
 
-                    <li class="sidebar-item">
-                        <a href="../books/" class="sidebar-link">
-                            <i class="fa fa-book"></i>
-                            <span>Business Books</span>
-                        </a>
-                    </li>
+                            <span class="sidebar-book-name">
+                                KashHub Business
+                            </span>
 
-                    <li class="sidebar-item">
-                        <a href="#" class="sidebar-link new-profile">
-                            <i class="fa fa-building"></i>
-                            <span>Business Profile</span>
-                        </a>
-                    </li>
+                        </div>
 
-                    <li class="sidebar-item">
-                        <a href="#" class="sidebar-link new-team">
-                            <i class="fa fa-users"></i>
-                            <span>Team</span>
-                        </a>
-                    </li>
-
-                    <li class="sidebar-item">
-                        <a href="#" class="sidebar-link new-settings">
-                            <i class="fa fa-cog"></i>
-                            <span>Settings</span>
-                        </a>
-                    </li>
-
-                </ul>
-
-
-                <div class="sidebar-footer">
-
-                    <a href="../?logout=1">
-                        <i class="fa fa-sign-out-alt"></i>
-                        <span>Logout</span>
                     </a>
 
                 </div>
 
-            </aside>
+
+                <!-- MOBILE CLOSE -->
+
+                <button
+                    id="mobile-close-btn"
+                    type="button"
+                    aria-label="Close navigation"
+                >
+                    <i class="fa fa-times"></i>
+                </button>
+
+            </div>
+
+
+            <!-- =========================================================
+                NAVIGATION
+            ========================================================== -->
+
+            <ul class="sidebar-nav">
+
+
+                <!-- HOME -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="../"
+                        class="sidebar-link"
+                    >
+
+                        <i class="fa fa-home"></i>
+
+                        <span>Home</span>
+
+                    </a>
+
+                </li>
+
+
+                <!-- BUSINESS PROFILE -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="#"
+                        class="sidebar-link new-profile"
+                        data-id="<?=
+                            !empty($business->id)
+                            ? (int)$business->id
+                            : '';
+                        ?>"
+                    >
+
+                        <i class="fa fa-building"></i>
+
+                        <span>Business Profile</span>
+
+                    </a>
+
+                </li>
+
+
+                <!-- TEAM -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="#"
+                        class="sidebar-link new-team"
+                    >
+
+                        <i class="fa fa-users"></i>
+
+                        <span>Team</span>
+
+                    </a>
+
+                </li>
+
+
+                <!-- SETTINGS -->
+
+                <li class="sidebar-item">
+
+                    <a
+                        href="#"
+                        class="sidebar-link new-settings"
+                    >
+
+                        <i class="fa fa-cog"></i>
+
+                        <span>Settings</span>
+
+                    </a>
+
+                </li>
+
+
+            </ul>
+
+
+            <!-- =========================================================
+                FOOTER
+            ========================================================== -->
+
+            <div class="sidebar-footer">
+
+
+                <!-- KASHHUB PLATFORM BRAND -->
+
+                <div class="sidebar-powered-by">
+
+                    <span>Powered by</span>
+
+                    <strong>KashHub</strong>
+
+                </div>
+
+
+                <!-- LOGOUT -->
+
+                <a href="../?logout=1">
+
+                    <i class="fa fa-sign-out-alt"></i>
+
+                    <span>Logout</span>
+
+                </a>
+
+
+            </div>
+
+
+        </aside>
+
         <?php
+    }
+
+    function businessLogo($business = null)
+    {
+        /*
+        |--------------------------------------------------------------------------
+        | DEFAULT LOGO
+        |--------------------------------------------------------------------------
+        */
+
+        $defaultLogo = '/cashbook/assets/images/kashhub/logo.png';
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | NO BUSINESS / NO CUSTOM LOGO
+        |--------------------------------------------------------------------------
+        */
+
+        if (!$business || empty($business->profile)) {
+            return $defaultLogo;
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | BUSINESS LOGO
+        |--------------------------------------------------------------------------
+        */
+
+        $filename = basename($business->profile);
+
+        return '/cashbook/assets/uploads/business_logos/'
+            . rawurlencode($filename);
     }
 
     // invoice find function
@@ -1836,6 +2247,11 @@
                 WHERE ci.id = ?";
         $res = prepared_statements($stmt,'i',[$id]);
         return myObject($res->fetch_assoc());
+    }
+
+    function kashHubLogo()
+    {
+        return '/assets/images/kashhub/logo.png';
     }
 
     function customerFind($id)

@@ -8,28 +8,6 @@
             $book = bookFind($id);
             setBook($book);
     ?>
-            <style>
-                @media screen AND (max-width:768px)
-                {
-                    .side-displays{
-                        display:none;
-                    }
-                    .main-display{
-                        width:100% !important;
-                    }
-                }
-                .transaction-table-wrapper {
-                    max-height: 400px;   /* choose your height */
-                    overflow-y: auto;    /* vertical scroll */
-                    overflow-x: hidden; /* optional */
-                }
-                .transaction-table-wrapper thead th {
-                    position: sticky;
-                    top: 0;
-                    background: #fff;
-                    z-index: 2;
-                }
-            </style>
             <div class="row mx-1">
                 <div class="col-md-3 p-2">
                     <h2 class="p-0 text-left"><?=$book->name;?></h2>
@@ -38,7 +16,7 @@
                     <a href='../dashboard/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-primary"><i class="fa fa-stock"></i> DASHBOARD</a>
                     <a href='../report/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-secondary"><i class="fa fa-stock"></i> REPORT</a>
                 </div>
-                <?php if(hasRole(['owner','partner'])):?>
+                <?php if(hasRole(['owner','partner','superadministrator'])):?>
                         <div class="col p-3">
                             <a href='../stock/?bkid=<?=request('bkid');?>' class="btn btn-sm btn-flat btn-primary"><i class="fa fa-stock"></i> Book Stock</a>
                             <button class="btn btn-sm btn-flat btn-outline-success btn-click" data-title='add category' data-section='category'><i class="fa fa-plus-circle"></i> Category</button>
@@ -114,77 +92,122 @@
                         </div>
                     </div>
                     <hr>
-                    <div class="row mx-1">
-                        <div class="col p-2">
-                            <div class="text-muted">TRANSACTIONS</div>
+                    <!-- TRANSACTION REPORT TOOLBAR -->
+                    <div class="transaction-report-toolbar">
+                        <div>
+                            <h5 class="mb-0"><i class="fa fa-list-alt mr-1"></i> TRANSACTIONS</h5>
+                            <small class="text-muted">Recent activity and filtered transaction report</small>
                         </div>
-                        <div class="col p-2 text-muted">
-                            <i class="fa fa-filter"></i>  FILTER TRANSACTIONS:
-                        </div>
-                        <div class="col p-2">
-                            <button class="btn btn-sm btn-outline-secondary right" id="resetFilters"> <i class="fa fa-undo"></i> <i class="fa fa-filter"></i> Reset</button>
-                        </div>
-                        <div class="p-2 input-group">
-                            <?php
-                                $sqld = "SELECT distinct DATE(created_at) as date FROM cashbook_transactions WHERE book_id =? order by DATE(created_at) desc";
-                                $dats = prepared_statements($sqld,'i',[$book->id]);
-                            ?>
-                            <input type="date" name="filter-date" id="filter-date" data-type='min_date' max='<?=date('Y-m-d');?>' class="form-control filter-item">
-                            <input type="date" name="filter-date" id="filter-date" data-type='max_date' max='<?=date('Y-m-d');?>' class="form-control filter-item">
-                            <?php
-                                $sqlm = "SELECT distinct MONTH(created_at) as month,YEAR(created_at) as year FROM cashbook_transactions WHERE book_id =? order by MONTH(created_at) asc";
-                                $months = prepared_statements($sqlm,'i',[$book->id]);
-                                $month_names =[
-                                    1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',7=>'July',
-                                    8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'
-                                ];
-                            ?>
-                             <select name="filter-month" id="filter-month" data-type='month' class="form-control filter-item">
-                                <option value='' hidden><i class="fa fa-filter"></i> By Month</option>
-                                <?php while($rm = $months->fetch_assoc()):?>
-                                    <option value="<?=$rm['month'];?>"><?=$month_names[$rm['month']];?> <?=$rm['year'];?></option>
-                                <?php endwhile;?>
-                            </select>
-
-                            <select name="filter-type" id="filter-type" data-type='type' class="form-control filter-item">
-                                <option value=''><i class="fa fa-filter"></i> By Type</option>
-                                <option value="credit">Cashin</option>
-                                <option value="debit">Cashout</option>
-                            </select>
-                            <?php
-                                $sql = "SELECT * FROM cashbook_categories WHERE book_id =? order by name asc";
-                                $cats = prepared_statements($sql,'i',[$book->id]);
-                            ?>
-                            <select name="filter-category" id="filter-category" data-type='category' class="form-control filter-item">
-                                <option value=''><i class="fa fa-filter"></i> By Category</option>
-                                <?php while($rc = $cats->fetch_assoc()):?>
-                                    <option value="<?=$rc['id'];?>"><?=$rc['name'];?></option>
-                                <?php endwhile;?>
-                            </select>
-                            <?php
-                                $sqlc = "SELECT * FROM cashbook_customers WHERE book_id =? order by name asc";
-                                $cust = prepared_statements($sqlc,'i',[$book->id]);
-                            ?>
-                            <select name="filter-customer" id="filter-customer" data-type='customer' class="form-control filter-item">
-                                <option value=''><i class="fa fa-filter"></i> By Customer</option>
-                                <?php while($rcu = $cust->fetch_assoc()):?>
-                                    <option value="<?=$rcu['id'];?>"><?=$rcu['name'];?></option>
-                                <?php endwhile;?>
-                            </select>
+                        <div class="transaction-report-actions">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="resetFilters" title="Reset Filters">
+                                <i class="fa fa-undo"></i><span class="d-none d-md-inline"> Reset</span>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary" id="openTransactionFilters">
+                                <i class="fa fa-filter"></i> FILTER
+                                <span class="filter-active-count" style="display:none">0</span>
+                            </button>
                         </div>
                     </div>
-                    <hr>
+
+                    <!-- FILTER DRAWER OVERLAY -->
+                    <div class="transaction-filter-overlay" id="transactionFilterOverlay"></div>
+
+                    <!-- FILTER DRAWER -->
+                    <aside class="transaction-filter-drawer" id="transactionFilterDrawer" aria-hidden="true">
+                        <div class="filter-drawer-header">
+                            <div>
+                                <h5><i class="fa fa-filter mr-1"></i> Filter Transactions</h5>
+                                <small>Choose one or more filters</small>
+                            </div>
+                            <button type="button" class="filter-drawer-close" id="closeTransactionFilters" aria-label="Close filters">&times;</button>
+                        </div>
+
+                        <div class="filter-drawer-body">
+                            <div class="filter-group">
+                                <label for="filter-date-from">From Date</label>
+                                <input type="date" name="filter-date-from" id="filter-date-from"
+                                    data-type="min_date" max="<?=date('Y-m-d');?>" class="form-control filter-item">
+                            </div>
+
+                            <div class="filter-group">
+                                <label for="filter-date-to">To Date</label>
+                                <input type="date" name="filter-date-to" id="filter-date-to"
+                                    data-type="max_date" max="<?=date('Y-m-d');?>" class="form-control filter-item">
+                            </div>
+
+                            <?php
+                                $sqlm="SELECT DISTINCT MONTH(created_at) month,YEAR(created_at) year
+                                       FROM cashbook_transactions WHERE book_id=? ORDER BY YEAR(created_at) DESC,MONTH(created_at) DESC";
+                                $months=prepared_statements($sqlm,'i',[$book->id]);
+                                $month_names=[1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',
+                                    7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'];
+                            ?>
+                            <div class="filter-group">
+                                <label for="filter-month">Month</label>
+                                <select name="filter-month" id="filter-month" data-type="month" class="form-control filter-item">
+                                    <option value="">All Months</option>
+                                    <?php while($rm=$months->fetch_assoc()):?>
+                                        <option value="<?=$rm['month'];?>"><?=$month_names[$rm['month']];?> <?=$rm['year'];?></option>
+                                    <?php endwhile;?>
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                                <label for="filter-type">Transaction Type</label>
+                                <select name="filter-type" id="filter-type" data-type="type" class="form-control filter-item">
+                                    <option value="">All Types</option>
+                                    <option value="credit">Cash In</option>
+                                    <option value="debit">Cash Out</option>
+                                </select>
+                            </div>
+
+                            <?php
+                                $cats=prepared_statements("SELECT * FROM cashbook_categories WHERE book_id=? ORDER BY name ASC",'i',[$book->id]);
+                            ?>
+                            <div class="filter-group">
+                                <label for="filter-category">Category</label>
+                                <select name="filter-category" id="filter-category" data-type="category" class="form-control filter-item">
+                                    <option value="">All Categories</option>
+                                    <?php while($rc=$cats->fetch_assoc()):?>
+                                        <option value="<?=$rc['id'];?>"><?=htmlspecialchars($rc['name']);?></option>
+                                    <?php endwhile;?>
+                                </select>
+                            </div>
+
+                            <?php
+                                $cust=prepared_statements("SELECT * FROM cashbook_customers WHERE book_id=? ORDER BY name ASC",'i',[$book->id]);
+                            ?>
+                            <div class="filter-group">
+                                <label for="filter-customer">Customer</label>
+                                <select name="filter-customer" id="filter-customer" data-type="customer" class="form-control filter-item">
+                                    <option value="">All Customers</option>
+                                    <?php while($rcu=$cust->fetch_assoc()):?>
+                                        <option value="<?=$rcu['id'];?>"><?=htmlspecialchars($rcu['name']);?></option>
+                                    <?php endwhile;?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="filter-drawer-footer">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearDrawerFilters"><i class="fa fa-times"></i> Clear</button>
+                            <button type="button" class="btn btn-sm btn-primary" id="applyTransactionFilters"><i class="fa fa-check"></i> Apply Filters</button>
+                        </div>
+                    </aside>
                     <div class="row mx-1">
                         <?php
                             $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.created_at,ct.details,cu.name as customer FROM cashbook_transactions ct 
                                     LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id
                                     LEFT JOIn cashbook_customers cu ON cu.id = ct.customer_id
-                                WHERE ct.book_id = ? AND DATE(ct.created_at) = DATE(now()) ORDER BY ct.id ASC";
+                                WHERE ct.book_id = ? ORDER BY ct.id DESC LIMIT 20";
                             $res_ = prepared_statements($stmt_,'i',[$id]);
                             $t = 0;
+                            $cashin = 0;
+                            $cashout = 0;
                         ?>
-                        <div class="col p-2 table-responsive transaction-table-wrapper">
-                            <h4 class='text-center'>RECENT TRANSACTIONS (TODAY)</h4>
+                        <div class="col p-2">
+                            <h4 class="text-center">RECENT TRANSACTIONS (LAST 20)</h4>
+                            <div class="mobile-table-hint"><i class="fa fa-arrows-h mr-1"></i> Swipe left/right to view Credit, Debit and Actions</div>
+                            <div class="transaction-table-wrapper">
                             <table class="table table-sm table-striped">
                                 <thead>
                                     <tr>
@@ -199,17 +222,22 @@
                                     </tr>
                                 </thead>
                                 <tbody class='transactions-tbody'>
-                                <?php while($r = $res_->fetch_assoc()):?>
+                                <?php while($r = $res_->fetch_assoc()):
+                                    
+                                    $cashin += $r['credits'];
+                                    $debit = ($r['credits'] == 0 || empty($r['credits'])) ? $r['debits'] : 0;
+                                    $cashout += $debit;
+                                    ?>
                                     <tr class='transaction-details hover hover-hide-content '>
                                         <td><?=++$t;?></td>
-                                        <td><?=$r['created_at'];?></td>
+                                        <td><?=date_format(date_create($r['created_at']), 'Y-m-d');?></td>
                                         <td><?=$r['category'];?></td>
                                         <td><?=$r['customer'];?></td>
                                         <td><?=$r['details'];?></td>
                                         <td class ="<?=$r['credits'] > 0 ? " text-primary" : "";?>"><?=number_format($r['credits'],0);?></td>
-                                        <td class ="<?=$r['debits'] > 0 ? " text-danger" : "";?>"><?=($r['credits'] == 0 || empty($r['credits'])) ? number_format($r['debits'],0) : "";?></td>
+                                        <td class ="<?=$r['debits'] > 0 ? " text-danger" : "";?>"><?=number_format($debit,0);?></td>
                                         <td>
-                                            <?php if(hasRole(['owner','partner'])):?>
+                                            <?php if(hasRole(['owner','partner','superadministrator'])):?>
                                                 <span class="hover-display text-sms">
                                                     <button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
                                                     <button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button> 
@@ -218,8 +246,16 @@
                                         </td>
                                     </tr>
                                 <?php endwhile;?>
+                                <tr>
+                                    <th>TOTALS</th>
+                                    <th colspan="4" class="text-right"></th>
+                                    <th class="text-right"><?=number_format($cashin,0);?></th>
+                                    <th class="text-right"><?=number_format($cashout,0);?></th>
+                                    <th></th>
+                                </tr>
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -416,49 +452,45 @@
             }
         });
         
-        // filter transactions based on type
-        $(document).on('change', '.filter-item', function () {
-            var book_id ="<?=$book->id;?>";
-            let filters = {
-                action: 'transactionFilter',
-                book_id:book_id
-            };
-
-            $('.filter-item').each(function () {
-                let key = $(this).data('type');
-                let val = $(this).val();
-
-                if (val && val !== '') {
-                    filters[key] = val;
-                }
-            });
-            //send request to database
-
+        // transaction filter drawer
+        function openTransactionFilters(){
+            $('#transactionFilterDrawer,#transactionFilterOverlay').addClass('open');
+            $('#transactionFilterDrawer').attr('aria-hidden','false');
+            $('body').addClass('filter-drawer-open');
+        }
+        function closeTransactionFilters(){
+            $('#transactionFilterDrawer,#transactionFilterOverlay').removeClass('open');
+            $('#transactionFilterDrawer').attr('aria-hidden','true');
+            $('body').removeClass('filter-drawer-open');
+        }
+        function updateFilterCount(){
+            let count=0;
+            $('.filter-item').each(function(){if($(this).val()) count++;});
+            $('.filter-active-count').text(count).toggle(count>0);
+        }
+        function loadFilteredTransactions(){
+            let filters={action:'transactionFilter',book_id:"<?=$book->id;?>"};
+            $('.filter-item').each(function(){let val=$(this).val();if(val) filters[$(this).data('type')]=val;});
             $.ajax({
-                url: 'save/index.php',
-                type: 'POST',
-                data: filters,
+                url:'save/index.php',type:'POST',data:filters,
                 beforeSend:function(){
-                    $('.transactions-tbody').html(
-                        "<tr><td colspan='10' align='center'>Loading...</td></tr>"
-                    );
+                    $('.transactions-tbody').html("<tr><td colspan='8' class='text-center p-4'><i class='fa fa-spinner fa-spin'></i> Loading transactions...</td></tr>");
                 },
-                success: function (res) {
-                    $('.transactions-tbody').html(res);
-                },
-                error: function (err) {
-                    $('.transactions-tbody').html(
-                        "<tr><td colspan='10'><center>Failed to load data</center></td></tr>"
-                    );
+                success:function(res){$('.transactions-tbody').html(res);updateFilterCount();},
+                error:function(){
+                    $('.transactions-tbody').html("<tr><td colspan='8' class='text-center text-danger p-4'><i class='fa fa-exclamation-triangle'></i> Failed to load transactions</td></tr>");
                 }
             });
-        });
+        }
 
-        // reset filter items
-        $('#resetFilters').on('click', function () {
-            $('.filter-item').val('');
-            $('.filter-item').trigger('change');
+        $(document).on('click','#openTransactionFilters',openTransactionFilters);
+        $(document).on('click','#closeTransactionFilters,#transactionFilterOverlay',closeTransactionFilters);
+        $(document).on('click','#applyTransactionFilters',function(){loadFilteredTransactions();closeTransactionFilters();});
+        $(document).on('click','#clearDrawerFilters,#resetFilters',function(){
+            $('.filter-item').val('');updateFilterCount();loadFilteredTransactions();
+            if(this.id==='clearDrawerFilters') closeTransactionFilters();
         });
+        $(document).on('keydown',function(e){if(e.key==='Escape') closeTransactionFilters();});
 
         // lock customer selection
         document.addEventListener("change", function(e){

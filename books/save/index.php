@@ -3516,1692 +3516,212 @@
                     break;
 
                 case 'transactionFilter':
+                    $book_id = (int)request('book_id');
+                    $where = ['t.book_id=?']; $params = [$book_id]; $types = 'i';
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | TRANSACTION REPORT
-                    |--------------------------------------------------------------------------
-                    |
-                    | Financial movement:
-                    |
-                    |   Cash In  = credit transaction verified in cashbook_cashins
-                    |   Cash Out = debit transaction verified in cashbook_cashouts
-                    |
-                    | Stock movement:
-                    |
-                    |   Purchase    = Quantity IN
-                    |   Sale        = Quantity OUT
-                    |   Net Qty     = Quantity IN - Quantity OUT
-                    |
-                    |--------------------------------------------------------------------------
-                    */
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | FILTER CONDITIONS
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $conditions = [];
-                    $params     = [];
-                    $types      = "";
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | BOOK - REQUIRED
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $book_id = (int) request('book_id');
-
-                    $conditions[] = "t.book_id = ?";
-                    $params[]     = $book_id;
-                    $types       .= "i";
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | DATE FROM / DATE TO
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $min_date = !empty($_POST['min_date'])
-                        ? trim($_POST['min_date'])
-                        : '';
-
-                    $max_date = !empty($_POST['max_date'])
-                        ? trim($_POST['max_date'])
-                        : '';
-
-
-                    /*
-                    | FROM only
-                    */
-
-                    if($min_date != '' && $max_date == '')
-                    {
-                        $conditions[] = "DATE(t.created_at) = ?";
-                        $params[]     = $min_date;
-                        $types       .= "s";
+                    // ---------------- FILTERS ----------------
+                    $min = trim($_POST['min_date'] ?? '');
+                    $max = trim($_POST['max_date'] ?? '');
+                    if ($min && $max) {
+                        $where[] = 'DATE(t.created_at) BETWEEN ? AND ?'; array_push($params,$min,$max); $types .= 'ss';
+                    } elseif ($min || $max) {
+                        $where[] = 'DATE(t.created_at)=?'; $params[] = $min ?: $max; $types .= 's';
                     }
 
-
-                    /*
-                    | FROM and TO
-                    */
-
-                    if($min_date != '' && $max_date != '')
-                    {
-                        $conditions[] =
-                            "DATE(t.created_at) BETWEEN ? AND ?";
-
-                        $params[] = $min_date;
-                        $params[] = $max_date;
-
-                        $types .= "ss";
-                    }
-
-
-                    /*
-                    | TO only
-                    */
-
-                    if($min_date == '' && $max_date != '')
-                    {
-                        $conditions[] = "DATE(t.created_at) = ?";
-                        $params[]     = $max_date;
-                        $types       .= "s";
-                    }
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | MONTH / YEAR
-                    |--------------------------------------------------------------------------
-                    */
-
-                    if(!empty($_POST['month']))
-                    {
-                        $month = (int) $_POST['month'];
-
-                        $conditions[] = "MONTH(t.created_at) = ?";
-                        $params[]     = $month;
-                        $types       .= "i";
-
-
-                        if(!empty($_POST['year']))
-                        {
-                            $year = (int) $_POST['year'];
-
-                            $conditions[] = "YEAR(t.created_at) = ?";
-                            $params[]     = $year;
-                            $types       .= "i";
+                    if (!empty($_POST['month'])) {
+                        $where[] = 'MONTH(t.created_at)=?'; $params[] = (int)$_POST['month']; $types .= 'i';
+                        if (!empty($_POST['year'])) {
+                            $where[] = 'YEAR(t.created_at)=?'; $params[] = (int)$_POST['year']; $types .= 'i';
                         }
                     }
 
+                    $direction = trim($_POST['type'] ?? '');
+                    if ($direction === 'credit') {
+                        $where[] = "t.credit_amount>0 AND EXISTS(
+                            SELECT 1 FROM cashbook_cashins ci WHERE ci.transaction_id=t.id AND ci.book_id=t.book_id
+                        )";
+                    } elseif ($direction === 'debit') {
+                        $where[] = "t.debit_amount>0 AND EXISTS(
+                            SELECT 1 FROM cashbook_cashouts co WHERE co.transaction_id=t.id AND co.book_id=t.book_id
+                        )";
+                    }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | CASH IN / CASH OUT FILTER
-                    |--------------------------------------------------------------------------
-                    |
-                    | IMPORTANT:
-                    |
-                    | We do not rely only on credit_amount/debit_amount.
-                    |
-                    | Cash In must actually exist in cashbook_cashins.
-                    | Cash Out must actually exist in cashbook_cashouts.
-                    |
-                    |--------------------------------------------------------------------------
-                    */
-
-                    if(!empty($_POST['type']))
-                    {
-                        $transaction_direction =
-                            trim($_POST['type']);
-
-
-                        /*
-                        | CASH IN
-                        */
-
-                        if($transaction_direction === 'credit')
-                        {
-                            $conditions[] = "
-
-                                t.credit_amount > 0
-
-                                AND EXISTS
-                                (
-                                    SELECT 1
-
-                                    FROM cashbook_cashins cin_filter
-
-                                    WHERE
-                                        cin_filter.transaction_id = t.id
-                                )
-
-                            ";
-                        }
-
-
-                        /*
-                        | CASH OUT
-                        */
-
-                        elseif($transaction_direction === 'debit')
-                        {
-                            $conditions[] = "
-
-                                t.debit_amount > 0
-
-                                AND EXISTS
-                                (
-                                    SELECT 1
-
-                                    FROM cashbook_cashouts cout_filter
-
-                                    WHERE
-                                        cout_filter.transaction_id = t.id
-                                )
-
-                            ";
+                    $filters = [
+                        'category'=>['t.category_id','cashbook_categories'],
+                        'customer'=>['t.customer_id','cashbook_customers'],
+                        'item'=>['t.item_id','cashbook_items']
+                    ];
+                    foreach ($filters as $key=>[$field,$table]) {
+                        if (!empty($_POST[$key])) {
+                            $where[] = "$field=? AND EXISTS(SELECT 1 FROM $table x WHERE x.id=$field AND x.book_id=t.book_id)";
+                            $params[] = (int)$_POST[$key]; $types .= 'i';
                         }
                     }
 
-
-                    if(!empty($_POST['category']))
-                    {
-                        $category_id = (int)$_POST['category'];
-
-                        $conditions[] = "t.category_id = ?
-
-                            AND EXISTS
-                            (
-                                SELECT 1
-                                FROM cashbook_categories category_check
-                                WHERE category_check.id = t.category_id
-                                AND category_check.book_id = t.book_id
-                            )
-                        ";
-
-                        $params[] = $category_id;
-                        $types .= "i";
-                    }
-
-                    if(!empty($_POST['customer']))
-                    {
-                        $customer_id = (int)$_POST['customer'];
-
-                        $conditions[] = "
-                            t.customer_id = ?
-
-                            AND EXISTS
-                            (
-                                SELECT 1
-
-                                FROM cashbook_customers customer_check
-
-                                WHERE
-                                    customer_check.id = t.customer_id
-
-                                    AND customer_check.book_id = t.book_id
-                            )
-                        ";
-
-                        $params[] = $customer_id;
-                        $types .= "i";
-                    }
-
-                    if(!empty($_POST['item']))
-                    {
-                        $item_id = (int)$_POST['item'];
-
-                        $conditions[] = "
-                            t.item_id = ?
-
-                            AND EXISTS
-                            (
-                                SELECT 1
-
-                                FROM cashbook_items item_check
-
-                                WHERE
-                                    item_check.id = t.item_id
-
-                                    AND item_check.book_id = t.book_id
-                            )
-                        ";
-
-                        $params[] =
-                            $item_id;
-
-                        $types .= "i";
-                    }
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | MAIN QUERY
-                    |--------------------------------------------------------------------------
-                    |
-                    | real_cashin:
-                    |   Credit is only recognised if transaction exists
-                    |   in cashbook_cashins.
-                    |
-                    | real_cashout:
-                    |   Debit is only recognised if transaction exists
-                    |   in cashbook_cashouts.
-                    |
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $sql = "SELECT
-                            t.*,
-                            c.name AS category_name,
-                            cc.name AS customer_name,
-                            ci.name AS item_name,
-                            CASE
-                                WHEN
-                                    t.credit_amount > 0
-
-                                    AND EXISTS
-                                    (
-                                        SELECT 1
-
-                                        FROM cashbook_cashins cin
-
-                                        WHERE
-                                            cin.transaction_id = t.id
-                                            AND cin.book_id = t.book_id
-                                    )
-
-                                THEN t.credit_amount
-
-                                ELSE 0
-
-                            END AS real_cashin,
-                            CASE
-                                WHEN
-                                    t.debit_amount > 0
-
-                                    AND EXISTS
-                                    (
-                                        SELECT 1
-
-                                        FROM cashbook_cashouts cout
-
-                                        WHERE
-                                            cout.transaction_id = t.id
-                                            AND cout.book_id = t.book_id
-                                    )
-
-                                THEN t.debit_amount
-
-                                ELSE 0
-
-                            END AS real_cashout
+                    // ---------------- TRANSACTIONS ----------------
+                    $sql = "SELECT t.*,c.name category_name,cu.name customer_name,i.name item_name,
+                        CASE WHEN t.credit_amount>0 AND EXISTS(
+                            SELECT 1 FROM cashbook_cashins ci WHERE ci.transaction_id=t.id AND ci.book_id=t.book_id
+                        ) THEN t.credit_amount ELSE 0 END real_cashin,
+                        CASE WHEN t.debit_amount>0 AND EXISTS(
+                            SELECT 1 FROM cashbook_cashouts co WHERE co.transaction_id=t.id AND co.book_id=t.book_id
+                        ) THEN t.debit_amount ELSE 0 END real_cashout
                         FROM cashbook_transactions t
-                        LEFT JOIN cashbook_categories c
-                            ON c.id = t.category_id
-                            AND c.book_id = t.book_id
-                        LEFT JOIN cashbook_customers cc
-                            ON cc.id = t.customer_id
-                            AND cc.book_id = t.book_id
-                        LEFT JOIN cashbook_items ci
-                            ON ci.id = t.item_id
-                            AND ci.book_id = t.book_id
-                    ";
+                        LEFT JOIN cashbook_categories c ON c.id=t.category_id AND c.book_id=t.book_id
+                        LEFT JOIN cashbook_customers cu ON cu.id=t.customer_id AND cu.book_id=t.book_id
+                        LEFT JOIN cashbook_items i ON i.id=t.item_id AND i.book_id=t.book_id
+                        WHERE ".implode(' AND ',$where)." ORDER BY t.created_at ASC,t.id ASC";
 
+                    $stmt = $server->prepare($sql);
+                    if (!$stmt) {
+                        echo "<tr><td colspan='8' class='text-center text-danger p-4'><i class='fa fa-exclamation-triangle'></i> Report query failed.</td></tr>";
+                        break;
+                    }
+                    if ($params) $stmt->bind_param($types,...$params);
+                    $stmt->execute();
+                    $res = $stmt->get_result();
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | WHERE CONDITIONS
-                    |--------------------------------------------------------------------------
-                    */
+                    $rows=[]; $items=[]; $cashin=$cashout=$qtyIn=$qtyOut=0;
+                    while ($res && $r=$res->fetch_assoc()) {
+                        $in=(float)($r['real_cashin']??0); $out=(float)($r['real_cashout']??0);
+                        $qin=$qout=0; $qty=(float)($r['quantity']??0); $tt=strtolower(trim((string)($r['type']??'')));
 
-                    if(!empty($conditions))
-                    {
-                        $sql .= "
+                        if (in_array($tt,['purchase','purchases','stock_in','stock in'],true)) $qin=$qty;
+                        elseif (in_array($tt,['sale','sales','cash_sale','cash sale','credit_sale','credit sale','stock_out','stock out'],true)) $qout=$qty;
+                        elseif ($qty>0 && !empty($r['item_id'])) {
+                            if ($out>0 && $in<=0) $qin=$qty;
+                            elseif ($in>0 && $out<=0) $qout=$qty;
+                        }
 
-                            WHERE " .
-                            implode(
-                                " AND ",
-                                $conditions
-                            );
+                        $cashin+=$in; $cashout+=$out; $qtyIn+=$qin; $qtyOut+=$qout;
+                        $iid=(int)($r['item_id']??0);
+                        if($iid){
+                            if(!isset($items[$iid])){
+                                $items[$iid]=[
+                                    'name'=>$r['item_name']?:'Unnamed Item',
+                                    'in'=>0,
+                                    'out'=>0,
+                                    'count'=>0,
+                                    'transactions'=>[]
+                                ];
+                            }
+
+                            $items[$iid]['in'] += $qin;
+                            $items[$iid]['out'] += $qout;
+                            $items[$iid]['count']++;
+
+                            $items[$iid]['transactions'][]=[
+                                'id'=>$r['id'],
+                                'date'=>$r['created_at'],
+                                'type'=>$in>0?'credit':'debit',
+                                'details'=>$r['details']??'',
+                                'cashin'=>$in,
+                                'cashout'=>$out,
+                                'qtyin'=>$qin,
+                                'qtyout'=>$qout
+                            ];
+                        }
+                        $r['_in']=$in; $r['_out']=$out; $rows[]=$r;
                     }
 
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | ORDER
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $sql .= "
-
-                        ORDER BY
-
-                            t.created_at ASC,
-
-                            t.id ASC
-
-                    ";
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | PREPARE
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $stmt =
-                        $server->prepare($sql);
-
-
-                    if(!$stmt)
-                    {
-                        ?>
-
-                        <tr>
-
-                            <td
-                                colspan="10"
-                                class="text-center text-danger p-5"
-                            >
-
-                                <i
-                                    class="
-                                        fa
-                                        fa-exclamation-triangle
-                                        fa-2x
-                                    "
-                                ></i>
-
-                                <div class="mt-2">
-
-                                    Failed to prepare report.
-
-                                </div>
-
-                                <?php
-
-                                /*
-                                | Useful while developing.
-                                | You can remove this later.
-                                */
-
-                                if(
-                                    isset($_SESSION['role']) &&
-                                    $_SESSION['role'] == 'superadministrator'
-                                )
-                                {
-                                    ?>
-
-                                    <small>
-                                        <?= htmlspecialchars(
-                                            $server->error
-                                        ); ?>
-                                    </small>
-
-                                    <?php
-                                }
-
-                                ?>
-
-                            </td>
-
-                        </tr>
-
-                        <?php
-
+                    if (!$rows) {
+                        echo "<tr><td colspan='8' class='text-center text-muted p-5'><i class='fa fa-info-circle'></i> No transactions found for the selected filter.</td></tr>";
                         break;
                     }
 
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | BIND PARAMETERS
-                    |--------------------------------------------------------------------------
-                    */
-
-                    if(!empty($params))
-                    {
-                        $stmt->bind_param(
-                            $types,
-                            ...$params
-                        );
-                    }
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | EXECUTE
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $stmt->execute();
-
-                    $result =
-                        $stmt->get_result();
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | REPORT TOTALS
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $totalCashIn  = 0;
-                    $totalCashOut = 0;
-
-                    $totalQtyIn   = 0;
-                    $totalQtyOut  = 0;
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | ITEM SUMMARY
-                    |--------------------------------------------------------------------------
-                    |
-                    | Each item will eventually look like:
-                    |
-                    | [
-                    |     name         => Gnuts,
-                    |     qty_in       => 100,
-                    |     qty_out      => 40,
-                    |     transactions => 5
-                    | ]
-                    |
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $itemSummary = [];
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | TRANSACTIONS FOUND
-                    |--------------------------------------------------------------------------
-                    */
-
-                    if(
-                        $result &&
-                        $result->num_rows > 0
-                    ):
-
-
-                        while(
-                            $row =
-                            $result->fetch_assoc()
-                        )
-                        {
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | VERIFIED CASH MOVEMENT
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $cashIn =
-                                (float)
-                                ($row['real_cashin'] ?? 0);
-
-
-                            $cashOut =
-                                (float)
-                                ($row['real_cashout'] ?? 0);
-
-
-                            $totalCashIn +=
-                                $cashIn;
-
-
-                            $totalCashOut +=
-                                $cashOut;
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | TRANSACTION QUANTITY
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $quantity =
-                                (float)
-                                ($row['quantity'] ?? 0);
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | QUANTITY DIRECTION
-                            |--------------------------------------------------------------------------
-                            |
-                            | IMPORTANT:
-                            |
-                            | Money direction and stock direction are different.
-                            |
-                            | PURCHASE:
-                            |
-                            |   Cash     -> OUT
-                            |   Quantity -> IN
-                            |
-                            | SALE:
-                            |
-                            |   Cash     -> IN (for cash sale)
-                            |   Quantity -> OUT
-                            |
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $qtyIn  = 0;
-                            $qtyOut = 0;
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | NORMALISE TRANSACTION TYPE
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $transactionType =
-                                strtolower(
-                                    trim(
-                                        (string)
-                                        ($row['type'] ?? '')
-                                    )
-                                );
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | QUANTITY IN TYPES
-                            |--------------------------------------------------------------------------
-                            |
-                            | These are transactions that bring stock into the business.
-                            |
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $quantityInTypes = [
-
-                                'purchase',
-
-                                'purchases',
-
-                                'stock_in',
-
-                                'stock in'
-
-                            ];
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | QUANTITY OUT TYPES
-                            |--------------------------------------------------------------------------
-                            |
-                            | These are transactions that remove stock from the business.
-                            |
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $quantityOutTypes = [
-
-                                'sale',
-
-                                'sales',
-
-                                'cash_sale',
-
-                                'cash sale',
-
-                                'credit_sale',
-
-                                'credit sale',
-
-                                'stock_out',
-
-                                'stock out'
-
-                            ];
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | CLASSIFY QUANTITY
-                            |--------------------------------------------------------------------------
-                            */
-
-                            if(
-                                in_array(
-                                    $transactionType,
-                                    $quantityInTypes,
-                                    true
-                                )
-                            )
-                            {
-                                $qtyIn =
-                                    $quantity;
-                            }
-
-
-                            elseif(
-                                in_array(
-                                    $transactionType,
-                                    $quantityOutTypes,
-                                    true
-                                )
-                            )
-                            {
-                                $qtyOut =
-                                    $quantity;
-                            }
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | FALLBACK CLASSIFICATION
-                            |--------------------------------------------------------------------------
-                            |
-                            | This helps older transactions where type may not have been
-                            | stored consistently.
-                            |
-                            | If an item exists:
-                            |
-                            |   Cash Out + quantity -> probably purchase -> Qty In
-                            |
-                            |   Cash In + quantity  -> probably sale     -> Qty Out
-                            |
-                            | Explicit transaction types above ALWAYS take priority.
-                            |
-                            |--------------------------------------------------------------------------
-                            */
-
-                            if(
-                                $quantity > 0 &&
-                                $qtyIn == 0 &&
-                                $qtyOut == 0 &&
-                                !empty($row['item_id'])
-                            )
-                            {
-
-                                /*
-                                | Cash Out usually represents purchasing stock.
-                                */
-
-                                if(
-                                    $cashOut > 0 &&
-                                    $cashIn <= 0
-                                )
-                                {
-                                    $qtyIn =
-                                        $quantity;
-                                }
-
-
-                                /*
-                                | Cash In usually represents selling stock.
-                                */
-
-                                elseif(
-                                    $cashIn > 0 &&
-                                    $cashOut <= 0
-                                )
-                                {
-                                    $qtyOut =
-                                        $quantity;
-                                }
-
-                            }
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | NET QUANTITY FOR THIS TRANSACTION
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $netQty =
-                                $qtyIn -
-                                $qtyOut;
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | REPORT QUANTITY TOTALS
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $totalQtyIn +=
-                                $qtyIn;
-
-
-                            $totalQtyOut +=
-                                $qtyOut;
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | ITEM
-                            |--------------------------------------------------------------------------
-                            */
-
-                            $transactionItemId =
-                                !empty($row['item_id'])
-                                    ? (int)$row['item_id']
-                                    : 0;
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | BUILD ITEM SUMMARY
-                            |--------------------------------------------------------------------------
-                            */
-
-                            if(
-                                $transactionItemId > 0
-                            )
-                            {
-
-                                /*
-                                | Create item if not already present.
-                                */
-
-                                if(
-                                    !isset(
-                                        $itemSummary[
-                                            $transactionItemId
-                                        ]
-                                    )
-                                )
-                                {
-                                    $itemSummary[
-                                        $transactionItemId
-                                    ] = [
-
-                                        'name' =>
-
-                                            !empty(
-                                                $row['item_name']
-                                            )
-                                                ? $row['item_name']
-                                                : 'Unnamed Item',
-
-                                        'qty_in' => 0,
-
-                                        'qty_out' => 0,
-
-                                        'transactions' => 0
-
-                                    ];
-                                }
-
-
-                                /*
-                                | Add quantities.
-                                */
-
-                                $itemSummary[
-                                    $transactionItemId
-                                ]['qty_in']
-                                    += $qtyIn;
-
-
-                                $itemSummary[
-                                    $transactionItemId
-                                ]['qty_out']
-                                    += $qtyOut;
-
-
-                                /*
-                                | Count transaction.
-                                */
-
-                                $itemSummary[
-                                    $transactionItemId
-                                ]['transactions']++;
-
-                            }
-
-
-                            /*
-                            |--------------------------------------------------------------------------
-                            | TRANSACTION ROW
-                            |--------------------------------------------------------------------------
-                            */
-
-                            ?>
-
-                            <tr
-                                class="
-                                    transaction-details
-                                    hover
-                                    hover-hide-content
-                                "
-
-                                data-item-id="<?=
-                                    $transactionItemId;
-                                ?>"
-
-                                data-qty-in="<?=
-                                    $qtyIn;
-                                ?>"
-
-                                data-qty-out="<?=
-                                    $qtyOut;
-                                ?>"
-                            >
-
-
-                                <!-- DATE -->
-
-                                <td>
-
-                                    <?= date(
-                                        'd-m-Y',
-                                        strtotime(
-                                            $row['created_at']
-                                        )
-                                    ); ?>
-
-                                </td>
-
-
-                                <!-- CATEGORY -->
-
-                                <td>
-
-                                    <?= htmlspecialchars(
-                                        $row['category_name']
-                                        ?? ''
-                                    ); ?>
-
-                                </td>
-
-
-                                <!-- ITEM -->
-
-                                <td>
-
-                                    <?php
-                                    if(
-                                        !empty(
-                                            $row['item_name']
-                                        )
-                                    ):
-                                    ?>
-
-                                        <strong>
-
-                                            <?= htmlspecialchars(
-                                                $row['item_name']
-                                            ); ?>
-
-                                        </strong>
-
-                                    <?php else: ?>
-
-                                        <span class="text-muted">
-                                            -
-                                        </span>
-
-                                    <?php endif; ?>
-
-                                </td>
-
-
-                                <!-- QUANTITY IN -->
-
-                                <td
-                                    class="
-                                        text-right
-                                        report-qty-in
-                                    "
-
-                                    data-quantity="<?=
-                                        $qtyIn;
-                                    ?>"
-                                >
-
-                                    <?php
-
-                                    if($qtyIn > 0)
-                                    {
-                                        echo (
-                                            floor($qtyIn)
-                                            == $qtyIn
-                                        )
-                                            ? number_format(
-                                                $qtyIn,
-                                                0
-                                            )
-                                            : number_format(
-                                                $qtyIn,
-                                                2
-                                            );
-                                    }
-
-                                    ?>
-
-                                </td>
-
-
-                                <!-- QUANTITY OUT -->
-
-                                <td
-                                    class="
-                                        text-right
-                                        report-qty-out
-                                    "
-
-                                    data-quantity="<?=
-                                        $qtyOut;
-                                    ?>"
-                                >
-
-                                    <?php
-
-                                    if($qtyOut > 0)
-                                    {
-                                        echo (
-                                            floor($qtyOut)
-                                            == $qtyOut
-                                        )
-                                            ? number_format(
-                                                $qtyOut,
-                                                0
-                                            )
-                                            : number_format(
-                                                $qtyOut,
-                                                2
-                                            );
-                                    }
-
-                                    ?>
-
-                                </td>
-
-
-                                <!-- CUSTOMER -->
-
-                                <td>
-
-                                    <?= htmlspecialchars(
-                                        $row['customer_name']
-                                        ?? ''
-                                    ); ?>
-
-                                </td>
-
-
-                                <!-- DETAILS -->
-
-                                <td>
-
-                                    <?= htmlspecialchars(
-                                        $row['details']
-                                        ?? ''
-                                    ); ?>
-
-                                </td>
-
-
-                                <!-- CASH IN -->
-
-                                <td
-                                    class="
-                                        text-right
-                                        report-cashin
-
-                                        <?=
-                                            $cashIn > 0
-                                                ? 'text-primary font-weight-bold'
-                                                : '';
-                                        ?>
-                                    "
-
-                                    data-amount="<?=
-                                        $cashIn;
-                                    ?>"
-                                >
-
-                                    <?php
-
-                                    if($cashIn > 0)
-                                    {
-                                        echo number_format(
-                                            $cashIn,
-                                            0
-                                        );
-                                    }
-
-                                    ?>
-
-                                </td>
-
-
-                                <!-- CASH OUT -->
-
-                                <td
-                                    class="
-                                        text-right
-                                        report-cashout
-
-                                        <?=
-                                            $cashOut > 0
-                                                ? 'text-danger font-weight-bold'
-                                                : '';
-                                        ?>
-                                    "
-
-                                    data-amount="<?=
-                                        $cashOut;
-                                    ?>"
-                                >
-
-                                    <?php
-
-                                    if($cashOut > 0)
-                                    {
-                                        echo number_format(
-                                            $cashOut,
-                                            0
-                                        );
-                                    }
-
-                                    ?>
-
-                                </td>
-
-
-                                <!-- ACTION -->
-
-                                <td>
-
-                                    <?php
-                                    if(
-                                        hasRole([
-                                            'owner',
-                                            'partner'
-                                        ])
-                                    ):
-                                    ?>
-
-                                        <span
-                                            class="
-                                                hover-display
-                                                text-sms
-                                            "
-                                        >
-
-
-                                            <!-- EDIT -->
-
-                                            <button
-                                                type="button"
-
-                                                class="
-                                                    btn
-                                                    btn-sm
-                                                    btn-outline-info
-                                                    edit-trans
-                                                    text-muted
-                                                "
-
-                                                data-id="<?=
-                                                    $row['id'];
-                                                ?>"
-
-                                                data-type="<?=
-                                                    $cashIn > 0
-                                                        ? 'credit'
-                                                        : 'debit';
-                                                ?>"
-                                            >
-
-                                                <i
-                                                    class="
-                                                        fa
-                                                        fa-edit
-                                                    "
-                                                ></i>
-
-                                            </button>
-
-
-                                            <!-- DELETE -->
-
-                                            <button
-                                                type="button"
-
-                                                class="
-                                                    btn
-                                                    btn-sm
-                                                    btn-outline-danger
-                                                    delete-trans
-                                                "
-
-                                                data-id="<?=
-                                                    $row['id'];
-                                                ?>"
-
-                                                data-type="<?=
-                                                    $cashIn > 0
-                                                        ? 'credit'
-                                                        : 'debit';
-                                                ?>"
-                                            >
-
-                                                <i
-                                                    class="
-                                                        fa
-                                                        fa-trash
-                                                    "
-                                                ></i>
-
-                                            </button>
-
-
-                                        </span>
-
-                                    <?php endif; ?>
-
-                                </td>
-
-
-                            </tr>
-
-                            <?php
-
-                        }
-
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | ITEM QUANTITY SUMMARY
-                        |--------------------------------------------------------------------------
-                        |
-                        | This hidden row travels with the AJAX response.
-                        |
-                        | We can move/display its contents in the Reports page.
-                        |
-                        |--------------------------------------------------------------------------
-                        */
-
-                        ?>
-
-                        <tr
-                            class="item-summary-holder"
-                            style="display:none;"
-                        >
-
-                            <td colspan="10">
-
-                                <div
-                                    class="
-                                        item-quantity-summary-data
-                                    "
-                                >
-
-
-                                    <?php
-                                    if(
-                                        !empty(
-                                            $itemSummary
-                                        )
-                                    ):
-                                    ?>
-
-
-                                        <div
-                                            class="
-                                                table-responsive
-                                            "
-                                        >
-
-
-                                            <table
-                                                class="
-                                                    table
-                                                    table-sm
-                                                    table-striped
-                                                    table-hover
-                                                    mb-0
-                                                "
-                                            >
-
-
-                                                <thead>
-
-                                                    <tr>
-
-                                                        <th
-                                                            style="
-                                                                width:50px;
-                                                            "
-                                                        >
-                                                            #
-                                                        </th>
-
-
-                                                        <th>
-                                                            Item
-                                                        </th>
-
-
-                                                        <th
-                                                            class="
-                                                                text-center
-                                                            "
-                                                        >
-                                                            Transactions
-                                                        </th>
-
-
-                                                        <th
-                                                            class="
-                                                                text-right
-                                                            "
-                                                        >
-                                                            Qty In
-                                                        </th>
-
-
-                                                        <th
-                                                            class="
-                                                                text-right
-                                                            "
-                                                        >
-                                                            Qty Out
-                                                        </th>
-
-
-                                                        <th
-                                                            class="
-                                                                text-right
-                                                            "
-                                                        >
-                                                            Net Qty
-                                                        </th>
-
-                                                    </tr>
-
-                                                </thead>
-
-
-                                                <tbody>
-
-
-                                                    <?php
-
-                                                    $itemNumber = 1;
-
-                                                    $summaryQtyIn  = 0;
-                                                    $summaryQtyOut = 0;
-
-
-                                                    foreach(
-                                                        $itemSummary
-                                                        as $summary
-                                                    ):
-
-
-                                                        $summaryNetQty =
-
-                                                            $summary[
-                                                                'qty_in'
-                                                            ]
-
-                                                            -
-
-                                                            $summary[
-                                                                'qty_out'
-                                                            ];
-
-
-                                                        $summaryQtyIn +=
-
-                                                            $summary[
-                                                                'qty_in'
-                                                            ];
-
-
-                                                        $summaryQtyOut +=
-
-                                                            $summary[
-                                                                'qty_out'
-                                                            ];
-
-                                                    ?>
-
-
-                                                        <tr>
-
-
-                                                            <td>
-
-                                                                <?=
-                                                                    $itemNumber++;
-                                                                ?>
-
-                                                            </td>
-
-
-                                                            <td>
-
-                                                                <strong>
-
-                                                                    <?= htmlspecialchars(
-                                                                        $summary[
-                                                                            'name'
-                                                                        ]
-                                                                    ); ?>
-
-                                                                </strong>
-
-                                                            </td>
-
-
-                                                            <td
-                                                                class="
-                                                                    text-center
-                                                                "
-                                                            >
-
-                                                                <?= number_format(
-                                                                    $summary[
-                                                                        'transactions'
-                                                                    ],
-                                                                    0
-                                                                ); ?>
-
-                                                            </td>
-
-
-                                                            <!-- QTY IN -->
-
-                                                            <td
-                                                                class="
-                                                                    text-right
-                                                                "
-                                                            >
-
-                                                                <?php
-
-                                                                echo (
-                                                                    floor(
-                                                                        $summary[
-                                                                            'qty_in'
-                                                                        ]
-                                                                    )
-                                                                    ==
-                                                                    $summary[
-                                                                        'qty_in'
-                                                                    ]
-                                                                )
-                                                                    ? number_format(
-                                                                        $summary[
-                                                                            'qty_in'
-                                                                        ],
-                                                                        0
-                                                                    )
-                                                                    : number_format(
-                                                                        $summary[
-                                                                            'qty_in'
-                                                                        ],
-                                                                        2
-                                                                    );
-
-                                                                ?>
-
-                                                            </td>
-
-
-                                                            <!-- QTY OUT -->
-
-                                                            <td
-                                                                class="
-                                                                    text-right
-                                                                "
-                                                            >
-
-                                                                <?php
-
-                                                                echo (
-                                                                    floor(
-                                                                        $summary[
-                                                                            'qty_out'
-                                                                        ]
-                                                                    )
-                                                                    ==
-                                                                    $summary[
-                                                                        'qty_out'
-                                                                    ]
-                                                                )
-                                                                    ? number_format(
-                                                                        $summary[
-                                                                            'qty_out'
-                                                                        ],
-                                                                        0
-                                                                    )
-                                                                    : number_format(
-                                                                        $summary[
-                                                                            'qty_out'
-                                                                        ],
-                                                                        2
-                                                                    );
-
-                                                                ?>
-
-                                                            </td>
-
-
-                                                            <!-- NET -->
-
-                                                            <td
-                                                                class="
-                                                                    text-right
-                                                                    font-weight-bold
-
-                                                                    <?=
-                                                                        $summaryNetQty < 0
-                                                                            ? 'text-danger'
-                                                                            : 'text-success';
-                                                                    ?>
-                                                                "
-                                                            >
-
-                                                                <?php
-
-                                                                echo (
-                                                                    floor(
-                                                                        $summaryNetQty
-                                                                    )
-                                                                    ==
-                                                                    $summaryNetQty
-                                                                )
-                                                                    ? number_format(
-                                                                        $summaryNetQty,
-                                                                        0
-                                                                    )
-                                                                    : number_format(
-                                                                        $summaryNetQty,
-                                                                        2
-                                                                    );
-
-                                                                ?>
-
-                                                            </td>
-
-
-                                                        </tr>
-
-
-                                                    <?php endforeach; ?>
-
-
-                                                </tbody>
-
-
-                                                <tfoot>
-
-
-                                                    <?php
-
-                                                    $summaryNet =
-
-                                                        $summaryQtyIn
-                                                        -
-                                                        $summaryQtyOut;
-
-                                                    ?>
-
-
-                                                    <tr
-                                                        class="
-                                                            font-weight-bold
-                                                        "
-                                                    >
-
-
-                                                        <th
-                                                            colspan="3"
-                                                        >
-                                                            TOTAL MOVEMENT
-                                                        </th>
-
-
-                                                        <th
-                                                            class="
-                                                                text-right
-                                                            "
-                                                        >
-                                                            <?php
-
-                                                            echo (
-                                                                floor(
-                                                                    $summaryQtyIn
-                                                                )
-                                                                ==
-                                                                $summaryQtyIn
-                                                            )
-                                                                ? number_format(
-                                                                    $summaryQtyIn,
-                                                                    0
-                                                                )
-                                                                : number_format(
-                                                                    $summaryQtyIn,
-                                                                    2
-                                                                );
-
-                                                            ?>
-                                                        </th>
-                                                        <th
-                                                            class="
-                                                                text-right
-                                                            "
-                                                        >
-                                                        <?php
-                                                            echo (
-                                                                floor(
-                                                                    $summaryQtyOut
-                                                                )
-                                                                ==
-                                                                $summaryQtyOut
-                                                            )
-                                                                ? number_format(
-                                                                    $summaryQtyOut,
-                                                                    0
-                                                                )
-                                                                : number_format(
-                                                                    $summaryQtyOut,
-                                                                    2
-                                                                );
-
-                                                            ?>
-                                                        </th>
-                                                        <th
-                                                            class="
-                                                                text-right
-                                                            "
-                                                        >
-                                                        <?php
-                                                            echo (
-                                                                floor(
-                                                                    $summaryNet
-                                                                )
-                                                                ==
-                                                                $summaryNet
-                                                            )
-                                                                ? number_format(
-                                                                    $summaryNet,
-                                                                    0
-                                                                )
-                                                                : number_format(
-                                                                    $summaryNet,
-                                                                    2
-                                                                );
-                                                            ?>
-                                                        </th>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </div>
-                                    <?php else: ?>
-                                        <div
-                                            class="
-                                                text-center
-                                                text-muted
-                                                p-4
-                                            "
-                                        >
-                                            No item quantity movements
-                                            found for this report.
-                                        </div>
-                                    <?php endif; ?>
+                    $money = fn($n)=>number_format((float)$n,0);
+                    $qty = fn($n)=>floor((float)$n)==(float)$n ? number_format((float)$n,0) : number_format((float)$n,2);
+                    $balance=$cashin-$cashout; $netQty=$qtyIn-$qtyOut;
+                    ?>
+
+                    <tr class="filter-summary-row">
+                        <td colspan="8">
+                            <div class="filter-summary-head">
+                                <div><strong><i class="fa fa-filter"></i> FILTERED REPORT</strong><small><?=count($rows);?> transaction<?=count($rows)==1?'':'s';?></small></div>
+                                <div class="filter-net <?=$balance < 0 ?'negative':'';?>">Net Movement <strong><?=$money($balance);?></strong></div>
+                            </div>
+                            <div class="filter-summary-grid">
+                                <div class="filter-card in"><span>Cash In</span><strong><?=$money($cashin);?></strong></div>
+                                <div class="filter-card out"><span>Cash Out</span><strong><?=$money($cashout);?></strong></div>
+                                <div class="filter-card balance"><span>Balance</span><strong><?=$money($balance);?></strong></div>
+                                <div class="filter-card qty"><span>Qty In / Out</span><strong><?=$qty($qtyIn);?> / <?=$qty($qtyOut);?></strong><small>Net <?=$qty($netQty);?></small></div>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <?php $n=1; foreach ($rows as $r): $in=$r['_in']; $out=$r['_out']; ?>
+                    <tr class="transaction-details hover hover-hide-content">
+                        <td><?=$n++;?></td>
+                        <td><?=date('d-m-Y',strtotime($r['created_at']));?></td>
+                        <td><?=htmlspecialchars($r['category_name']??'');?></td>
+                        <td><?=htmlspecialchars($r['customer_name']??'');?></td>
+                        <td><?=htmlspecialchars($r['details']??'');?></td>
+                        <td class="text-right <?=$in>0?'text-success font-weight-bold':'';?>" data-amount="<?=$in;?>"><?=$in>0?$money($in):'';?></td>
+                        <td class="text-right <?=$out>0?'text-danger font-weight-bold':'';?>" data-amount="<?=$out;?>"><?=$out>0?$money($out):'';?></td>
+                        <td class="text-nowrap">
+                            <?php if(hasRole(['owner','partner','superadministrator'])):?>
+                            <span class="hover-display text-sms">
+                                <button type="button" class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=$in>0?'credit':'debit';?>"><i class="fa fa-edit"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=$in>0?'credit':'debit';?>"><i class="fa fa-trash"></i></button>
+                            </span>
+                            <?php endif;?>
+                        </td>
+                    </tr>
+                    <?php endforeach;?>
+
+                    <tr class="filter-total-row">
+                        <th class="text-right">FILTER TOTALS</th>
+                        <th colspan="4"></th>
+                        <th class="text-right text-success"><?=$money($cashin);?></th>
+                        <th class="text-right text-danger"><?=$money($cashout);?></th>
+                        <th></th>
+                    </tr>
+
+                    <?php if($items):?>
+                    <tr class="item-summary-holder">
+                        <td colspan="8" class="p-0">
+                            <div class="filter-item-summary">
+                                <div class="filter-item-title"><strong><i class="fa fa-cubes"></i> ITEM MOVEMENT</strong><small>Quantity movement for this filtered report</small></div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0">
+                                        <thead><tr><th>#</th><th>Item</th><th class="text-center">Transactions</th><th class="text-right">Qty In</th><th class="text-right">Qty Out</th><th class="text-right">Net</th></tr></thead>
+                                        <tbody>
+                                        <?php $x=1; foreach($items as $item): $net=$item['in']-$item['out'];?>
+                                            <tr>
+                                                <td><?=$x++;?></td><td><strong><?=htmlspecialchars($item['name']);?></strong></td>
+                                                <td class="text-center"><?=$item['count'];?></td><td class="text-right"><?=$qty($item['in']);?></td>
+                                                <td class="text-right"><?=$qty($item['out']);?></td>
+                                                <td class="text-right font-weight-bold <?=$net<0?'text-danger':'text-success';?>"><?=$qty($net);?></td>
+                                                <?php if(hasRole(['owner','partner'])):?>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm btn-outline-info edit-trans text-muted"
+                                                    data-id="<?=$trans['id'];?>"
+                                                    data-type="<?=$trans['type'];?>"
+                                                    title="Edit transaction">
+                                                    <i class="fa fa-edit"></i>
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm btn-outline-danger delete-trans"
+                                                    data-id="<?=$trans['id'];?>"
+                                                    data-type="<?=$trans['type'];?>"
+                                                    title="Delete transaction">
+                                                    <i class="fa fa-trash"></i>
+                                                </button>
+
+                                            <?php endif;?>
+                                            </tr>
+                                        <?php endforeach;?>
+                                        </tbody>
+                                        <tfoot><tr><th colspan="3">TOTAL</th><th class="text-right"><?=$qty($qtyIn);?></th><th class="text-right"><?=$qty($qtyOut);?></th><th class="text-right"><?=$qty($netQty);?></th></tr></tfoot>
+                                    </table>
                                 </div>
-                            </td>
-                        </tr>
-                        <?php
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | NO TRANSACTIONS
-                    |--------------------------------------------------------------------------
-                    */
-
-                    else:
-
-                        ?>
-
-                        <tr>
-
-                            <td
-                                colspan="10"
-                                class="
-                                    text-center
-                                    text-muted
-                                    p-5
-                                "
-                            >
-                                <i
-                                    class="
-                                        fa
-                                        fa-info-circle
-                                        fa-2x
-                                    "
-                                ></i>
-                                <div class="mt-2">
-                                    No transactions found.
-                                </div>
-                            </td>
-                        </tr>
-                        <?php
-                    endif;
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endif;
                 break;
                 case 'findCustomerInvoices':
                     $id = request('customer_id');

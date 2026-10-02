@@ -27,7 +27,6 @@ if (!isVerified())
 
 pageHeader('Home');
 
-
 /*
 |--------------------------------------------------------------------------
 | BUSINESS
@@ -1009,6 +1008,25 @@ $totalBooks = count($books);
 
     }
 
+
+    /* BUSINESS PROFILE / BRAND IDENTITY */
+    .profile-brand-card { background:#f7fafc; border:1px solid #e3eaf0; padding:18px; margin-bottom:18px; }
+    .profile-section { border:1px solid #e8edf2; background:#fff; padding:18px; margin-bottom:16px; }
+    .profile-section-title { display:flex; align-items:center; gap:9px; margin-bottom:15px; color:#172b3a; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+    .profile-section-title i { color:#087f5b; }
+    .business-logo-uploader { display:flex; align-items:center; gap:18px; }
+    .business-logo-frame { width:112px; height:112px; min-width:112px; display:flex; align-items:center; justify-content:center; background:#fff; border:1px dashed #b8c5d1; padding:10px; cursor:pointer; overflow:hidden; }
+    .business-logo-frame img { width:100%; height:100%; object-fit:contain; }
+    .business-logo-copy { flex:1; min-width:0; }
+    .business-logo-copy h4 { margin:0 0 5px; color:#172b3a; font-size:15px; font-weight:700; }
+    .business-logo-copy p { margin:0 0 10px; color:#8492a6; font-size:11px; line-height:1.6; }
+    .logo-upload-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 11px; border:1px solid #087f5b; background:#fff; color:#087f5b; font-size:11px; font-weight:700; cursor:pointer; }
+    .logo-upload-btn:hover { background:#087f5b; color:#fff; }
+    .profile-field-help { display:block; margin-top:5px; color:#9aa5b1; font-size:10px; }
+    .profile-save-bar { position:sticky; bottom:0; z-index:3; display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 -2px -2px; padding:14px 16px; background:rgba(255,255,255,.97); border-top:1px solid #e8edf2; box-shadow:0 -4px 14px rgba(15,23,42,.04); }
+    .profile-save-note { color:#8492a6; font-size:10px; }
+    @media(max-width:575px) { .business-logo-uploader { align-items:flex-start; flex-direction:column; } .business-logo-frame { width:96px; height:96px; min-width:96px; } .profile-save-bar { align-items:stretch; flex-direction:column; } .profile-save-bar .btn { width:100%; } }
+
 </style>
 
 
@@ -1050,7 +1068,7 @@ $totalBooks = count($books);
             </div>
 
 
-            <?php if(hasRole(['owner'])): ?>
+            <?php if(hasRole(['owner','superadministrator'])): ?>
 
                 <div class="col-lg-5">
 
@@ -1300,7 +1318,7 @@ $totalBooks = count($books);
 
 
                     <?php
-                    if(hasRole(['owner','partner'])):
+                    if(hasRole(['owner','partner','superadministrator'])):
                     ?>
 
                         <button
@@ -1548,7 +1566,7 @@ $totalBooks = count($books);
 
 
                         <?php
-                        if(hasRole(['owner','partner'])):
+                        if(hasRole(['owner','partner','superadministrator'])):
                         ?>
 
                             <button
@@ -1720,9 +1738,7 @@ $totalBooks = count($books);
 
 
 
-                    <?php if(hasRole(['owner'])): ?>
-
-
+                    <?php if(hasRole(['owner','superadministrator'])): ?>
                         <!-- STEP 4 -->
 
                         <div class="business-guide-step">
@@ -1934,362 +1950,100 @@ $totalBooks = count($books);
 
 
 <!-- ================================================================
-     BUSINESS PROFILE MODAL
+     BUSINESS PROFILE / BRAND IDENTITY MODAL
 ================================================================ -->
 
-<div
-    class="
-        p-2
-        bg-white
-        side-modal-tall
-        absolute
-        border
-        shadow
-    "
-    id="side-modal-new-profile"
->
-
-
+<div class="p-2 bg-white side-modal-tall absolute border shadow" id="side-modal-new-profile">
     <div class="side-modal-header">
-
-
         <div>
-
-
-            <h3
-                class="
-                    side-modal-title
-                    text-dark
-                    mb-1
-                "
-            >
-
-                BUSINESS PROFILE
-
-            </h3>
-
-
-            <small class="text-muted">
-
-                Update your business information.
-
-            </small>
-
-
+            <h3 class="side-modal-title text-dark mb-1">BUSINESS PROFILE</h3>
+            <small class="text-muted">Manage the identity customers will see on KashHub documents and screens.</small>
         </div>
-
-
-        <button
-            type="button"
-            class="side-modal-close"
-        >
-            &times;
-        </button>
-
-
+        <button type="button" class="side-modal-close">&times;</button>
     </div>
-
-
 
     <div class="side-modal-content">
+        <form id="newBusinessForm" method="post" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="businessProfile">
+            <input type="hidden" name="business_id" value="<?=$business->id;?>">
 
-
-        <form
-            id="newBusinessForm"
-            method="post"
-            enctype="multipart/form-data"
-        >
-
-
-            <input
-                type="hidden"
-                name="action"
-                value="businessProfile"
-            >
-
-
-            <input
-                type="hidden"
-                name="business_id"
-                value="<?=$business->id;?>"
-            >
-
-
-
-            <!-- PROFILE / MAIN DETAILS -->
-
-            <div class="row mx-1">
-
-
-                <div class="col-md-3 p-3">
-
-
-                    <label
-                        for="profile"
-                        class="d-block"
-                    >
-
-
+            <div class="profile-brand-card">
+                <div class="profile-section-title mb-2">
+                    <i class="fa fa-palette"></i> Business Branding
+                </div>
+                <div class="business-logo-uploader">
+                    <label for="profile" class="business-logo-frame mb-0" title="Choose business logo">
                         <img
-                            src="../images/profile.jpg"
-                            alt="Business Profile"
+                            src="<?=!empty($business->profile) ? htmlspecialchars($business->profile) : '../images/profile.jpg';?>"
+                            alt="<?=htmlspecialchars($business->name ?? 'Business');?> logo"
                             id="profilePreview"
-                            width="90%"
-                            class="border"
                         >
-
-
                     </label>
-
-
-                    <input
-                        type="file"
-                        name="profile"
-                        id="profile"
-                        class="hidden"
-                        accept="image/*"
-                    >
-
-
-                </div>
-
-
-
-                <div class="col-md-9 p-2">
-
-
-                    <div class="form-group">
-
-
-                        <label for="name">
-
-                            BUSINESS NAME
-
+                    <div class="business-logo-copy">
+                        <h4>Your company logo</h4>
+                        <p>This logo can be used in your workspace, receipts, invoices, statements and reports while KashHub remains the platform brand.</p>
+                        <label for="profile" class="logo-upload-btn mb-0">
+                            <i class="fa fa-upload"></i> Choose Logo
                         </label>
-
-
-                        <input
-                            type="text"
-                            name="name"
-                            id="name"
-                            value="<?=
-                                htmlspecialchars(
-                                    $business->name ?? ''
-                                );
-                            ?>"
-                            class="form-control"
-                            required
-                        >
-
-
+                        <input type="file" name="profile" id="profile" class="hidden" accept="image/png,image/jpeg,image/webp">
+                        <span class="profile-field-help">PNG or WebP with a transparent background works best. Recommended square or wide logo, up to 2 MB.</span>
                     </div>
+                </div>
+            </div>
 
+            <div class="profile-section">
+                <div class="profile-section-title"><i class="fa fa-building"></i> Business Identity</div>
+                <div class="form-group">
+                    <label for="name">BUSINESS / COMPANY NAME</label>
+                    <input type="text" name="name" id="name" value="<?=htmlspecialchars($business->name ?? '');?>" class="form-control" placeholder="e.g. FreshRays (U) Ltd" required>
+                    <span class="profile-field-help">This is the official display name used throughout your KashHub workspace.</span>
+                </div>
+                <div class="form-group mb-0">
+                    <label for="reg_no">REGISTRATION / TIN NUMBER</label>
+                    <input type="text" name="reg_no" id="reg_no" value="<?=htmlspecialchars($business->reg_no ?? '');?>" class="form-control" placeholder="Business registration number or TIN">
+                </div>
+            </div>
 
-
-                    <div class="form-group">
-
-
-                        <label for="email">
-
-                            EMAIL
-
-                        </label>
-
-
-                        <input
-                            type="email"
-                            name="email"
-                            id="email"
-                            value="<?=
-                                htmlspecialchars(
-                                    $business->email ?? ''
-                                );
-                            ?>"
-                            class="form-control"
-                        >
-
-
+            <div class="profile-section">
+                <div class="profile-section-title"><i class="fa fa-address-card"></i> Contact Information</div>
+                <div class="form-group">
+                    <label for="email">BUSINESS EMAIL</label>
+                    <input type="email" name="email" id="email" value="<?=htmlspecialchars($business->email ?? '');?>" class="form-control" placeholder="accounts@company.com">
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-6">
+                        <label for="contact1">PRIMARY CONTACT</label>
+                        <input type="text" name="contact1" id="contact1" value="<?=htmlspecialchars($business->contact1 ?? '');?>" class="form-control" placeholder="e.g. +256 700 000000">
                     </div>
-
-
+                    <div class="form-group col-md-6">
+                        <label for="contact2">ALTERNATIVE CONTACT</label>
+                        <input type="text" name="contact2" id="contact2" value="<?=htmlspecialchars($business->contact2 ?? '');?>" class="form-control" placeholder="Optional second number">
+                    </div>
                 </div>
-
-
-            </div>
-
-
-
-            <hr>
-
-
-
-            <!-- ADDRESS -->
-
-            <div class="form-group">
-
-
-                <label for="address">
-
-                    ADDRESS
-
-                </label>
-
-
-                <input
-                    type="text"
-                    name="address"
-                    id="address"
-                    value="<?=
-                        htmlspecialchars(
-                            $business->address ?? ''
-                        );
-                    ?>"
-                    class="form-control"
-                >
-
-
-            </div>
-
-
-
-            <!-- CONTACTS -->
-
-            <div class="form-row">
-
-
-                <div class="form-group col-md-6">
-
-
-                    <label for="contact1">
-
-                        PRIMARY CONTACT
-
-                    </label>
-
-
-                    <input
-                        type="text"
-                        name="contact1"
-                        id="contact1"
-                        value="<?=
-                            htmlspecialchars(
-                                $business->contact1 ?? ''
-                            );
-                        ?>"
-                        class="form-control"
-                    >
-
-
+                <div class="form-group mb-0">
+                    <label for="address">BUSINESS ADDRESS</label>
+                    <textarea name="address" id="address" class="form-control" rows="2" placeholder="Physical or postal business address"><?=htmlspecialchars($business->address ?? '');?></textarea>
+                    <span class="profile-field-help">This can appear beneath your company name on customer-facing documents.</span>
                 </div>
-
-
-
-                <div class="form-group col-md-6">
-
-
-                    <label for="contact2">
-
-                        ALTERNATIVE CONTACT
-
-                    </label>
-
-
-                    <input
-                        type="text"
-                        name="contact2"
-                        id="contact2"
-                        value="<?=
-                            htmlspecialchars(
-                                $business->contact2 ?? ''
-                            );
-                        ?>"
-                        class="form-control"
-                    >
-
-
-                </div>
-
-
             </div>
 
-
-
-            <!-- REGISTRATION -->
-
-            <div class="form-group">
-
-
-                <label for="reg_no">
-
-                    REGISTRATION NUMBER
-
-                </label>
-
-
-                <input
-                    type="text"
-                    name="reg_no"
-                    id="reg_no"
-                    value="<?=
-                        htmlspecialchars(
-                            $business->reg_no ?? ''
-                        );
-                    ?>"
-                    class="form-control"
-                >
-
-
-            </div>
-
-
-
-            <hr>
-
-
-
-            <div class="text-right">
-
-
-                <button
-                    type="submit"
-                    class="
-                        btn
-                        btn-flat
-                        btn-success
-                        saveNewBusiness
-                    "
-                >
-
-                    <i
-                        class="
-                            fa
-                            fa-save
-                            mr-1
-                        "
-                    ></i>
-
-                    SAVE PROFILE
-
+            <div class="profile-save-bar">
+                <div class="profile-save-note"><i class="fa fa-info-circle mr-1"></i> Changes will update your business identity across KashHub.</div>
+                <button type="submit" class="btn btn-flat btn-success saveNewBusiness">
+                    <i class="fa fa-save mr-1"></i> SAVE BUSINESS PROFILE
                 </button>
-
-
             </div>
-
-
         </form>
-
-
     </div>
-
-
 </div>
-
 
 
 <!-- ================================================================
      PAGE JAVASCRIPT
 ================================================================ -->
-
+<?php
+    pageFooter();
+?>
 <script>
 
 document.addEventListener(
@@ -2440,15 +2194,28 @@ document.addEventListener(
                 'change',
                 function ()
                 {
+                    const file = this.files && this.files[0] ? this.files[0] : null;
 
-                    if (
-                        !this.files ||
-                        !this.files[0]
-                    )
+                    if (!file)
                     {
                         return;
                     }
 
+                    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+
+                    if (!allowedTypes.includes(file.type))
+                    {
+                        xdialog.alert('Please select a PNG, JPG or WebP logo.');
+                        this.value = '';
+                        return;
+                    }
+
+                    if (file.size > (2 * 1024 * 1024))
+                    {
+                        xdialog.alert('The business logo should not exceed 2 MB.');
+                        this.value = '';
+                        return;
+                    }
 
                     const reader =
                         new FileReader();
@@ -2637,7 +2404,5 @@ document.addEventListener(
 | on this page. pageFooter() handles our global assets and their versioning.
 |
 */
-
-pageFooter();
 
 ?>
