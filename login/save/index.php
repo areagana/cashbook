@@ -18,7 +18,7 @@
                 $email = request('email');
                 $password1 = request('password1');
                 $password2 = request('password2');
-                $role_id = request('role_id');
+                $role_id = 1;
 
                     if($password1 == $password2)
                     {
