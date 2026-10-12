@@ -9,109 +9,135 @@
 
             switch($action)
             {
+                
                 case 'Invoice-details':
-                        $id = request('invoice_id');
+                    $id = (int)request('invoice_id');
+                    $book_id = (int)encryptor('decrypt',$_SESSION['book_id']);
 
-                        // fetch transactions
-                        $sql = "SELECT ci.*,cc.name as customer FROM cashbook_invoices ci 
-                                INNER JOIN cashbook_customers cc ON cc.id = ci.customer_id WHERE ci.id = ?";
-                        $res = prepared_statements($sql,'i',[$id]);
-                        $invoice = myObject($res->fetch_assoc());
+                    $sql = "SELECT ci.*,cc.name AS customer
+                            FROM cashbook_invoices ci
+                            INNER JOIN cashbook_customers cc ON cc.id=ci.customer_id AND cc.book_id=ci.book_id
+                            WHERE ci.id=? AND ci.book_id=?";
+                    $res = prepared_statements($sql,'ii',[$id,$book_id]);
+                    $invoice = $res ? $res->fetch_assoc() : null;
+
+                    if(!$invoice){
+                        echo '<div class="alert alert-danger">Invoice not found.</div>';
+                        break;
+                    }
+
+                    $stmt = "SELECT cii.*,ci.name AS item,ci.units
+                            FROM cashbook_invoice_items cii
+                            INNER JOIN cashbook_items ci ON ci.id=cii.item_id AND ci.book_id=?
+                            WHERE cii.invoice_id=? ORDER BY cii.id ASC";
+                    $res = prepared_statements($stmt,'ii',[$book_id,$id]);
+                    $savedTotal = 0;
                     ?>
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <div class="p-2"><strong>Invoice No: <?=$invoice->invoice_no;?></strong></div>
-                                <div class="p-2"><strong>Customer: <?=$invoice->customer;?></strong></div>
-                                <div class="p-2"><strong>Date: <?=$invoice->invoice_date;?></strong></div>
-                            </div>
-                            <div class="col p-2">
-                                <button class="btn btn-block btn-outline-info add-invoice-item"><i class="fa fa-plus"></i> Add Item</button>
-                            </div>
-                        </div>
-                        <hr>
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <div class="col p-2 table-responsive">
-                                    <?php
-                                        $stmt = "SELECT cii.*,ci.name as item,ci.units FROM cashbook_invoice_items cii 
-                                                    INNER JOIN cashbook_items ci ON ci.id = cii.item_id
-                                                    WHERE cii.invoice_id = ? ORDER BY id ASC";
-                                        $res = prepared_statements($stmt,'i',[$id]);
-                                        
-                                        $amounts = [];
-                                        $s = 1;
-                                    ?>
+                        <div class="invoice-details" data-invoice-id="<?=$id;?>">
+                            <div class="row mx-1 align-items-center">
+                                <div class="col-md-8 p-2">
+                                    <div class="p-1"><strong>Invoice No:</strong> <?=htmlspecialchars($invoice['invoice_no']);?></div>
+                                    <div class="p-1"><strong>Customer:</strong> <?=htmlspecialchars($invoice['customer']);?></div>
+                                    <div class="p-1"><strong>Date:</strong> <?=htmlspecialchars($invoice['invoice_date']);?></div>
                                 </div>
-                                <form method="POST" id="newInvoiceItemForm">
-                                    <input type="hidden" name="invoice_id" value="<?=$invoice->id;?>">
-                                    <input type="hidden" name="form" value='newInvoiceItemSave'>
-                                    <input type="hidden" name="action" value='SaveForm'>
-                                    <input type="hidden" name="InvoiceAmount" class="InvoiceAmount">
+                                <div class="col-md-4 p-2">
+                                    <button type="button" class="btn btn-block btn-outline-info btn-flat add-invoice-item">
+                                        <i class="fa fa-plus"></i> Add Item
+                                    </button>
+                                </div>
+                            </div>
+                            <hr>
 
-                                    <table class="table table-striped table-bordered">
+                            <form method="POST" id="newInvoiceItemForm">
+                                <input type="hidden" name="invoice_id" value="<?=$id;?>">
+                                <input type="hidden" name="form" value="newInvoiceItemSave">
+                                <input type="hidden" name="action" value="SaveForm">
+                                <input type="hidden" name="InvoiceAmount" class="InvoiceAmount" value="0">
+
+                                <div class="table-responsive">
+                                    <table class="table table-striped table-bordered invoice-table">
                                         <thead>
                                             <tr>
-                                                <th>Item name</th>
-                                                <th>Qty</th>
-                                                <th>Rate</th>
-                                                <th>Amount</th>
+                                                <th>Item Name</th>
+                                                <th style="min-width:90px">Qty</th>
+                                                <th style="min-width:120px">Rate</th>
+                                                <th style="min-width:130px">Amount</th>
                                                 <th>Action</th>
                                             </tr>
                                         </thead>
-                                        <tbody class='invoiceItemsTbody'>
-                                            <?php while($r = $res->fetch_assoc()): $amounts[] = $r['total'];?>
-                                            <tr class='invoice-item-row'>
-                                                <td><?=$r['item'];?></td>
-                                                <td><?=$r['quantity'];?> <?=$r['units'];?></td>
-                                                <td><?=number_format($r['unit_price'],0);?></td>
-                                                <td class ='amountClass'><?=number_format($r['total'],0);?></td>
-                                                <td>
-                                                    <button class="btn btn-outline-danger btn-flat btn-sm remove-invoice-item" data-id ="<?=$r['id'];?>"><i class="fa fa-minus"></i></button>
+                                        <tbody class="invoiceItemsTbody">
+                                            <?php if($res): while($r=$res->fetch_assoc()):
+                                                $amount = (float)$r['total'];
+                                                $savedTotal += $amount;
+                                            ?>
+                                            <tr class="invoice-item-row saved-item-row" data-total="<?=$amount;?>">
+                                                <td><?=htmlspecialchars($r['item']);?></td>
+                                                <td><?=number_format((float)$r['quantity'],2);?> <?=htmlspecialchars($r['units']??'');?></td>
+                                                <td class="text-right"><?=number_format((float)$r['unit_price'],0);?></td>
+                                                <td class="text-right amountClass"><?=number_format($amount,0);?></td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-outline-danger btn-flat btn-sm remove-invoice-item" data-id="<?=(int)$r['id'];?>">
+                                                        <i class="fa fa-minus"></i>
+                                                    </button>
                                                 </td>
                                             </tr>
-                                        <?php endwhile;?>                            
+                                            <?php endwhile; endif;?>
                                         </tbody>
-                                        <tr>
-                                            <th colspan='3'>TOTAL</th>
-                                            <th id='invoice_total'></th>
-                                            <th></th>
-                                        </tr>
+                                        <tfoot>
+                                            <tr>
+                                                <th colspan="3" class="text-right">GRAND TOTAL (UGX)</th>
+                                                <th id="invoice_total" class="text-right"><?=number_format($savedTotal,0);?></th>
+                                                <th></th>
+                                            </tr>
+                                        </tfoot>
                                     </table>
-                                    <hr>
-                                </form>
-                                <div class="p-2">
-                                    <button type="submit" form = 'newInvoiceItemForm' class="btn btn-flat btn-outline-primary right saveInvoiceItems">Save Invoice</button>
                                 </div>
-                            </div>
+
+                                <div class="d-flex justify-content-end p-2">
+                                    <button type="submit" class="btn btn-flat btn-outline-primary saveInvoiceItems">
+                                        <i class="fa fa-save"></i> Save Invoice
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     <?php
                     break;
 
+
+                
                 case 'AddInvoiceItem':
-                        $book_id = encryptor('decrypt',$_SESSION['book_id']);
-                        $sqli = "SELECT * FROM cashbook_items WHERE book_id = ?";
+                        $book_id = (int)encryptor('decrypt',$_SESSION['book_id']);
+                        $sqli = "SELECT id,name,units FROM cashbook_items WHERE book_id=? ORDER BY name ASC";
                         $ress = prepared_statements($sqli,'i',[$book_id]);
                     ?>
-                        <tr class='newItemRow'>
+                        <tr class="invoice-item-row newItemRow" data-total="0">
                             <td>
-                                <select name="item_id[]" class="form-control" required>
-                                    <option value="">--Select--</option>
-                                    <?php while($rr = $ress->fetch_assoc()):?>
-                                        <option value="<?=$rr['id'];?>"><?=$rr['name'];?></option>
-                                    <?php endwhile;?>
+                                <select name="item_id[]" class="form-control invoiceItemSelect" required>
+                                    <option value="">-- Select Item --</option>
+                                    <?php if($ress): while($rr=$ress->fetch_assoc()):?>
+                                        <option value="<?=(int)$rr['id'];?>">
+                                            <?=htmlspecialchars($rr['name']);?>
+                                            <?=!empty($rr['units'])?' ('.htmlspecialchars($rr['units']).')':'';?>
+                                        </option>
+                                    <?php endwhile; endif;?>
                                 </select>
                             </td>
                             <td>
-                                <input type="number" name="qty[]" class="form-control qtyClass" required>
+                                <input type="number" name="qty[]" class="form-control qtyClass"
+                                    min="0.001" step="any" placeholder="Qty" required>
                             </td>
                             <td>
-                                <input type="text" name="rate[]" class="form-control rateClass" required>
+                                <input type="number" name="rate[]" class="form-control rateClass"
+                                    min="0" step="any" placeholder="Rate" required>
                             </td>
                             <td>
-                                <input type="text" name="amount[]" class="form-control amountClass" required readonly>
+                                <input type="text" name="amount[]" class="form-control amountClass text-right"
+                                    value="0" readonly>
                             </td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-secondary btn-flat remove-row"><i class="fa fa-minus"></i></button>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-outline-danger btn-flat remove-row">
+                                    <i class="fa fa-minus"></i>
+                                </button>
                             </td>
                         </tr>
                     <?php
@@ -358,62 +384,243 @@
                         {
                             case 'newInvoiceReturnSave':
 
-                                $invoice_id = request('invoiceId');
-                                $returnAMount = request('returnedInvoiceTotal');
+                                $invoice_id = (int)request('invoiceId');
+                                $user_id = (int)auth()->id;
+
                                 $invoice = invoiceFind($invoice_id);
-                                $auth = auth();
 
-                                // save in the returns table
-                                $rt = "INSERT INTO cashbook_invoice_returns SET invoice_id = ?, customer_id = ?, total = ?, user_id = ?";
-                                $insert_id = prepared_statements($rt,'iidi',[$invoice_id,$invoice->customer_id,$returnAMount,$auth->id]);
-                                
-                                // debit customer page
-                                $balance = getCustomerBalance($invoice->customer_id);
-
-                                $trans = "INSERT INTO cashbook_transactions SET customer_id = ?, details = ?, credit_amount = ?, user_id = ?,type=?,book_id = ?";
-                                $trans_id = prepared_statements($trans,'isdisi',[$invoice->customer_id,$invoice->invoice_no,$returnAMount,$auth->id,'invoice_return',$invoice->book_id]);
-
-                                // update ledger and clear customer invoice
-
-                                $ctledger = "INSERT INTO cashbook_customer_ledger SET customer_id = ?, book_id = ?,type = ?,
-                                credit_amount = ?,transaction_id = ?,details = ?,balance = ?,user_id =?,invoice_id = ?";
-                                
-                                $newBalance = $balance - $returnAMount;
-
-                                // save data in the customer ledger book
-                                prepared_statements($ctledger,'iisdisdii',[
-                                    $invoice->customer_id,$invoice->book_id,'invoice_return',
-                                    $returnAMount,$trans_id,$invoice->invoice_no,
-                                    $newBalance,$auth->id,$invoice_id
-                                ]);
-
-                                // update invoice table to reflect the returned amount
-                                $updateInvoice = "UPDATE cashbook_invoices SET balance = balance - ?, returned_amount = returned_amount + ? WHERE id = ?";
-                                prepared_statements($updateInvoice,'ddi',[$returnAMount,$returnAMount,$invoice_id]);
-
-                                // item save statament
-                                $stmt = "INSERT INTO cashbook_invoice_return_items 
-                                    SET return_id = ?,invoice_item_id = ?,item_id = ?,qty_returned = ?,
-                                        unit_price = ?,total = ?, user_id = ?,invoice_id = ?";
-                                
-                                // loop through posts
-                                foreach($_POST['itemId'] as $k => $item)
-                                {
-                                    $item_id = $item;
-                                    $inv_item_id = $_POST['invoice_item_id'][$k];
-                                    $issue_qty = $_POST['issuedQty'][$k];
-                                    $itemRate = $_POST['itemRate'][$k];
-                                    $qty_returned = $_POST['qty_returned'][$k];
-                                    $item_amt = $_POST['returnedAmount'][$k];
-
-                                    // save in the returns items table
-                                    prepared_statements($stmt,'iiiiddii',[$insert_id,$inv_item_id,$item_id,$qty_returned,$itemRate,$item_amt,$auth->id,$invoice_id]);
+                                if(!$invoice){
+                                    $_SESSION['error'] = "Invoice not found";
+                                    break;
                                 }
 
-                                //return session
-                                $_SESSION['success'] = "Data Saved";
+                                $book_id = (int)$invoice->book_id;
+                                $customer_id = (int)$invoice->customer_id;
+                                $invoice_no = $invoice->invoice_no;
 
-                                break;
+                                $itemIds = $_POST['invoice_item_id'] ?? [];
+                                $returnQtys = $_POST['qty_returned'] ?? [];
+
+                                if(!is_array($itemIds) || !is_array($returnQtys) ||
+                                !count($itemIds) || count($itemIds)!==count($returnQtys)){
+                                    $_SESSION['error'] = "Invalid return items";
+                                    break;
+                                }
+
+                                mysqli_begin_transaction($server);
+
+                                try {
+
+                                    // Lock invoice during the return operation.
+                                    $lock = prepared_statements(
+                                        "SELECT id,customer_id,book_id,balance
+                                        FROM cashbook_invoices
+                                        WHERE id=? AND book_id=?
+                                        FOR UPDATE",
+                                        'ii',
+                                        [$invoice_id,$book_id]
+                                    );
+
+                                    if(!$lock || !$lock->num_rows){
+                                        throw new Exception("Invoice unavailable");
+                                    }
+
+                                    $lockedInvoice = $lock->fetch_assoc();
+
+                                    $returnItems = [];
+                                    $returnTotal = 0;
+
+                                    foreach($itemIds as $k=>$invoice_item_id){
+
+                                        $invoice_item_id = (int)$invoice_item_id;
+                                        $qty = (float)$returnQtys[$k];
+
+                                        if($qty <= 0) continue;
+
+                                        // Read original invoice item from the database.
+                                        $itemResult = prepared_statements(
+                                            "SELECT id,item_id,quantity,unit_price
+                                            FROM cashbook_invoice_items
+                                            WHERE id=? AND invoice_id=?",
+                                            'ii',
+                                            [$invoice_item_id,$invoice_id]
+                                        );
+
+                                        if(!$itemResult || !$itemResult->num_rows){
+                                            throw new Exception("Invalid invoice item");
+                                        }
+
+                                        $item = $itemResult->fetch_assoc();
+
+                                        // Total quantity returned in previous returns.
+                                        $previous = prepared_statements(
+                                            "SELECT COALESCE(SUM(qty_returned),0) AS qty
+                                            FROM cashbook_invoice_return_items
+                                            WHERE invoice_item_id=?",
+                                            'i',
+                                            [$invoice_item_id]
+                                        );
+
+                                        if(!$previous){
+                                            throw new Exception("Cannot check previous returns");
+                                        }
+
+                                        $previousQty = (float)$previous->fetch_assoc()['qty'];
+                                        $availableQty = (float)$item['quantity']-$previousQty;
+
+                                        if($qty > $availableQty){
+                                            throw new Exception("Returned quantity exceeds available quantity");
+                                        }
+
+                                        $rate = (float)$item['unit_price'];
+                                        $amount = round($qty*$rate,2);
+
+                                        $returnItems[] = [
+                                            'invoice_item_id'=>$invoice_item_id,
+                                            'item_id'=>(int)$item['item_id'],
+                                            'qty'=>$qty,
+                                            'rate'=>$rate,
+                                            'amount'=>$amount
+                                        ];
+
+                                        $returnTotal += $amount;
+                                    }
+
+                                    $returnTotal = round($returnTotal,2);
+
+                                    if($returnTotal <= 0){
+                                        throw new Exception("No valid return quantities");
+                                    }
+
+                                    /*
+                                    * This policy does not permit a return greater than
+                                    * the remaining outstanding invoice balance.
+                                    *
+                                    * Paid-invoice returns requiring refunds or customer
+                                    * credits must be handled by a separate credit/refund flow.
+                                    */
+                                    if($returnTotal > (float)$lockedInvoice['balance']){
+                                        throw new Exception(
+                                            "Return exceeds outstanding balance. Use a refund or customer credit process."
+                                        );
+                                    }
+
+                                    // Save return header.
+                                    $saveReturn = prepared_statements(
+                                        "INSERT INTO cashbook_invoice_returns
+                                        (invoice_id,customer_id,total,user_id)
+                                        VALUES (?,?,?,?)",
+                                        'iidi',
+                                        [$invoice_id,$customer_id,$returnTotal,$user_id]
+                                    );
+
+                                    if(!$saveReturn){
+                                        throw new Exception("Failed to save invoice return");
+                                    }
+
+                                    $return_id = (int)$server->insert_id;
+
+                                    // Save returned items.
+                                    foreach($returnItems as $item){
+
+                                        $saved = prepared_statements(
+                                            "INSERT INTO cashbook_invoice_return_items
+                                            (return_id,invoice_item_id,item_id,qty_returned,
+                                            unit_price,total,user_id,invoice_id)
+                                            VALUES (?,?,?,?,?,?,?,?)",
+                                            'iiiddiii',
+                                            [
+                                                $return_id,
+                                                $item['invoice_item_id'],
+                                                $item['item_id'],
+                                                $item['qty'],
+                                                $item['rate'],
+                                                $item['amount'],
+                                                $user_id,
+                                                $invoice_id
+                                            ]
+                                        );
+
+                                        if(!$saved){
+                                            throw new Exception("Failed to save returned item");
+                                        }
+                                    }
+
+                                    // Record the customer credit transaction.
+                                    $trans = prepared_statements(
+                                        "INSERT INTO cashbook_transactions
+                                        (customer_id,details,credit_amount,user_id,type,book_id,invoice_id)
+                                        VALUES (?,?,?,?,?,?,?)",
+                                        'isdisii',
+                                        [
+                                            $customer_id,$invoice_no,$returnTotal,
+                                            $user_id,'invoice_return',$book_id,$invoice_id
+                                        ]
+                                    );
+
+                                    if(!$trans){
+                                        throw new Exception("Failed to save return transaction");
+                                    }
+
+                                    $trans_id = (int)$server->insert_id;
+
+                                    // Update customer ledger and customer balance summary.
+                                    $currentBalance = (float)getCustomerBalance($customer_id);
+                                    $newBalance = round($currentBalance-$returnTotal,2);
+
+                                    $ledger = prepared_statements(
+                                        "INSERT INTO cashbook_customer_ledger
+                                        (customer_id,book_id,type,credit_amount,
+                                        transaction_id,details,balance,user_id,invoice_id)
+                                        VALUES (?,?,?,?,?,?,?,?,?)",
+                                        'iisdisdii',
+                                        [
+                                            $customer_id,$book_id,'invoice_return',
+                                            $returnTotal,$trans_id,$invoice_no,
+                                            $newBalance,$user_id,$invoice_id
+                                        ]
+                                    );
+
+                                    if(!$ledger){
+                                        throw new Exception("Failed to update customer ledger");
+                                    }
+
+                                    $balanceSaved = saveCustomerBalance(
+                                        $customer_id,$newBalance,date('Y-m-d H:i:s')
+                                    );
+
+                                    if(!$balanceSaved){
+                                        throw new Exception("Failed to update customer balance");
+                                    }
+
+                                    // Invoice balance already includes deductions for returns.
+                                    $updated = prepared_statements(
+                                        "UPDATE cashbook_invoices
+                                        SET balance=balance-?,
+                                            returned_amount=COALESCE(returned_amount,0)+?
+                                        WHERE id=? AND book_id=?",
+                                        'ddii',
+                                        [$returnTotal,$returnTotal,$invoice_id,$book_id]
+                                    );
+
+                                    if(!$updated){
+                                        throw new Exception("Failed to update invoice balance");
+                                    }
+
+                                    mysqli_commit($server);
+
+                                    $_SESSION['success'] = "Invoice return saved successfully";
+
+                                }catch(Throwable $e){
+
+                                    mysqli_rollback($server);
+
+                                    error_log("Invoice Return Error: ".$e->getMessage());
+
+                                    $_SESSION['error'] = "Unable to save invoice return: ".$e->getMessage();
+                                }
+
+                            break;
                         }
                     break;
                 case 'deleteInvoice':

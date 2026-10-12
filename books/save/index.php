@@ -1,4 +1,5 @@
 <?php
+    // session_start();
     error_reporting(E_ALL);
     require_once(__dir__.'/../../assets/functions.php');
     require_once(__DIR__ . '/../../assets/fpdf/fpdf.php');
@@ -646,8 +647,13 @@
                                                     <div class="col-md-3 p-2">
                                                         <label for="created_at">DATE:</label>
                                                     </div>
+                                                    <?php
+                                                        $entryDate = $_SESSION['entry_date'] ?? date('Y-m-d');
+                                                        $entryDate = strtotime($entryDate);
+                                                        $entryDate = $entryDate ? date('Y-m-d',$entryDate) : date('Y-m-d');
+                                                    ?>
                                                     <div class="col p-2">
-                                                        <input type="datetime-local" name="created_at" id="created_at" value="<?= date('Y-m-d\TH:i') ?>" class="form-control" required>
+                                                        <input type="date" name="created_at" id="created_at" value="<?=htmlspecialchars($entryDate);?>" class="form-control" required>
                                                     </div>
                                                 </div>
                                                 <div class="roww mx-1">
@@ -807,8 +813,13 @@
                                             <div class="col-md-3 p-2">
                                                 <label for="created_at">DATE:</label>
                                             </div>
+                                            <?php
+                                                $entryDate = $_SESSION['entry_date'] ?? date('Y-m-d');
+                                                $entryDate = strtotime($entryDate);
+                                                $entryDate = $entryDate ? date('Y-m-d',$entryDate) : date('Y-m-d');
+                                            ?>
                                             <div class="col p-2">
-                                                <input type="date" name="created_at" id="created_at" class="form-control" required>
+                                                <input type="date" name="created_at" id="created_at" value="<?=htmlspecialchars($entryDate);?>" class="form-control" required>
                                             </div>
                                         </div>
                                         <div class="roww mx-1">
@@ -830,8 +841,8 @@
                                                     <label for="customer_id">CUSTOMER:</label>
                                                 </div>
                                                 <?php
-                                                    $sqlc = "SELECT * FROM cashbook_customers WHERE book_id = ?";
-                                                    $ress = prepared_statements($sqlc,'i',[$bkid]);
+                                                    $sqlc = "SELECT * FROM cashbook_customers WHERE book_id = ? ORDER BY name asc";
+                                                    $ress = prepared_statements($sqlc,'i',[$book->id]);
                                                 ?>
                                                 <div class="col p-2">
                                                     <select name="customer_id" id="customer_id" class="form-control search-select" required>
@@ -1176,7 +1187,7 @@
                                                         <label for="created_at">DATE:</label>
                                                     </div>
                                                     <div class="col p-2">
-                                                        <input type="datetime-local" name="created_at" id="created_at" value="<?= date('Y-m-d\TH:i') ?>" class="form-control" required>
+                                                        <input type="datetime" name="created_at" id="created_at" value="<?=date('Y-m-d');?>" class="form-control" required>
                                                     </div>
                                                 </div>
                                                 <div class="roww mx-1">
@@ -1413,558 +1424,287 @@
                                 $_SESSION['success'] = 'Record saved';
 
                             break;
+
                         case 'newCashinSave':
+                            $book_id = (int)request('book_id');
+                            $details = trim((string)request('cashin_details'));
+                            $category_id = (int)request('category_id');
+                            $amount = round((float)str_replace(',','',(string)request('inamount')),2);
+                            $payment_mode = (int)(request('paymode_id') ?: 0);
+                            $date = request('created_at') ?: date('Y-m-d');
+                            $user_id = (int)auth()->id;
+                            $customer_id = (int)(request('customer_id') ?: 0);
+                            $item_id = (int)(request('item_id') ?: 0);
+                            $qty = (float)(request('quantity') ?: 0);
+                            $type = trim((string)request('transaction_type'));
+                            $invoice_id = (int)(request('invoice_id') ?: 0);
+                            $creditor_id = (int)(request('creditor_id') ?: 0);
 
-                                $book_id = request('book_id');
-                                $details = request('cashin_details');
-                                $category_id = request('category_id');
-                                $amount = request('inamount');
-                                $payment_mode = (isset($_REQUEST['paymode_id'])) ? request('paymode_id') : "";
-                                $date = request('created_at');
-                                $user_id = auth()->id;
-                                $customer_id = request('customer_id');
-                                $item_id = isset($_POST['item_id']) ? request('item_id') : 0;
-                                $qty = request('quantity');
-                                // $rate = request('rate');
-                                $type = request('transaction_type');
-                                $invoice_id = isset($_POST['invoice_id']) ? request('invoice_id') : 0;
-                                $creditor_id = request('creditor_id') ?? "";
-
-                                if(!empty($invoice_id) || $invoice_id > 0 )
-                                {
-                                    $invoice = invoiceFind($invoice_id);
-                                    $details = $invoice->invoice_no;
+                            try{
+                                if($book_id <= 0 || $category_id <= 0 || $amount <= 0){
+                                    throw new Exception('Enter a valid amount, category and business book');
+                                }
+                                if(!in_array($type,['cash_sale','credit_sale','payment','other_income','creditorInjection'],true)){
+                                    throw new Exception('Invalid transaction type');
+                                }
+                                if(in_array($type,['credit_sale','payment'],true) && $customer_id <= 0){
+                                    throw new Exception('Select a customer for this transaction');
+                                }
+                                if($type === 'creditorInjection' && $creditor_id <= 0){
+                                    throw new Exception('Select a creditor');
+                                }
+                                if($type !== 'credit_sale' && $payment_mode <= 0){
+                                    throw new Exception('Select a payment mode');
+                                }
+                                if($invoice_id > 0 && $type !== 'payment'){
+                                    throw new Exception('Only customer payments can be linked to an invoice');
+                                }
+                                if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !checkdate((int)substr($date,5,2),(int)substr($date,8,2),(int)substr($date,0,4))){
+                                    throw new Exception('Invalid transaction date');
                                 }
 
-                                // distribute according to the transaction type
+                                mysqli_begin_transaction($server);
+
+                                if($customer_id > 0){
+                                    $check = prepared_statements('SELECT id FROM cashbook_customers WHERE id = ? AND book_id = ?','ii',[$customer_id,$book_id]);
+                                    if(!$check || $check->num_rows === 0) throw new Exception('Customer does not belong to this book');
+                                }
+                                if($creditor_id > 0){
+                                    $check = prepared_statements('SELECT id FROM cashbook_creditors WHERE id = ? AND book_id = ?','ii',[$creditor_id,$book_id]);
+                                    if(!$check || $check->num_rows === 0) throw new Exception('Creditor does not belong to this book');
+                                }
+                                if($item_id > 0){
+                                    $check = prepared_statements('SELECT id FROM cashbook_items WHERE id = ? AND book_id = ?','ii',[$item_id,$book_id]);
+                                    if(!$check || $check->num_rows === 0) throw new Exception('Item does not belong to this book');
+                                }
+                                if($invoice_id > 0){
+                                    $check = prepared_statements('SELECT id,customer_id,balance,invoice_no FROM cashbook_invoices WHERE id = ? AND book_id = ? FOR UPDATE','ii',[$invoice_id,$book_id]);
+                                    if(!$check || $check->num_rows === 0) throw new Exception('Invoice not found');
+                                    $invoice = $check->fetch_assoc();
+                                    if((int)$invoice['customer_id'] !== $customer_id) throw new Exception('Invoice belongs to a different customer');
+                                    if($amount > round((float)$invoice['balance'],2)) throw new Exception('Payment exceeds invoice balance');
+                                    $details = $invoice['invoice_no'];
+                                }
+
                                 $credit = 0;
                                 $debit = 0;
+                                $creditable = 0;
 
-                                // CASH SALE
-                                if($type === 'cash_sale')
-                                {
-                                    $credit = (float)$amount; // cash increases
-                                    $creditable = $credit;
-                                    $debit = $credit;
-
-                                    // include both values to balance the page and keep debts flowing right
+                                switch($type){
+                                    case 'cash_sale':
+                                            $credit = $amount;
+                                            $debit = $amount;
+                                            $creditable = $amount;
+                                        break;
+                                    case 'credit_sale':
+                                            $debit = $amount;
+                                            $payment_mode = 0;
+                                        break;
+                                    case 'payment':
+                                    case 'other_income':
+                                    case 'creditorInjection':
+                                            $credit = $amount;
+                                            $creditable = $amount;
+                                        break;
                                 }
 
-                                // CREDIT SALE
-                                if($type === 'credit_sale'){
-                                    $debit = (float)$amount; 
-                                    $creditable = 0;
+                                // Credit sales are receivables, not cash receipts.
+                                $sql = "INSERT INTO cashbook_transactions SET credit_amount = ?,debit_amount = ?,book_id = ?,details = ?,category_id = ?,paymode_id = NULLIF(?,0),created_at = ?,user_id = ?,type = ?,customer_id = NULLIF(?,0),item_id = NULLIF(?,0),quantity = ?,invoice_id = NULLIF(?,0),creditor_id = NULLIF(?,0)";
+                                $res = prepared_statements($sql,'ddisiisisiidii',[$credit,$debit,$book_id,$details,$category_id,$payment_mode,$date,$user_id,$type,$customer_id,$item_id,$qty,$invoice_id,$creditor_id]);
+                                if($res === false) throw new Exception('Failed to save main transaction');
+                                $trans_id = (int)mysqli_insert_id($server);
+                                if($trans_id <= 0) throw new Exception('Could not obtain transaction ID');
+
+                                if($invoice_id > 0){
+                                    $sql = 'UPDATE cashbook_invoices SET paid_amount = COALESCE(paid_amount,0) + ?,balance = COALESCE(balance,0) - ? WHERE id = ? AND book_id = ? AND balance >= ?';
+                                    $res = prepared_statements($sql,'ddiid',[$amount,$amount,$invoice_id,$book_id,$amount]);
+                                    if($res === false) throw new Exception('Failed to update invoice payment');
+                                    // The invoice row was locked and its balance validated above.
                                 }
 
-                                // capture payment the same way as cash sale
-                                if($type === 'payment'){
-                                    $credit = (float)$amount;
-                                    $creditable = (float)$amount; 
+                                if($credit > 0){
+                                    $sql = "INSERT INTO cashbook_cashins SET type = ?,customer_id = NULLIF(?,0),amount = ?,category_id = ?,details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at = ?,user_id = ?,item_id = NULLIF(?,0),quantity = ?,creditor_id = NULLIF(?,0)";
+                                    $res = prepared_statements($sql,'sidisiiisiidi',[$type,$customer_id,$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$creditor_id]);
+                                    if($res === false) throw new Exception('Failed to save cash-in');
                                 }
 
-                                //other_income
-                                 if($type === 'other_income'){
-                                    $credit = (float)$amount; 
-                                    $creditable = (float)$amount;
+                                if($item_id > 0 && $qty > 0 && in_array($type,['cash_sale','credit_sale'],true)){
+                                    $res = stockOut($item_id,$qty,$trans_id);
+                                    if($res === false) throw new Exception('Failed to update stock');
+                                }
+                                
+                                error_log("CUSTOMER LEDGER DEBUG: transaction={$trans_id}, customer={$customer_id}, type={$type}, credit={$creditable}, debit={$debit}");
+                                if($customer_id > 0){
+                                    $res = customerLedgerUpdate($customer_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
+                                    if($res === false) throw new Exception('Failed to update customer ledger');
+                                }
+                                if($creditor_id > 0){
+                                    $res = creditorLedgerUpdate($creditor_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
+                                    if($res === false) throw new Exception('Failed to update creditor ledger');
                                 }
 
-                                //other_income
-                                 if($type === 'creditorInjection'){
-                                    $credit = (float)$amount; 
-                                    $creditable = (float)$amount;
-                                }
-                                // save the content
-                                $sql = "INSERT INTO cashbook_transactions  SET credit_amount = ?, debit_amount = ?, book_id = ?, details = ?, 
-                                            category_id = ?,  paymode_id = ?, created_at = ?, user_id = ?,  type = ?,  customer_id = ?, 
-                                            item_id = ?,  quantity = ?, invoice_id = ?,creditor_id = ?";
-
-                                $res = prepared_statements(
-                                    $sql,'ddisiisisiiiii',[$credit,$debit,$book_id, $details,$category_id,$payment_mode,$date,$user_id, $type,$customer_id,$item_id,$qty,$invoice_id,$creditor_id]
-                                );
-
-                                $trans_id = $server->insert_id;
-
-                                // update invoices if not empty
-                                if(!empty($invoice_id) || $invoice_id > 0 )
-                                {
-                                    $details = $invoice->invoice_no;
-                                    $total_paid = $invoice->paid_amount + $amount;
-                                    $total_balance = $invoice->balance - $amount;
-
-                                    // update invoice
-                                    $update = "UPDATE cashbook_invoices SET paid_amount = ?, balance = balance - ? WHERE id = ?";
-                                    prepared_statements($update,'ddi',[$total_paid,$total_paid,$invoice_id]);
-                                }
-                               
-                                 // credit cashins       
-                                if($credit > 0)
-                                {
-                                    // insert into cashins table
-                                    $stmt = "INSERT INTO  cashbook_cashins SET type = ?,customer_id = ?, amount = ?, category_id = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?, creditor_id = ?";
-                                    prepared_statements($stmt,'siiisiiisiiii',[$type,$customer_id,$amount,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$creditor_id]);
-                                }
-
-                                // update stock item records
-                                if(!empty($item_id) && $qty > 0 && $type != 'creditorInjection')
-                                {
-                                    stockOut($item_id,$qty,$trans_id);
-                                }
-
-                                // check if customer has been selected and update the ledger
-                                if(!empty($customer_id))
-                                {
-                                    // update customer ledger
-                                    customerLedgerUpdate($customer_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
-                                }
-
-                                // check if creditor has been selected and update the ledger
-                                if($creditor_id > 0)
-                                {
-                                    // update customer ledger
-                                    creditorLedgerUpdate($creditor_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type);
-                                }
-
-                                $_SESSION['success'] ='cashin save side';
+                                mysqli_commit($server);
+                                $_SESSION['success'] = 'Transaction saved successfully';
+                            }catch(Throwable $e){
+                                mysqli_rollback($server);
+                                error_log('newCashinSave: '.$e->getMessage());
+                                $_SESSION['error'] = $e->getMessage();
+                            }
                             break;
-
                         case 'editCashinSave':
+                            $transid = (int)request('transaction_id');
+                            $details = trim((string)request('cashin_details'));
+                            $category_id = (int)request('category_id');
+                            $amount = round((float)str_replace(',','',(string)request('inamount')),2);
+                            $payment_mode = (int)(request('paymode_id') ?: 0);
+                            $date = (string)request('created_at');
+                            $user_id = (int)auth()->id;
+                            $customer_id = (int)(request('customer_id') ?: 0);
+                            $creditor_id = (int)(request('creditor_id') ?: 0);
+                            $item_id = (int)(request('item_id') ?: 0);
+                            $quantity = (float)(request('quantity') ?: 0);
+                            $type = trim((string)request('transaction_type'));
+                            $invoice_id = (int)(request('invoice_id') ?: 0);
+                            $started = false;
 
-                                /*
-                                |--------------------------------------------------------------------------
-                                | REQUEST DATA
-                                |--------------------------------------------------------------------------
-                                */
+                            try{
+                                if($transid <= 0 || $category_id <= 0 || $amount <= 0 || $quantity < 0) throw new Exception('Invalid transaction, category, amount or quantity');
+                                if(!in_array($type,['cash_sale','credit_sale','payment','other_income','creditorInjection'],true)) throw new Exception('Invalid transaction type');
+                                if(in_array($type,['credit_sale','payment'],true) && $customer_id <= 0) throw new Exception('Select a customer');
+                                if($type === 'creditorInjection' && $creditor_id <= 0) throw new Exception('Select a creditor');
+                                if($type !== 'credit_sale' && $payment_mode <= 0) throw new Exception('Select a payment mode');
+                                if($invoice_id > 0 && $type !== 'payment') throw new Exception('Only customer payments can be linked to invoices');
+                                if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !checkdate((int)substr($date,5,2),(int)substr($date,8,2),(int)substr($date,0,4))) throw new Exception('Invalid date');
 
-                                $details      = request('cashin_details');
-                                $category_id  = request('category_id');
-                                $amount       = (float)request('inamount');
-                                $payment_mode = request('paymode_id');
-                                $transid      = (int)request('transaction_id');
-                                $date         = request('created_at');
-                                $user_id      = auth()->id;
-
-                                $customer_id  = request('customer_id');
-                                $creditor_id  = request('creditor_id');
-                                $item_id      = request('item_id');
-                                $quantity     = (float)request('quantity');
-                                $type         = request('transaction_type');
-
-                                $invoice_id = isset($_POST['invoice_id'])
-                                    ? request('invoice_id')
-                                    : "";
-
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | GET ORIGINAL TRANSACTION
-                                |--------------------------------------------------------------------------
-                                |
-                                | This MUST happen before updating cashbook_transactions because we need
-                                | the old creditor, item and quantity for reconciliation.
-                                |
-                                */
-
-                                $transaction = transactionFind($transid);
-
-                                if(!$transaction)
-                                {
-                                    $_SESSION['error'] = "Transaction could not be found.";
-                                    break;
-                                }
-
-
-                                $book_id = (int)$transaction->book_id;
-
-                                $old_item_id = !empty($transaction->item_id)
-                                    ? (int)$transaction->item_id
-                                    : 0;
-
-                                $old_quantity = (float)$transaction->quantity;
-
-                                $old_type = $transaction->type;
-
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | GET OLD CREDITOR
-                                |--------------------------------------------------------------------------
-                                |
-                                | Do not depend only on cashbook_transactions.creditor_id here.
-                                | The existing creditor ledger gives us the creditor currently attached
-                                | to this transaction.
-                                |
-                                */
-
-                                $old_creditor_id = 0;
-
-                                $oldCreditorSql = "
-                                    SELECT creditor_id
-                                    FROM cashbook_creditor_ledger
-                                    WHERE transaction_id = ?
-                                    LIMIT 1
-                                ";
-
-                                $oldCreditorRes = prepared_statements(
-                                    $oldCreditorSql,
-                                    'i',
-                                    [$transid]
-                                );
-
-                                if(
-                                    $oldCreditorRes &&
-                                    $oldCreditorRes->num_rows > 0
-                                )
-                                {
-                                    $oldCreditorRow =
-                                        $oldCreditorRes->fetch_assoc();
-
-                                    $old_creditor_id =
-                                        (int)$oldCreditorRow['creditor_id'];
-                                }
-
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | NORMALISE OPTIONAL IDS
-                                |--------------------------------------------------------------------------
-                                */
-
-                                $customer_id = !empty($customer_id)
-                                    ? (int)$customer_id
-                                    : 0;
-
-                                $creditor_id = !empty($creditor_id)
-                                    ? (int)$creditor_id
-                                    : 0;
-
-                                $item_id = !empty($item_id)
-                                    ? (int)$item_id
-                                    : 0;
-
-                                $invoice_id = !empty($invoice_id)
-                                    ? (int)$invoice_id
-                                    : 0;
-
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | TRACK TRANSACTION EDIT
-                                |--------------------------------------------------------------------------
-                                */
-
-                                trackTransactionEdits(
-                                    $transid,
-                                    'edit'
-                                );
-
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | UPDATE MAIN TRANSACTION
-                                |--------------------------------------------------------------------------
-                                |
-                                | creditor_id is now included so cashbook_transactions remains aligned
-                                | with cashbook_creditor_ledger.
-                                |
-                                */
-
-                                $sql = "
-                                    UPDATE cashbook_transactions SET
-
-                                        type = ?,
-                                        credit_amount = ?,
-                                        details = ?,
-                                        category_id = ?,
-                                        paymode_id = ?,
-                                        created_at = ?,
-                                        user_id = ?,
-                                        customer_id = ?,
-                                        creditor_id = ?,
-                                        item_id = ?,
-                                        quantity = ?,
-                                        invoice_id = ?
-
-                                    WHERE id = ?
-                                ";
-
-
-                                $res = prepared_statements(
-                                    $sql,
-                                    'sisiissiiiiii',
-                                    [
-                                        $type,
-                                        $amount,
-                                        $details,
-                                        $category_id,
-                                        $payment_mode,
-                                        $date,
-                                        $user_id,
-                                        $customer_id,
-                                        $creditor_id,
-                                        $item_id,
-                                        $quantity,
-                                        $invoice_id,
-                                        $transid
-                                    ]
-                                );
-
-
-                                if(!$res)
-                                {
-                                    $_SESSION['error'] =
-                                        "Transaction could not be updated.";
-
-                                    break;
-                                }
-
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | UPDATE CASH-IN RECORD
-                                |--------------------------------------------------------------------------
-                                |
-                                | Only these transaction types belong in cashbook_cashins.
-                                |
-                                */
-
-                                if(
-                                    $type === 'cash_sale' ||
-                                    $type === 'payment' ||
-                                    $type === 'other_income'
-                                )
-                                {
-                                    $stmt = "
-                                        UPDATE cashbook_cashins SET
-
-                                            type = ?,
-                                            customer_id = ?,
-                                            amount = ?,
-                                            category_id = ?,
-                                            details = ?,
-                                            paymode_id = ?,
-                                            created_at = ?,
-                                            user_id = ?,
-                                            item_id = ?,
-                                            quantity = ?
-
-                                        WHERE transaction_id = ?
-                                    ";
-
-
-                                    prepared_statements(
-                                        $stmt,
-                                        'sidisisiiii',
-                                        [
-                                            $type,
-                                            $customer_id,
-                                            $amount,
-                                            $category_id,
-                                            $details,
-                                            $payment_mode,
-                                            $date,
-                                            $user_id,
-                                            $item_id,
-                                            $quantity,
-                                            $transid
-                                        ]
-                                    );
-                                }
-
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | STOCK RECONCILIATION
-                                |--------------------------------------------------------------------------
-                                |
-                                | Restore the original stock movement first and then apply the newly
-                                | edited movement.
-                                |
-                                */
-
-                                if(
-                                    $old_type === 'cash_sale' ||
-                                    $old_type === 'payment' ||
-                                    $old_type === 'other_income'
-                                )
-                                {
-                                    if(
-                                        $old_item_id > 0 &&
-                                        $old_quantity > 0
-                                    )
-                                    {
-                                        restoreStockOut(
-                                            $old_item_id,
-                                            $old_quantity
-                                        );
+                                // Run all direct SQL on $server so the transaction really covers these statements.
+                                $run = function($sql,$types='',$params=[]) use ($server){
+                                    $stmt = mysqli_prepare($server,$sql);
+                                    if(!$stmt) throw new Exception('SQL prepare failed: '.mysqli_error($server));
+                                    if($types !== ''){
+                                        if(strlen($types) !== count($params)) throw new Exception('Parameter count mismatch');
+                                        if(!mysqli_stmt_bind_param($stmt,$types,...$params)) throw new Exception('SQL binding failed: '.mysqli_stmt_error($stmt));
                                     }
-                                }
+                                    if(!mysqli_stmt_execute($stmt)) throw new Exception('SQL execution failed: '.mysqli_stmt_error($stmt));
+                                    return $stmt;
+                                };
+                                $one = function($sql,$types='',$params=[]) use ($run){
+                                    $stmt = $run($sql,$types,$params);
+                                    $result = mysqli_stmt_get_result($stmt);
+                                    if($result === false) throw new Exception('SQL result failed: '.mysqli_stmt_error($stmt));
+                                    return mysqli_fetch_assoc($result) ?: null;
+                                };
+                                $assertLedger = function($customer,$credit,$debit) use ($one,$transid){
+                                    $row = $one('SELECT id,credit_amount,debit_amount FROM cashbook_customer_ledger WHERE transaction_id=? AND customer_id=? LIMIT 1','ii',[$transid,$customer]);
+                                    if(!$row) throw new Exception('Customer ledger was not saved for transaction '.$transid);
+                                    if(abs((float)$row['credit_amount']-$credit)>0.001 || abs((float)$row['debit_amount']-$debit)>0.001) throw new Exception('Customer ledger amounts do not match transaction '.$transid);
+                                };
 
-
-                                /*
-                                | Apply new stock movement.
-                                */
-
-                                if(
-                                    $type === 'cash_sale' ||
-                                    $type === 'payment' ||
-                                    $type === 'other_income'
-                                )
-                                {
-                                    if(
-                                        $item_id > 0 &&
-                                        $quantity > 0
-                                    )
-                                    {
-                                        stockOut(
-                                            $item_id,
-                                            $quantity,
-                                            $transid
-                                        );
+                                // Rebuild customer running balances in chronological order, then sync summary.
+                                $rebuildCustomer = function($cid) use ($run,$server,$one,$date){
+                                    $stmt = $run('SELECT id,credit_amount,debit_amount FROM cashbook_customer_ledger WHERE customer_id=? ORDER BY created_at,id','i',[$cid]);
+                                    $rows = mysqli_stmt_get_result($stmt);
+                                    if($rows === false) throw new Exception('Cannot read customer ledger for rebuilding');
+                                    $balance = 0.0;
+                                    while($entry = mysqli_fetch_assoc($rows)){
+                                        $balance = round($balance+(float)$entry['debit_amount']-(float)$entry['credit_amount'],2);
+                                        $run('UPDATE cashbook_customer_ledger SET balance=? WHERE id=?','di',[$balance,(int)$entry['id']]);
                                     }
+                                    // Existing project helper handles insert/update of customer balance summary.
+                                    if(!function_exists('saveCustomerBalance')) throw new Exception('saveCustomerBalance() is unavailable');
+                                    $saved = saveCustomerBalance($cid,$balance,$date);
+                                    if($saved === false) throw new Exception('Could not update customer balance summary');
+                                };
+
+                                mysqli_begin_transaction($server);
+                                $started = true;
+                                $old = $one('SELECT * FROM cashbook_transactions WHERE id=? FOR UPDATE','i',[$transid]);
+                                if(!$old) throw new Exception('Transaction could not be found');
+                                $book_id = (int)$old['book_id'];
+                                $old_customer = (int)$old['customer_id'];
+                                $old_creditor = (int)$old['creditor_id'];
+                                $old_invoice = (int)$old['invoice_id'];
+                                $old_item = (int)$old['item_id'];
+                                $old_qty = (float)$old['quantity'];
+                                $old_type = (string)$old['type'];
+                                $old_amount = (float)$old['credit_amount'];
+                                if($old_type === 'credit_sale') $old_amount = (float)$old['debit_amount'];
+
+                                if($customer_id > 0 && !$one('SELECT id FROM cashbook_customers WHERE id=? AND book_id=?','ii',[$customer_id,$book_id])) throw new Exception('Customer does not belong to this book');
+                                if($creditor_id > 0 && !$one('SELECT id FROM cashbook_creditors WHERE id=? AND book_id=?','ii',[$creditor_id,$book_id])) throw new Exception('Creditor does not belong to this book');
+                                if($item_id > 0 && !$one('SELECT id FROM cashbook_items WHERE id=? AND book_id=?','ii',[$item_id,$book_id])) throw new Exception('Item does not belong to this book');
+
+                                $credit = 0.0; $debit = 0.0; $creditable = 0.0;
+                                if($type === 'cash_sale'){$credit=$amount; $debit=$amount; $creditable=$amount;}
+                                elseif($type === 'credit_sale'){$debit=$amount; $payment_mode=0;}
+                                else{$credit=$amount; $creditable=$amount;}
+
+                                // Reconcile invoice allocations: reverse original payment, then apply edited payment.
+                                if($old_invoice > 0){
+                                    $run('UPDATE cashbook_invoices SET paid_amount=COALESCE(paid_amount,0)-?,balance=COALESCE(balance,0)+? WHERE id=? AND book_id=?','ddii',[$old_amount,$old_amount,$old_invoice,$book_id]);
+                                }
+                                if($invoice_id > 0){
+                                    $invoice = $one('SELECT id,customer_id,balance,invoice_no FROM cashbook_invoices WHERE id=? AND book_id=? FOR UPDATE','ii',[$invoice_id,$book_id]);
+                                    if(!$invoice) throw new Exception('Invoice not found');
+                                    if((int)$invoice['customer_id'] !== $customer_id) throw new Exception('Invoice belongs to a different customer');
+                                    if((float)$invoice['balance'] + 0.001 < $amount) throw new Exception('Payment exceeds invoice balance');
+                                    $details = $invoice['invoice_no'];
+                                    $run('UPDATE cashbook_invoices SET paid_amount=COALESCE(paid_amount,0)+?,balance=COALESCE(balance,0)-? WHERE id=? AND book_id=?','ddii',[$amount,$amount,$invoice_id,$book_id]);
                                 }
 
+                                // Audit before overwriting the original values.
+                                trackTransactionEdits($transid,'edit');
+                                $run('UPDATE cashbook_transactions SET type=?,credit_amount=?,debit_amount=?,details=?,category_id=?,paymode_id=NULLIF(?,0),created_at=?,user_id=?,customer_id=NULLIF(?,0),creditor_id=NULLIF(?,0),item_id=NULLIF(?,0),quantity=?,invoice_id=NULLIF(?,0) WHERE id=? AND book_id=?',
+                                    'sddsiisiiiidiii',[$type,$credit,$debit,$details,$category_id,$payment_mode,$date,$user_id,$customer_id,$creditor_id,$item_id,$quantity,$invoice_id,$transid,$book_id]);
 
-                                /*
-                                |--------------------------------------------------------------------------
-                                | CUSTOMER LEDGER
-                                |--------------------------------------------------------------------------
-                                */
-
-                                if($customer_id > 0)
-                                {
-                                    customerLedgerUpdate(
-                                        $customer_id,
-                                        $amount,
-                                        0,
-                                        $category_id,
-                                        $details,
-                                        $book_id,
-                                        $payment_mode,
-                                        $transid,
-                                        $date,
-                                        $user_id,
-                                        $item_id,
-                                        $quantity,
-                                        $type
-                                    );
+                                // Synchronise actual cash receipts. Credit sales have no cash-in record.
+                                $run('DELETE FROM cashbook_cashins WHERE transaction_id=? AND book_id=?','ii',[$transid,$book_id]);
+                                if($credit > 0){
+                                    $run('INSERT INTO cashbook_cashins (type,customer_id,amount,category_id,details,book_id,paymode_id,transaction_id,created_at,user_id,item_id,quantity,creditor_id) VALUES (?,NULLIF(?,0),?,?,?, ?,?,?,?, ?,NULLIF(?,0),?,NULLIF(?,0))',
+                                        'sidisiiisiidi',[$type,$customer_id,$amount,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$quantity,$creditor_id]);
                                 }
 
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | CREDITOR LEDGER
-                                |--------------------------------------------------------------------------
-                                |
-                                | A creditor payment recorded through Cash In reduces the amount owed
-                                | to the creditor.
-                                |
-                                | Creditor balance formula:
-                                |
-                                |     balance = previous balance + credit - debit
-                                |
-                                | Therefore:
-                                |
-                                |     credit = 0
-                                |     debit  = payment amount
-                                |
-                                */
-
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | CASE 1 & 2
-                                | SAME CREDITOR OR NEW CREDITOR SELECTED
-                                |--------------------------------------------------------------------------
-                                |
-                                | creditorLedgerUpdate() will:
-                                |
-                                | - update the existing ledger transaction;
-                                | - move it to another creditor if creditor changed;
-                                | - recalculate the old creditor when necessary;
-                                | - recalculate the new/current creditor.
-                                |
-                                */
-
-                                if($creditor_id > 0)
-                                {
-                                    $credit = 0;
-                                    $debit  = $amount;
-
-
-                                    creditorLedgerUpdate(
-                                        $creditor_id,
-                                        $credit,
-                                        $debit,
-                                        $category_id,
-                                        $details,
-                                        $book_id,
-                                        $payment_mode,
-                                        $transid,
-                                        $date,
-                                        $user_id,
-                                        $item_id,
-                                        $quantity,
-                                        $type
-                                    );
+                                // IMPORTANT: existing stock helpers must operate on $server and throw/return false on failure.
+                                if(in_array($old_type,['cash_sale','credit_sale'],true) && $old_item > 0 && $old_qty > 0){
+                                    $r = restoreStockOut($old_item,$old_qty);
+                                    if($r === false) throw new Exception('Could not restore previous stock');
+                                }
+                                if(in_array($type,['cash_sale','credit_sale'],true) && $item_id > 0 && $quantity > 0){
+                                    $r = stockOut($item_id,$quantity,$transid);
+                                    if($r === false) throw new Exception('Could not apply edited stock movement');
                                 }
 
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | CASE 3
-                                | CREDITOR REMOVED FROM TRANSACTION
-                                |--------------------------------------------------------------------------
-                                |
-                                | Example:
-                                |
-                                | Before edit:
-                                |     Creditor = Supplier A
-                                |     Payment  = 300,000
-                                |
-                                | After edit:
-                                |     Creditor = NONE
-                                |
-                                | We must remove the old creditor ledger entry and rebuild Supplier A's
-                                | ledger/balance.
-                                |
-                                */
-
-                                elseif($old_creditor_id > 0)
-                                {
-                                    $deleteCreditorLedger = "
-                                        DELETE FROM cashbook_creditor_ledger
-                                        WHERE transaction_id = ?
-                                    ";
-
-                                    prepared_statements(
-                                        $deleteCreditorLedger,
-                                        'i',
-                                        [$transid]
-                                    );
-
-
-                                    /*
-                                    | Rebuild old creditor's running balances after removing
-                                    | this transaction.
-                                    */
-
-                                    recalculateCreditorLedger(
-                                        $old_creditor_id
-                                    );
+                                // Remove the previous customer's entry if the customer changed or was cleared.
+                                if($old_customer > 0 && $old_customer !== $customer_id){
+                                    $run('DELETE FROM cashbook_customer_ledger WHERE transaction_id=? AND customer_id=?','ii',[$transid,$old_customer]);
+                                    $rebuildCustomer($old_customer);
+                                }
+                                if($customer_id > 0){
+                                    $r = customerLedgerUpdate($customer_id,$creditable,$debit,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$quantity,$type);
+                                    if($r === false) throw new Exception('Customer ledger helper failed');
+                                    $assertLedger($customer_id,$creditable,$debit);
+                                    $rebuildCustomer($customer_id);
                                 }
 
+                                // Creditor ledger: preserve existing cash-in convention and handle reassignment/removal.
+                                if($old_creditor > 0 && $old_creditor !== $creditor_id){
+                                    $run('DELETE FROM cashbook_creditor_ledger WHERE transaction_id=? AND creditor_id=?','ii',[$transid,$old_creditor]);
+                                    $r = recalculateCreditorLedger($old_creditor);
+                                    if($r === false) throw new Exception('Could not rebuild previous creditor ledger');
+                                }
+                                if($creditor_id > 0){
+                                    $r = creditorLedgerUpdate($creditor_id,0,$amount,$category_id,$details,$book_id,$payment_mode,$transid,$date,$user_id,$item_id,$quantity,$type);
+                                    if($r === false) throw new Exception('Creditor ledger helper failed');
+                                }
 
-                                /*
-                                |--------------------------------------------------------------------------
-                                | SUCCESS
-                                |--------------------------------------------------------------------------
-                                */
-
-                                $_SESSION['success'] =
-                                    "Transaction updated successfully.";
-
+                                mysqli_commit($server);
+                                $started = false;
+                                $_SESSION['success'] = 'Transaction updated successfully.';
+                            }catch(Throwable $e){
+                                if($started) mysqli_rollback($server);
+                                error_log('editCashinSave #'.$transid.': '.$e->getMessage());
+                                $_SESSION['error'] = 'Transaction update failed. Check the server error log. Reference: '.$transid;
+                            }
                             break;
-                            
                         case 'newCashoutSave':
                                 $book_id = request('book_id');
                                 $details = request('cashout_details');
@@ -2188,7 +1928,6 @@
                                 */
 
                                 $sql = "UPDATE cashbook_transactions SET
-
                                         item_id = ?,
                                         quantity = ?,
                                         rate = ?,
@@ -2200,14 +1939,11 @@
                                         user_id = ?,
                                         customer_id = ?,
                                         creditor_id = ?
-
                                     WHERE id = ?
                                 ";
 
 
-                                $res = prepared_statements(
-                                    $sql,
-                                    'iddsdsiiiiii',
+                                $res = prepared_statements($sql,'iddsdsiiiiii',
                                     [
                                         $item_id,
                                         $qty,
@@ -2224,12 +1960,10 @@
                                     ]
                                 );
 
-
+                                echo mysqli_error($server);
                                 if(!$res)
                                 {
-                                    $_SESSION['error'] =
-                                        "Transaction could not be updated.";
-
+                                    $_SESSION['error'] ="Transaction could not be updated.";
                                     break;
                                 }
 
@@ -2872,55 +2606,175 @@
                                 $_SESSION['success'] = "Invoice Created successfully";
                             break;
                             // save invoice items
+                        
                         case 'newInvoiceItemSave':
 
-                            $invoice_id = request('invoice_id');
-                            $items = $_REQUEST['item_id'];
-                            $quantities = $_REQUEST['qty'];
-                            $rates = $_REQUEST['rate'];
-                            $amounts = $_REQUEST['amount']; 
-                            $user_id = auth()->id;
-                            $invoiceAmount = request('InvoiceAmount');
+                            $invoice_id = (int)request('invoice_id');
+                            $user_id = (int)auth()->id;
+
+                            $items = $_POST['item_id'] ?? [];
+                            $quantities = $_POST['qty'] ?? [];
+                            $rates = $_POST['rate'] ?? [];
+
                             $invoice = invoiceFind($invoice_id);
-                            $customer_id = $invoice->customer_id;
-                            $book_id = $invoice->book_id;
+
+                            if(!$invoice){
+                                $_SESSION['error'] = "Invoice not found";
+                                break;
+                            }
+
+                            $book_id = (int)$invoice->book_id;
+                            $customer_id = (int)$invoice->customer_id;
                             $invoice_no = $invoice->invoice_no;
 
-                            // save data into the table
-                            $stmt = "INSERT INTO cashbook_invoice_items SET invoice_id = ?,item_id = ?,quantity = ?, unit_price = ?,total = ?, user_id = ?";
+                            // Validate invoice ownership against the active book.
+                            $active_book_id = (int)encryptor('decrypt',$_SESSION['book_id']);
 
-                            $amountt = 0;
-                            // loop through items
-                            foreach($items as $k => $item)
-                            {
-                                $item = $items[$k];
-                                $qty = $quantities[$k];
-                                $rate = $rates[$k];
-                                $amount = $amounts[$k];
-                                $amountt += $amount;
-
-                                // use prepared statements
-                                prepared_statements($stmt,'iiiidi',[$invoice_id,$item,$qty,$rate,$amount,$user_id]);
+                            if($book_id !== $active_book_id){
+                                $_SESSION['error'] = "Invalid invoice access";
+                                break;
                             }
 
-                            $status = 'sent';
-                            // update invoice
-                            $stm = "UPDATE cashbook_invoices SET total = ?,balance = ?,status = ? WHERE id = ?";
-                            $ress = prepared_statements($stm,'iisi',[$amountt,$amountt,$status,$invoice_id]);
-
-                            if($ress > 0) // if the invoice has been updated
-                            {
-                                // enter transaction in the table to link to customer
-                                $trans = "INSERT INTO cashbook_transactions SET customer_id = ?, details = ?, debit_amount = ?,user_id = ?, book_id = ?, type = ?, invoice_id = ?,created_at = ?";
-                                $trans_id = prepared_statements($trans,'isdiisis',[$customer_id,$invoice->invoice_no,$amountt,$user_id,$book_id,'Invoice',$invoice_id,$invoice->created_at]);
-
-                                // update customer ledger section
-                                insertCustomerLedgerInvoice($customer_id, 'invoice',$amountt,$invoice_id,$trans_id,$book_id,$invoice_no);
+                            if(!is_array($items) || !count($items)){
+                                $_SESSION['error'] = "Please add at least one invoice item";
+                                break;
                             }
-                            
-                            $_SESSION['success'] = "Invoice Details Saved";
+
+                            if(count($items)!==count($quantities) || count($items)!==count($rates)){
+                                $_SESSION['error'] = "Invalid invoice item data";
+                                break;
+                            }
+
+                            /*
+                            * IMPORTANT:
+                            * Use a database transaction so that invoice items,
+                            * invoice totals and related financial records remain consistent.
+                            */
+
+                            mysqli_begin_transaction($server);
+
+                            try {
+
+                                // Lock invoice to prevent concurrent changes.
+                                $lock = prepared_statements(
+                                    "SELECT id FROM cashbook_invoices WHERE id=? AND book_id=? FOR UPDATE",
+                                    'ii',
+                                    [$invoice_id,$book_id]
+                                );
+
+                                if(!$lock || !$lock->num_rows){
+                                    throw new Exception("Invoice could not be locked");
+                                }
+
+                                $stmt = "INSERT INTO cashbook_invoice_items
+                                        (invoice_id,item_id,quantity,unit_price,total,user_id)
+                                        VALUES (?,?,?,?,?,?)";
+
+                                $newAmount = 0;
+
+                                foreach($items as $k=>$item){
+
+                                    $item_id = (int)$item;
+                                    $qty = (float)$quantities[$k];
+                                    $rate = (float)$rates[$k];
+
+                                    if($item_id <= 0 || !is_finite($qty) || !is_finite($rate) || $qty <= 0 || $rate < 0){
+                                        throw new Exception("Invalid quantity, rate or item");
+                                    }
+
+                                    // Confirm the item belongs to this business.
+                                    $check = prepared_statements(
+                                        "SELECT id FROM cashbook_items WHERE id=? AND book_id=?",
+                                        'ii',
+                                        [$item_id,$book_id]
+                                    );
+
+                                    if(!$check || !$check->num_rows){
+                                        throw new Exception("Invalid business item");
+                                    }
+
+                                    $amount = round($qty*$rate,2);
+
+                                    $save = prepared_statements(
+                                        $stmt,
+                                        'iidddi',
+                                        [$invoice_id,$item_id,$qty,$rate,$amount,$user_id]
+                                    );
+
+                                    if(!$save){
+                                        throw new Exception("Failed to save invoice item");
+                                    }
+
+                                    $newAmount += $amount;
+                                }
+
+                                /*
+                                * Calculate complete invoice total from ALL saved items.
+                                * This includes old and newly inserted items.
+                                */
+
+                                $totalQuery = prepared_statements(
+                                    "SELECT COALESCE(SUM(total),0) AS total
+                                    FROM cashbook_invoice_items
+                                    WHERE invoice_id=?",
+                                    'i',
+                                    [$invoice_id]
+                                );
+
+                                if(!$totalQuery){
+                                    throw new Exception("Failed to calculate invoice total");
+                                }
+
+                                $invoiceTotal = round(
+                                    (float)$totalQuery->fetch_assoc()['total'],
+                                    2
+                                );
+
+                                /*
+                                * Preserve existing payments.
+                                *
+                                * Assumes invoice.balance stores the gross unpaid amount
+                                * before returns, consistent with your invoice register.
+                                */
+
+                                $paid = (float)($invoice->paid_amount ?? 0);
+                                $balance = round($invoiceTotal-$paid,2);
+
+                                $update = prepared_statements(
+                                    "UPDATE cashbook_invoices
+                                    SET total=?,balance=?,status=?
+                                    WHERE id=? AND book_id=?",
+                                    'ddsii',
+                                    [$invoiceTotal,$balance,'sent',$invoice_id,$book_id]
+                                );
+
+                                if(!$update){
+                                    throw new Exception("Failed to update invoice");
+                                }
+
+                                /*
+                                * Do not create another invoice transaction here.
+                                *
+                                * The existing invoice transaction and customer ledger
+                                * must be reconciled separately against the correct
+                                * invoice amount.
+                                */
+
+                                mysqli_commit($server);
+
+                                $_SESSION['success'] = "Invoice items saved successfully. Total: UGX ".number_format($invoiceTotal,2);
+
+                            }catch(Throwable $e){
+
+                                mysqli_rollback($server);
+
+                                error_log("Invoice Save Error: ".$e->getMessage());
+
+                                $_SESSION['error'] = "Invoice save failed: ".$e->getMessage();
+                            }
 
                             break;
+
                         case 'routeManagerEditSave':
                                 $book_id = request('book_id');
                                 $residence = request('residence');
@@ -3113,7 +2967,7 @@
                             }
 
 
-                        break;
+                            break;
                         case 'newPurchaseSave':
                                 $item_id = request('item_id');
                                 $type = request('purchase_type');
@@ -3161,7 +3015,6 @@
                             break;
                     }
                     break;
-
                 case 'editTransaction':
                         $type = request('type');
                         $id = request('id');
@@ -3489,32 +3342,94 @@
                                 break;
                         }
                     break;
+                
                 case 'DeleteTransaction':
-                        $type = request('type');
-                        $id = request('id');
-                        $transaction = transactionFind($id);
+                    $id = (int)request('id');
+                    $transaction = transactionFind($id);
+                    if(!$transaction){
+                        $response = ['status'=>false,'message'=>'Transaction not found'];
+                        break;
+                    }
 
-                        // track changes before deletion
-                        trackTransactionEdits($id,'delete');
-                        
-                        // delete transaction
-                        $sql = "DELETE FROM cashbook_transactions WHERE id = ?";
-                        prepared_statements($sql,'i',[$id]);
+                    try{
+                        mysqli_begin_transaction($server);
 
-                        switch($type)
-                        {
-                            case 'credit':
-                                // delete
-                                $sql = "DELETE FROM cashbook_cashins WHERE transaction_id = ?";
-                                prepared_statements($sql,'i',[$id]);
-                                break;
-                            case 'debit':
-                                $sql = "DELETE FROM cashbook_cashouts WHERE transaction_id = ?";
-                                prepared_statements($sql,'i',[$id]);
-                                break;
+                        $customer_id = (int)($transaction->customer_id ?? 0);
+                        $creditor_id = (int)($transaction->creditor_id ?? 0);
+                        $book_id = (int)$transaction->book_id;
+
+                        // Keep transaction history before deletion
+                        $tracked = trackTransactionEdits($id,'delete');
+                        if($tracked === false){
+                            throw new Exception('Failed to save transaction deletion history');
                         }
-                    break;
 
+                        // Remove customer ledger records
+                        $sql = "DELETE FROM cashbook_customer_ledger WHERE transaction_id = ? AND book_id = ?";
+                        $result = prepared_statements($sql,'ii',[$id,$book_id]);
+                        if($result === false) throw new Exception('Failed to delete customer ledger');
+
+                        // Remove creditor ledger records
+                        $sql = "DELETE FROM cashbook_creditor_ledger WHERE transaction_id = ? AND book_id = ?";
+                        $result = prepared_statements($sql,'ii',[$id,$book_id]);
+                        if($result === false) throw new Exception('Failed to delete creditor ledger');
+
+                        // Remove cash-in records
+                        $sql = "DELETE FROM cashbook_cashins WHERE transaction_id = ?";
+                        $result = prepared_statements($sql,'i',[$id]);
+                        if($result === false) throw new Exception('Failed to delete cash-in records');
+
+                        // Remove cash-out records
+                        $sql = "DELETE FROM cashbook_cashouts WHERE transaction_id = ?";
+                        $result = prepared_statements($sql,'i',[$id]);
+                        if($result === false) throw new Exception('Failed to delete cash-out records');
+
+                        // Remove stock movements linked to the transaction
+                        $sql = "DELETE FROM cashbook_stocks WHERE reference = ? AND book_id = ?";
+                        $result = prepared_statements($sql,'ii',[$id,$book_id]);
+                        if($result === false) throw new Exception('Failed to delete stock movements');
+
+                        // Purchase records must be handled here using their actual table and reference column.
+                        // Do not delete purchases by customer_id, creditor_id or item_id alone.
+
+                        // Delete the main transaction last
+                       $sql = "DELETE FROM cashbook_transactions WHERE id = ? AND book_id = ?";
+                        $result = prepared_statements($sql,'ii',[$id,$book_id]);
+
+                        if($result === false){
+                            throw new Exception('Delete query failed: '.mysqli_error($server));
+                        }
+
+                        $sql = "SELECT id FROM cashbook_transactions WHERE id = ? AND book_id = ?";
+                        $check = prepared_statements($sql,'ii',[$id,$book_id]);
+
+                        if($check === false){
+                            throw new Exception('Failed to verify transaction deletion');
+                        }
+
+                        // Rebuild affected customer and creditor running balances
+                        if($customer_id > 0){
+                            if(!rebuildCustomerLedgerAfterDelete($customer_id,$book_id)){
+                                throw new Exception('Failed to rebuild customer balances');
+                            }
+                        }
+
+                        if($creditor_id > 0){
+                            if(!rebuildCreditorLedgerAfterDelete($creditor_id,$book_id)){
+                                throw new Exception('Failed to rebuild creditor balances');
+                            }
+                        }
+
+                        mysqli_commit($server);
+                        $response = ['status'=>true,'message'=>'Transaction deleted successfully'];
+                        echo json_encode($response);
+
+                    }catch(Throwable $e){
+                        mysqli_rollback($server);
+                        error_log('DeleteTransaction: '.$e->getMessage());
+                        echo json_encode(['status'=>false,'message'=>'Error deleting transaction: '.$e->getMessage()]);
+                    }
+                    break;
                 case 'transactionFilter':
                     $book_id = (int)request('book_id');
                     $where = ['t.book_id=?']; $params = [$book_id]; $types = 'i';
@@ -3722,7 +3637,7 @@
                         </td>
                     </tr>
                     <?php endif;
-                break;
+                    break;
                 case 'findCustomerInvoices':
                     $id = request('customer_id');
                     // fetch invoices
@@ -7719,6 +7634,13 @@
 
                             exit;
                         }
+                    break;
+                case 'setEntryDate':
+                        $date = request('entry_date');
+                        $_SESSION['entry_date'] = $date ?? '';
+                    break;
+                case 'ResetsetEntryDate':
+                        unset($_SESSION['entry_date']);
                     break;
             }
         }

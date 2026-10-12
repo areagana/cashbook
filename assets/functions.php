@@ -14,103 +14,186 @@
     $scriptVersion = file_exists(__DIR__ . '/../assets/script.js')
         ? filemtime(__DIR__ . '/../assets/script.js')
         : time();
-    function prepared_statements($stat, $binds = '', $vars = [])
-    {
-        global $server;
+    // function prepared_statements($stat, $binds = '', $vars = [])
+    // {
+    //     global $server;
 
-        if (empty(trim($stat))) {
-            return false;
-        }
+    //     if (empty(trim($stat))) {
+    //         return false;
+    //     }
 
-        /*
-        =====================================
-        PREPARE
-        =====================================
-        */
+    //     /*
+    //     =====================================
+    //     PREPARE
+    //     =====================================
+    //     */
 
+    //     $stmt = $server->prepare($stat);
+
+    //     if (!$stmt) {
+    //         die("Prepare failed: " . $server->error);
+    //     }
+
+    //     /*
+    //     =====================================
+    //     BIND PARAMETERS
+    //     =====================================
+    //     */
+
+    //     if (!empty($binds) && !empty($vars)) {
+
+    //         if (strlen($binds) != count($vars)) {
+    //             die("Bind parameter count does not match variable count.");
+    //         }
+
+    //         $stmt->bind_param($binds, ...$vars);
+    //     }
+
+    //     /*
+    //     =====================================
+    //     EXECUTE
+    //     =====================================
+    //     */
+
+    //     if (!$stmt->execute()) {
+    //         die("Execute failed: " . $stmt->error);
+    //     }
+
+    //     /*
+    //     =====================================
+    //     DETECT QUERY TYPE
+    //     =====================================
+    //     */
+
+    //     $query = ltrim($stat);
+
+    //     /*
+    //     Remove SQL comments if they appear
+    //     before the actual query.
+    //     */
+
+    //     $query = preg_replace('/^(--[^\n]*\n|\/\*.*?\*\/\s*)+/s', '', $query);
+
+    //     $queryType = strtoupper(strtok(ltrim($query), " \t\r\n"));
+
+    //     /*
+    //     =====================================
+    //     SELECT
+    //     =====================================
+    //     */
+
+    //     if ($queryType === 'SELECT') {
+
+    //         $result = $stmt->get_result();
+
+    //         if ($result === false) {
+    //             die("Unable to get SELECT result: " . $stmt->error);
+    //         }
+
+    //         return $result;
+    //     }
+
+    //     /*
+    //     =====================================
+    //     INSERT
+    //     =====================================
+    //     */
+
+    //     if ($queryType === 'INSERT') {
+    //         return $stmt->insert_id;
+    //     }
+
+    //     /*
+    //     =====================================
+    //     UPDATE / DELETE
+    //     =====================================
+    //     */
+
+    //     return $stmt->affected_rows;
+    // }
+    
+function prepared_statements($stat,$binds='',$vars=[])
+{
+    global $server;
+
+    if(trim($stat)===''){
+        throw new InvalidArgumentException('SQL statement cannot be empty.');
+    }
+
+    if(!$server || $server->connect_errno){
+        throw new RuntimeException('Database connection is unavailable.');
+    }
+
+    $binds = (string)$binds;
+    $vars = array_values($vars);
+
+    if(strlen($binds)!==count($vars)){
+        throw new InvalidArgumentException(
+            'Parameter mismatch: '.strlen($binds).' types for '.count($vars).' values.'
+        );
+    }
+
+    if($binds!=='' && preg_match('/[^idsb]/',$binds)){
+        throw new InvalidArgumentException('Invalid parameter binding type.');
+    }
+
+    $stmt = null;
+
+    try{
         $stmt = $server->prepare($stat);
 
-        if (!$stmt) {
-            die("Prepare failed: " . $server->error);
+        if(!$stmt){
+            throw new RuntimeException('SQL prepare failed: '.$server->error);
         }
 
-        /*
-        =====================================
-        BIND PARAMETERS
-        =====================================
-        */
-
-        if (!empty($binds) && !empty($vars)) {
-
-            if (strlen($binds) != count($vars)) {
-                die("Bind parameter count does not match variable count.");
+        if($binds!==''){
+            if(!$stmt->bind_param($binds,...$vars)){
+                throw new RuntimeException('Parameter binding failed: '.$stmt->error);
             }
-
-            $stmt->bind_param($binds, ...$vars);
         }
 
-        /*
-        =====================================
-        EXECUTE
-        =====================================
-        */
-
-        if (!$stmt->execute()) {
-            die("Execute failed: " . $stmt->error);
+        if(!$stmt->execute()){
+            throw new RuntimeException('SQL execution failed: '.$stmt->error);
         }
-
-        /*
-        =====================================
-        DETECT QUERY TYPE
-        =====================================
-        */
 
         $query = ltrim($stat);
 
-        /*
-        Remove SQL comments if they appear
-        before the actual query.
-        */
+        // Remove leading SQL comments
+        $query = preg_replace(
+            '/\A(?:(?:--[^\r\n]*|#[^\r\n]*)(?:\r?\n|$)|\/\*.*?\*\/\s*)*/s',
+            '',
+            $query
+        );
 
-        $query = preg_replace('/^(--[^\n]*\n|\/\*.*?\*\/\s*)+/s', '', $query);
+        $queryType = strtoupper(strtok(ltrim($query)," \t\r\n"));
 
-        $queryType = strtoupper(strtok(ltrim($query), " \t\r\n"));
-
-        /*
-        =====================================
-        SELECT
-        =====================================
-        */
-
-        if ($queryType === 'SELECT') {
-
+        if(in_array($queryType,['SELECT','SHOW','DESCRIBE','EXPLAIN'],true)){
             $result = $stmt->get_result();
 
-            if ($result === false) {
-                die("Unable to get SELECT result: " . $stmt->error);
+            if($result===false){
+                throw new RuntimeException('Unable to retrieve query results: '.$stmt->error);
             }
 
             return $result;
         }
 
-        /*
-        =====================================
-        INSERT
-        =====================================
-        */
-
-        if ($queryType === 'INSERT') {
-            return $stmt->insert_id;
+        if($queryType==='INSERT' || $queryType==='REPLACE'){
+            return (int)$stmt->insert_id;
         }
 
-        /*
-        =====================================
-        UPDATE / DELETE
-        =====================================
-        */
+        // Successful UPDATE / DELETE / other write statements
+        return true;
 
-        return $stmt->affected_rows;
+    }catch(Throwable $e){
+        error_log('prepared_statements error: '.$e->getMessage());
+        throw $e;
+    }finally{
+        if($stmt instanceof mysqli_stmt){
+            $stmt->close();
+        }
     }
+}
+
 
     function redirect($link)
     {
@@ -123,10 +206,15 @@
 		return $previousUrl;
 	}
 
-    function request($data)
+    function request($key,$default=null)
     {
-        $request = (isset($_REQUEST)) ? e($_REQUEST[$data]) : e($_POST[$data]);
-        return  $request;
+        if(!is_string($key) || $key==='') return $default;
+
+        $value=$_POST[$key] ?? $_GET[$key] ?? $default;
+
+        if(is_string($value)) return trim($value);
+
+        return $value;
     }
 
     function e($var)
@@ -451,45 +539,123 @@
     }
 
     // customer ledger update function
-    function customerLedgerUpdate($customer_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type = false)
+    function customerLedgerUpdate($customer_id,$credit,$debit,$category_id,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$type=false)
     {
-        
-        // check if the transaction already exists to avoid incrementing balance twice
-        $check_sql = "SELECT * FROM cashbook_customer_ledger WHERE transaction_id = ?";
-        $check_res = prepared_statements($check_sql, 'i', [$trans_id]);
-        
-        if ($check_res->num_rows > 0) 
-        {
-            // Transaction already exists, update it
-            $balance = getCustomerBalanceBeforeTransaction($customer_id, $trans_id);
+        global $server;
 
-            // use balance to update the ledger
-            $newBalance = $balance + $debit - $credit;
-            // $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
+        $customer_id=(int)$customer_id;
+        $book_id=(int)$book_id;
+        $trans_id=(int)$trans_id;
+        $user_id=(int)$user_id;
+        $item_id=(int)$item_id;
+        $category_id=(int)$category_id;
+        $qty=(float)$qty;
+        $credit=round((float)$credit,2);
+        $debit=round((float)$debit,2);
+        $payment_mode=(int)$payment_mode;
+        $type=(string)$type;
 
-            $update_sql = "UPDATE cashbook_customer_ledger SET type = ?, customer_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ? WHERE transaction_id = ?";
-            prepared_statements($update_sql,'siddsiisiiidi',[$type,$customer_id,$credit,$debit,$details,$book_id,$payment_mode,$date,$user_id,$item_id,$qty,$newBalance,$trans_id]);
-
-            // update customer balance
-            saveCustomerBalance($customer_id,$newBalance,$date);
-            $_SESSION['success'] = $newBalance."deb -".$debit." Cred -".$credit;
-            $_SESSION['success'] = "Data updated successfully.";
-        
-        }else {
-            // get customer balance
-            $balance = getCustomerBalance($customer_id);
-           
-            // use balance to update the ledger
-            $newBalance = $balance + $debit - $credit;
-
-            // Insert new transaction
-            $stmt = "INSERT INTO  cashbook_customer_ledger SET type = ?, customer_id = ?, credit_amount = ?, debit_amount = ?, details = ?,book_id = ?,paymode_id = ?,transaction_id = ?,created_at=?,user_id=?,item_id = ?, quantity = ?,balance = ?";
-            prepared_statements($stmt,'siddsiiisiiid',[$type,$customer_id,$credit,$debit,$details,$book_id,$payment_mode,$trans_id,$date,$user_id,$item_id,$qty,$newBalance]);  
-
-            // update customer balance
-            saveCustomerBalance($customer_id,$newBalance,$date);
-            $_SESSION['success'] = "Data saved successfully.";
+        if($customer_id<=0 || $book_id<=0 || $trans_id<=0){
+            throw new Exception("Invalid customer ledger transaction");
         }
+
+        if($credit<0 || $debit<0){
+            throw new Exception("Customer ledger amounts cannot be negative");
+        }
+
+        if(!empty($date)){
+            $timestamp=strtotime($date);
+            if($timestamp===false){
+                throw new Exception("Invalid transaction date");
+            }
+            $date=date('Y-m-d H:i:s',$timestamp);
+        }else{
+            throw new Exception("Transaction date is required");
+        }
+
+        // Confirm customer belongs to this book.
+        $customer=prepared_statements(
+            "SELECT id FROM cashbook_customers WHERE id=? AND book_id=? LIMIT 1",
+            'ii',[$customer_id,$book_id]
+        );
+
+        if($customer===false || $customer->num_rows===0){
+            throw new Exception("Customer does not belong to this business book");
+        }
+
+        // Check for an existing ledger transaction.
+        $check=prepared_statements(
+            "SELECT id,customer_id FROM cashbook_customer_ledger
+            WHERE transaction_id=? AND book_id=? LIMIT 1",
+            'ii',[$trans_id,$book_id]
+        );
+
+        if($check===false){
+            throw new Exception("Failed to check customer ledger");
+        }
+
+        $old_customer_id=0;
+
+        if($check->num_rows>0){
+
+            $existing=$check->fetch_assoc();
+            $old_customer_id=(int)$existing['customer_id'];
+
+            // Update the existing entry, including customer changes.
+            $stmt="UPDATE cashbook_customer_ledger SET
+                customer_id=?,type=?,credit_amount=?,debit_amount=?,
+                details=?,paymode_id=NULLIF(?,0),created_at=?,
+                user_id=?,item_id=?,quantity=?
+                WHERE id=? AND book_id=?";
+
+            $result=prepared_statements(
+                $stmt,'isddsisidii',
+                [
+                    $customer_id,$type,$credit,$debit,$details,
+                    $payment_mode,$date,$user_id,$item_id,$qty,
+                    (int)$existing['id'],$book_id
+                ]
+            );
+
+        }else{
+
+            // Insert a new customer ledger entry.
+            $stmt="INSERT INTO cashbook_customer_ledger SET
+                type=?,customer_id=?,credit_amount=?,debit_amount=?,
+                details=?,book_id=?,paymode_id=NULLIF(?,0),
+                transaction_id=?,created_at=?,user_id=?,item_id=?,quantity=?";
+
+            $result=prepared_statements(
+                $stmt,'siddsiiisiid',
+                [
+                    $type,$customer_id,$credit,$debit,$details,
+                    $book_id,$payment_mode,$trans_id,$date,
+                    $user_id,$item_id,$qty
+                ]
+            );
+        }
+
+        if($result===false){
+            throw new Exception("Failed to save customer ledger");
+        }
+
+        // Recalculate previous customer if entry was transferred.
+        if($old_customer_id>0 && $old_customer_id!==$customer_id){
+            $rebuilt=rebuildCustomerLedgerBalances($old_customer_id,$book_id);
+
+            if($rebuilt===false){
+                throw new Exception("Failed to rebuild previous customer balance");
+            }
+        }
+
+        // Recalculate current customer's running balances.
+        $rebuilt=rebuildCustomerLedgerBalances($customer_id,$book_id);
+
+        if($rebuilt===false){
+            throw new Exception("Failed to rebuild customer ledger balances");
+        }
+
+        return true;
     }
 
     // customer ledger update function
@@ -2240,12 +2406,28 @@
     }
 
     // invoice find function
+    // function invoiceFind($id)
+    // {
+    //     $stmt = "SELECT ci.*,cc.name as customer,cc.contact FROM cashbook_invoices ci 
+    //                 LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id
+    //             WHERE ci.id = ?";
+    //     $res = prepared_statements($stmt,'i',[$id]);
+    //     return myObject($res->fetch_assoc());
+    // }
+    
     function invoiceFind($id)
     {
-        $stmt = "SELECT ci.*,cc.name as customer,cc.contact FROM cashbook_invoices ci 
-                    LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id
-                WHERE ci.id = ?";
-        $res = prepared_statements($stmt,'i',[$id]);
+        $stmt = "SELECT ci.*,cc.name AS customer,cc.contact
+                FROM cashbook_invoices ci
+                LEFT JOIN cashbook_customers cc
+                    ON cc.id=ci.customer_id
+                    AND cc.book_id=ci.book_id
+                WHERE ci.id=? LIMIT 1";
+
+        $res = prepared_statements($stmt,'i',[(int)$id]);
+
+        if(!$res || !$res->num_rows) return null;
+
         return myObject($res->fetch_assoc());
     }
 
@@ -2268,32 +2450,63 @@
         return myObject($res->fetch_assoc());
     }
 
-    function getCustomerBalance($customer_id)
-    {
-        global $server;
+    // function getCustomerBalance($customer_id)
+    // {
+    //     global $server;
 
-        $stmt = $server->prepare("
-            SELECT COALESCE(balance, 0) AS balance
-            FROM cashbook_customer_ledger
-            WHERE customer_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-        ");
+    //     $stmt = $server->prepare("
+    //         SELECT COALESCE(balance, 0) AS balance
+    //         FROM cashbook_customer_ledger
+    //         WHERE customer_id = ?
+    //         ORDER BY id DESC
+    //         LIMIT 1
+    //     ");
 
-        if (!$stmt) {
-            return 0;
-        }
+    //     if (!$stmt) {
+    //         return 0;
+    //     }
 
-        $stmt->bind_param('i', $customer_id);
-        $stmt->execute();
+    //     $stmt->bind_param('i', $customer_id);
+    //     $stmt->execute();
 
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
+    //     $result = $stmt->get_result();
+    //     $row = $result->fetch_assoc();
 
+    //     $stmt->close();
+
+    //     return $row ? (float)$row['balance'] : 0;
+    // }
+    
+function getCustomerBalance($customer_id)
+{
+    global $server;
+
+    $customer_id = (int)$customer_id;
+
+    $stmt = $server->prepare("
+        SELECT COALESCE(balance,0) AS balance
+        FROM cashbook_customer_balances
+        WHERE customer_id=?
+        LIMIT 1
+    ");
+
+    if(!$stmt) throw new Exception($server->error);
+
+    $stmt->bind_param('i',$customer_id);
+
+    if(!$stmt->execute()){
+        $error = $stmt->error;
         $stmt->close();
-
-        return $row ? (float)$row['balance'] : 0;
+        throw new Exception($error);
     }
+
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $stmt->close();
+
+    return $row ? (float)$row['balance'] : 0;
+}
+
 
     function getCreditorBalance($creditor_id)
     {
@@ -2376,22 +2589,66 @@
         return $row ? (float)$row['balance'] : 0;
     }
 
-    function insertCustomerLedgerInvoice($customer_id, $type,$amount,$invoice_id,$trans_id,$book_id,$invoice_no)
+    // function insertCustomerLedgerInvoice($customer_id, $type,$amount,$invoice_id,$trans_id,$book_id,$invoice_no)
+    // {
+    //     global $server;
+
+    //     $currentBalance = getCustomerBalance($customer_id);
+    //     $invoice = invoiceFind($invoice_id);
+    //     $user_id = auth()->id;
+    //     // get new balance
+    //     $newBalance = $currentBalance + $amount;
+
+    //     $stmt = $server->prepare("INSERT INTO cashbook_customer_ledger(customer_id,type,debit_amount,balance,invoice_id,invoice_amount,transaction_id,book_id,user_id,details,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+    //     $stmt->bind_param('isddidiiiss',$customer_id,$type,$amount,$newBalance,$invoice_id,$amount,$trans_id,$book_id,$user_id,$invoice_no,$invoice->created_at);
+
+    //     // update customer balance
+    //     saveCustomerBalance($customer_id,$newBalance,$invoice->created_at); 
+    //     return $stmt->execute();
+    // }
+    
+    function insertCustomerLedgerInvoice($customer_id,$type,$amount,$invoice_id,$trans_id,$book_id,$invoice_no)
     {
         global $server;
 
-        $currentBalance = getCustomerBalance($customer_id);
+        $customer_id = (int)$customer_id;
+        $invoice_id = (int)$invoice_id;
+        $trans_id = (int)$trans_id;
+        $book_id = (int)$book_id;
+        $user_id = (int)auth()->id;
+        $amount = round((float)$amount,2);
+
+        if($amount <= 0) return false;
+
         $invoice = invoiceFind($invoice_id);
-        $user_id = auth()->id;
-        // get new balance
-        $newBalance = $currentBalance + $amount;
+        if(!$invoice || (int)$invoice->book_id !== $book_id) return false;
 
-        $stmt = $server->prepare("INSERT INTO cashbook_customer_ledger(customer_id,type,debit_amount,balance,invoice_id,invoice_amount,transaction_id,book_id,user_id,details,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param('isddidiiiss',$customer_id,$type,$amount,$newBalance,$invoice_id,$amount,$trans_id,$book_id,$user_id,$invoice_no,$invoice->created_at);
+        $currentBalance = (float)getCustomerBalance($customer_id);
+        $newBalance = round($currentBalance+$amount,2);
 
-        // update customer balance
-        saveCustomerBalance($customer_id,$newBalance,$invoice->created_at); 
-        return $stmt->execute();
+        $stmt = $server->prepare("
+            INSERT INTO cashbook_customer_ledger
+            (customer_id,type,debit_amount,balance,invoice_id,
+            invoice_amount,transaction_id,book_id,user_id,details,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        ");
+
+        if(!$stmt) return false;
+
+        $date = $invoice->created_at;
+
+        $stmt->bind_param(
+            'isddidiiiss',
+            $customer_id,$type,$amount,$newBalance,$invoice_id,
+            $amount,$trans_id,$book_id,$user_id,$invoice_no,$date
+        );
+
+        $saved = $stmt->execute();
+        $stmt->close();
+
+        if(!$saved) return false;
+
+        return (bool)saveCustomerBalance($customer_id,$newBalance,$date);
     }
 
     // update customer balances table
@@ -3344,6 +3601,93 @@
         return $balance;
     }
 
+    
+    function rebuildCustomerLedgerBalances($customer_id,$book_id)
+    {
+        global $server;
+
+        $customer_id=(int)$customer_id;
+        $book_id=(int)$book_id;
+
+        /*
+        * Rebuild running balances from debit and credit values.
+        * Uses ledger ID order, consistent with append-only entries.
+        */
+
+        $stmt=$server->prepare("
+            SELECT id,debit_amount,credit_amount
+            FROM cashbook_customer_ledger
+            WHERE customer_id=? AND book_id=?
+            ORDER BY id ASC
+        ");
+
+        if(!$stmt) throw new Exception($server->error);
+
+        $stmt->bind_param('ii',$customer_id,$book_id);
+
+        if(!$stmt->execute()){
+            $error=$stmt->error;
+            $stmt->close();
+            throw new Exception($error);
+        }
+
+        $rows=$stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        $balance=0;
+
+        $update=$server->prepare("
+            UPDATE cashbook_customer_ledger
+            SET balance=?
+            WHERE id=? AND customer_id=? AND book_id=?
+        ");
+
+        if(!$update) throw new Exception($server->error);
+
+        foreach($rows as $row){
+
+            $balance=round(
+                $balance
+                +(float)$row['debit_amount']
+                -(float)$row['credit_amount'],
+                2
+            );
+
+            $ledger_id=(int)$row['id'];
+
+            $update->bind_param(
+                'diii',
+                $balance,$ledger_id,$customer_id,$book_id
+            );
+
+            if(!$update->execute()){
+                $error=$update->error;
+                $update->close();
+                throw new Exception($error);
+            }
+        }
+
+        $update->close();
+
+        $customer=customerFind($customer_id);
+
+        if(!$customer || (int)$customer->book_id!==$book_id){
+            throw new Exception("Customer does not belong to this book");
+        }
+
+        $saved=saveCustomerBalance(
+            $customer_id,
+            $balance,
+            date('Y-m-d H:i:s')
+        );
+
+        if(!$saved){
+            throw new Exception("Failed to save customer balance");
+        }
+
+        return $balance;
+    }
+
     /*
     |--------------------------------------------------------------------------
     | CASHBOOK REPORT FILTER BUILDER
@@ -3498,4 +3842,116 @@
             'params' => $params
         ];
     }
-?>
+
+    // delete route function
+    
+    function deleteRouteById($routeId)
+    {
+        global $server;
+
+        $routeId = (int)$routeId;
+        if($routeId <= 0) return false;
+
+        try {
+            mysqli_begin_transaction($server);
+
+            // Check whether the route exists
+            $check = prepared_statements(
+                "SELECT id FROM cashbook_routes WHERE id = ? FOR UPDATE",
+                'i',
+                [$routeId]
+            );
+
+            if(!$check || $check->num_rows == 0){
+                mysqli_rollback($server);
+                return false;
+            }
+
+            // Detach customers without deleting their records
+            $detach = prepared_statements(
+                "UPDATE cashbook_customers SET route_id = NULL WHERE route_id = ?",
+                'i',
+                [$routeId]
+            );
+
+            if($detach === false){
+                throw new Exception("Failed to detach customers");
+            }
+
+            // Delete the route
+            $delete = prepared_statements(
+                "DELETE FROM cashbook_routes WHERE id = ?",
+                'i',
+                [$routeId]
+            );
+
+            if($delete === false){
+                throw new Exception("Failed to delete route");
+            }
+
+            mysqli_commit($server);
+            return true;
+
+        }catch(Throwable $e){
+            mysqli_rollback($server);
+            error_log("Route deletion error: ".$e->getMessage());
+            return false;
+        }
+    }
+
+    
+function rebuildCustomerLedgerAfterDelete($customer_id,$book_id)
+{
+    global $server;
+
+    $customer_id = (int)$customer_id;
+    $book_id = (int)$book_id;
+    if($customer_id <= 0 || $book_id <= 0) return false;
+
+    try{
+        $sql = "SELECT id,credit_amount,debit_amount,created_at
+                FROM cashbook_customer_ledger
+                WHERE customer_id = ? AND book_id = ?
+                ORDER BY created_at ASC,id ASC";
+        $result = prepared_statements($sql,'ii',[$customer_id,$book_id]);
+
+        if($result === false) return false;
+
+        $balance = 0;
+        $lastDate = date('Y-m-d');
+
+        while($row = $result->fetch_assoc()){
+            $balance += (float)$row['debit_amount'] - (float)$row['credit_amount'];
+            $lastDate = $row['created_at'];
+
+            $sql = "UPDATE cashbook_customer_ledger SET balance = ? WHERE id = ?";
+            $update = prepared_statements($sql,'di',[$balance,$row['id']]);
+
+            if($update === false) return false;
+        }
+
+        $sql = "SELECT customer_id FROM cashbook_customer_balances
+                WHERE customer_id = ? AND book_id = ?";
+        $check = prepared_statements($sql,'ii',[$customer_id,$book_id]);
+
+        if($check === false) return false;
+
+        if($check->num_rows > 0){
+            $sql = "UPDATE cashbook_customer_balances
+                    SET balance = ?,date = ?
+                    WHERE customer_id = ? AND book_id = ?";
+            $saved = prepared_statements($sql,'dsii',[$balance,$lastDate,$customer_id,$book_id]);
+        }else{
+            $sql = "INSERT INTO cashbook_customer_balances
+                    (customer_id,book_id,balance,date) VALUES (?,?,?,?)";
+            $saved = prepared_statements($sql,'iids',[$customer_id,$book_id,$balance,$lastDate]);
+        }
+
+        return $saved !== false;
+
+    }catch(Throwable $e){
+        error_log('Customer ledger rebuild: '.$e->getMessage());
+        return false;
+    }
+}
+

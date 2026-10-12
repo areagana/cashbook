@@ -6,6 +6,9 @@
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
     ?>
+            <script>
+                window.KASHHUB_BOOK_ID = <?=json_encode((int)$book->id);?>;
+            </script>
             <style>
                 .invoice-summary-card {
                     border-radius: 8px;
@@ -41,28 +44,16 @@
                 | INVOICE DATA
                 |--------------------------------------------------------------------------
                 */
-                $sql = "
-                    SELECT
+                $sql = "SELECT
                         ci.*,
                         cc.name AS customer,
                         COALESCE(SUM(cir.total),0) AS returned,
-                        (
-                            COALESCE(ci.balance,0) -
-                            COALESCE(SUM(cir.total),0)
-                        ) AS newBalance
-
+                        COALESCE(ci.balance,0) AS newBalance
                     FROM cashbook_invoices ci
-
-                    LEFT JOIN cashbook_customers cc
-                        ON cc.id = ci.customer_id
-
-                    LEFT JOIN cashbook_invoice_returns cir
-                        ON cir.invoice_id = ci.id
-
+                    LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id
+                    LEFT JOIN cashbook_invoice_returns cir ON cir.invoice_id = ci.id
                     WHERE ci.book_id = ?
-
                     GROUP BY ci.id
-
                     ORDER BY ci.invoice_date DESC
                 ";
 
@@ -685,7 +676,7 @@
         <?php
             pageFooter();
         ?>
-            <script>
+            <!-- <script>
                 // click button to show the modal
                 $(document).on('click','.btn-click',function(){
                     var title = $(this).data('title');
@@ -1047,7 +1038,6 @@
                                     $(this).remove();
                                 });
                                 // recalculate the total for the invoice
-                                console.log(res);
                                 recalculateInvoiceTotals();
                             },
                             error:function(err){
@@ -1059,6 +1049,183 @@
                     });
                 });
 
+            </script> -->
+            <script>
+                /* KashHub Invoice Management - updated 11 October 2026
+                Requires jQuery and existing PHP endpoints. Load once after jQuery.
+                If embedding in PHP, set window.KASHHUB_BOOK_ID to the decrypted book ID first.
+                */
+                (function(window,$){
+                'use strict';
+                if(!$) throw new Error('KashHub invoices require jQuery');
+                if(window.__kashhubInvoiceScriptLoaded) return;
+                window.__kashhubInvoiceScriptLoaded=true;
+                const URLS={side:'../books/save/index.php',form:'../books/save/index.php',invoice:'save/index.php'};
+                const $doc=$(document);
+                const fmt=n=>Number(n||0).toLocaleString('en-UG',{minimumFractionDigits:2,maximumFractionDigits:2});
+                const num=v=>{const n=Number(String(v??'').replace(/,/g,''));return Number.isFinite(n)?n:0;};
+                const round=n=>Math.round((n+Number.EPSILON)*100)/100;
+                function spin(on){try{if(window.xdialog){if(on)xdialog.startSpin();else xdialog.stopSpin();}}catch(e){console.warn(e);}}
+                function alertUser(msg){if(window.xdialog&&typeof xdialog.info==='function')xdialog.info(msg);else window.alert(msg);}
+                function confirmUser(msg,fn){if(window.xdialog&&typeof xdialog.confirm==='function')xdialog.confirm(msg,fn);else if(window.confirm(msg))fn();}
+                function errorMessage(xhr){return (xhr&&xhr.responseJSON&&xhr.responseJSON.message)||'Request failed. Please try again.';}
+                function isFailure(res){if(res&&typeof res==='object')return res.success===false||res.status===false||res.status==='error'||res.error===true;const s=String(res??'').trim();if(!s)return false;try{const o=JSON.parse(s);return isFailure(o);}catch(e){}return /^(error|failed|failure)\b/i.test(s);}
+                function getInvoiceForm(){
+                    return $('#newInvoiceItemForm');
+                }
+
+                
+                function recalculateInvoiceTotals(){
+                    let savedTotal = 0;
+                    let newTotal = 0;
+
+                    // Existing invoice items already saved in the database
+                    $('#newInvoiceItemForm .saved-item-row').each(function(){
+                        savedTotal += parseFloat($(this).attr('data-total')) || 0;
+                    });
+
+                    // Newly added invoice items
+                    $('#newInvoiceItemForm .newItemRow').each(function(){
+                        const row = $(this);
+                        const qty = parseFloat(row.find('.qtyClass').val()) || 0;
+                        const rate = parseFloat(row.find('.rateClass').val()) || 0;
+                        const amount = Math.round((qty * rate + Number.EPSILON) * 100) / 100;
+
+                        row.find('.amountClass').val(amount.toFixed(2));
+                        newTotal += amount;
+                    });
+
+                    const grandTotal = Math.round((savedTotal + newTotal + Number.EPSILON) * 100) / 100;
+
+                    $('#newInvoiceItemForm #invoice_total').text(
+                        grandTotal.toLocaleString('en-UG',{
+                            minimumFractionDigits:2,
+                            maximumFractionDigits:2
+                        })
+                    );
+
+                    $('#newInvoiceItemForm .InvoiceAmount').val(grandTotal.toFixed(2));
+
+                    return grandTotal;
+                }
+
+                window.recalculateInvoiceTotals=recalculateInvoiceTotals;
+                window.calculateInvoiceTotal=recalculateInvoiceTotals;
+                window.refreshInvoiceTotals=recalculateInvoiceTotals;
+
+                function recalculateInvoiceTotalsReturned(){
+                    const $form=$('#invoiceReturnsForm');const $scope=$form.length?$form:$('.central-modal-content');
+                    let total=0;$scope.find('.returnedAmount').each(function(){total+=num($(this).val());});total=round(total);
+                    $scope.find('#returnedInvoiceTotal').text(fmt(total));$scope.find('input.returnedInvoiceTotal').val(total.toFixed(2));
+                    return total;
+                }
+                window.recalculateInvoiceTotalsReturned=recalculateInvoiceTotalsReturned;
+                function submitSingleForm(formId,backendUrl){
+                    const form=document.getElementById(formId);if(!form){console.error('Form not found:',formId);return;}
+                    if(form.dataset.submitting==='1')return;
+
+                    if(typeof form.reportValidity==='function'&&!form.reportValidity())return;
+
+                    if(formId==='newInvoiceItemForm')
+                        recalculateInvoiceTotals();
+                    form.dataset.submitting='1';
+                    const $buttons=$(form).find(':submit').add($('[form="'+formId+'"]:submit'));
+                    $buttons.prop('disabled',true);spin(true);
+                    $.ajax(
+                        {
+                            url:backendUrl,
+                            type:'POST',
+                            data:new FormData(form),
+                            processData:false,
+                            contentType:false,
+                            success:function(res)
+                            {
+                            if(isFailure(res)){
+                                alertUser((res&&res.message)||'The server did not save the form.');
+                                return;
+                            }
+                            window.location.reload();
+                            },
+                    error:function(xhr){console.error('Form save error:',xhr);alertUser(errorMessage(xhr));},complete:function(){spin(false);form.dataset.submitting='0';$buttons.prop('disabled',false);}});
+                }
+                window.submitSingleForm=submitSingleForm;
+                function fetchData(sect){
+                        if(!sect)return;
+                        const bookId=window.KASHHUB_BOOK_ID||'';
+                        $.ajax({
+                            url:URLS.side,
+                            type:'GET',
+                            data:{
+                                section:sect,
+                                book_id:bookId,
+                                action:'fetchForm'
+                            },
+                            beforeSend:function(){
+                            $('.side-modal-content').html('<h3 class="text-center">Loading...</h3>');
+                            },
+                            success:function(res){
+                            $('.side-modal-content').html(res);
+                            },
+                            error:function(){
+                            $('.side-modal-content').html('<h3 class="text-center">Error loading data!</h3>');
+                            }
+                        });
+                }
+                window.fetchData=fetchData;
+                function loadModal(action,id,title){
+                $('#central-modal').show();$('.central-modal-title').text(title);
+                $.ajax({url:URLS.invoice,type:'GET',data:{invoice_id:id,action:action},
+                beforeSend:function(){$('.central-modal-content').html('<h3 class="text-center">Loading...</h3>');},
+                success:function(res){$('.central-modal-content').html(res);if(action==='Invoice-details')recalculateInvoiceTotals();if(action==='view-returns')recalculateInvoiceTotalsReturned();},
+                error:function(){$('.central-modal-content').html('<h3 class="text-center">Error loading data!</h3>');}});
+                }
+                function addInvoiceItem(){
+                const $body=getInvoiceForm().find('.invoiceItemsTbody');if(!$body.length)return;
+                const $button=$('.add-invoice-item');$button.prop('disabled',true);
+                $.ajax({url:URLS.invoice,type:'GET',data:{action:'AddInvoiceItem'},success:function(res){
+                const $row=$(res).filter('tr').add($(res).find('tr'));
+                if(!$row.length){alertUser('No invoice item row was returned.');return;}
+                $body.append($row);recalculateInvoiceTotals();
+                },error:function(xhr){alertUser(errorMessage(xhr));},complete:function(){$button.prop('disabled',false);}});
+                }
+                $doc.on('click','.btn-click',function(e){e.preventDefault();$('.side-modal-tall').show();$('.side-modal-title').text(String($(this).data('title')||'').toUpperCase());fetchData($(this).data('section'));});
+                $doc.on('click','.add-invoice-item',function(e){e.preventDefault();addInvoiceItem();});
+                $doc.on('click','.create-detail',function(e){e.preventDefault();loadModal('Invoice-details',$(this).data('id'),String($(this).data('title')||'Invoice')+' Transactions');});
+                $doc.on('click','.view-invoice',function(e){e.preventDefault();loadModal('view-invoice',$(this).data('id'),'VIEW INVOICE DETAILS');});
+                $doc.on('click','.invoice-return',function(e){e.preventDefault();loadModal('view-returns',$(this).data('id'),'RECORD INVOICE RETURNS');});
+                $doc.on('input change','#newInvoiceItemForm .rateClass,#newInvoiceItemForm .qtyClass',recalculateInvoiceTotals);
+                $doc.on('click','#newInvoiceItemForm .remove-row',function(e){e.preventDefault();const $row=$(this).closest('tr');confirmUser('Remove this unsaved item?',function(){$row.remove();recalculateInvoiceTotals();});});
+                $doc.on('submit','#newInvoiceForm,#newInvoiceItemForm,#invoiceReturnsForm',function(e){e.preventDefault();const id=this.id;submitSingleForm(id,id==='invoiceReturnsForm'?URLS.invoice:URLS.form);});
+                // Supports buttons outside the form (form="...") and buttons inside the form.
+                $doc.on('click','.saveInvoice,.saveInvoiceItems,.saveReturns',function(e){
+                e.preventDefault();const id=$(this).hasClass('saveInvoiceItems')?'newInvoiceItemForm':$(this).hasClass('saveReturns')?'invoiceReturnsForm':'newInvoiceForm';
+                const form=document.getElementById(id);if(form){if(typeof form.requestSubmit==='function')form.requestSubmit();else $(form).trigger('submit');}
+                });
+                $doc.on('input change','.qty_returned',function(){
+                const $row=$(this).closest('tr');const issued=Math.max(0,num($row.find('.issuedQty').val()));let qty=Math.max(0,num($(this).val()));
+                if(qty>issued){alertUser('Returned quantity cannot exceed issued quantity');qty=issued;$(this).val(issued);}
+                const rate=Math.max(0,num($row.find('.itemRate').val()));const amount=round(qty*rate);
+                $row.find('.rowTotal').text(fmt(amount));$row.find('.returnedAmount').val(amount.toFixed(2));recalculateInvoiceTotalsReturned();
+                });
+                $doc.on('click','.delete-invoice',function(e){
+                e.preventDefault();const id=$(this).data('id');confirmUser('Confirm to delete this invoice?',function(){
+                spin(true);$.ajax({url:URLS.invoice,type:'POST',data:{action:'deleteInvoice',id:id},success:function(res){
+                    if(isFailure(res)){alertUser('Invoice deletion was rejected.');return;}alertUser('Invoice deleted successfully');window.location.reload();
+                },error:function(xhr){alertUser(errorMessage(xhr));},complete:function(){spin(false);}});
+                });
+                });
+                $doc.on('click','.remove-invoice-item',function(e){
+                e.preventDefault();const $button=$(this),id=$button.data('id'),$row=$button.closest('tr');
+                confirmUser('Continue to remove this item?',function(){
+                $button.prop('disabled',true);spin(true);
+                $.ajax({url:URLS.invoice,type:'POST',data:{action:'removeInvoiceItem',id:id},success:function(res){
+                    if(isFailure(res)){alertUser('Item deletion was rejected.');return;}
+                    $row.remove();recalculateInvoiceTotals();
+                },error:function(xhr){alertUser(errorMessage(xhr));},complete:function(){spin(false);$button.prop('disabled',false);}});
+                });
+                });
+                $(function(){recalculateInvoiceTotals();recalculateInvoiceTotalsReturned();});
+                })(window,window.jQuery);
             </script>
         <?php
     }else{

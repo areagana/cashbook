@@ -2002,21 +2002,9 @@ if($res)
     |
     */
 
-    $(document).on(
-        'click',
-        '.saveRoute',
-        function()
-        {
-
-            submitSingleForm(
-                'newRouteForm',
-                '../books/save/index.php'
-            );
-
-        }
-    );
-
-
+    $(document).on('click','.saveRoute',function(){
+        submitSingleForm('newRouteForm','../books/save/index.php');
+    });
 
     /*
     |--------------------------------------------------------------------------
@@ -2247,4 +2235,29 @@ if($res)
 
         }
     );
+
+    // delete route
+    $(document).on('click','.delete-route', function(){
+        var routeId = $(this).data('id'); 
+        xdialog.confirm('Are you sure you want to delete this route? This action cannot be undone.',function(){
+            $.ajax({
+                url: 'save/index.php',
+                type: 'POST',
+                data: {
+                    action: 'deleteRoute',
+                    route_id: routeId
+                },
+                success: function(response)
+                {
+                    xdialog.alert('Route deleted successfully.');
+                    window.location.reload();
+                },
+                error: function(xhr, status, error)
+                {
+                    console.error('Error deleting route:', error);
+                    alert('An error occurred while deleting the route. Please try again.');
+                }
+            });
+        });
+    });
 </script>

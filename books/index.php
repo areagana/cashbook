@@ -33,13 +33,13 @@
                 body{background:var(--kh-bg)!important;color:var(--kh-text)}
                 .kh-book-page{max-width:1450px;margin:auto;padding:22px 15px 45px}.kh-book-page *{box-sizing:border-box}
                 .kh-header,.kh-quick,.main-display{background:#fff;border:1px solid var(--kh-border)!important;border-radius:0!important}
-                .kh-header{padding:20px 22px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:18px}.kh-title{display:flex;align-items:center;gap:13px;min-width:0}.kh-business-logo{width:52px;height:52px;flex:0 0 52px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--kh-border);overflow:hidden}.kh-business-logo img{width:100%;height:100%;object-fit:contain;padding:4px;display:block}.kh-title h2{margin:0;font-size:21px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kh-title p{margin:4px 0 0;color:var(--kh-muted);font-size:11px}.kh-header-actions,.kh-actions{display:flex;gap:7px;flex-wrap:wrap}.kh-header .btn,.kh-quick .btn,.kh-cashbar .btn{border-radius:0!important;font-size:12px;font-weight:600;min-height:38px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
-                .kh-quick{padding:14px 18px;margin-bottom:14px}.kh-quick-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.kh-quick-head strong{font-size:13px}.kh-quick-head span{font-size:11px;color:var(--kh-muted)}
-                .main-display{padding:0!important;overflow:visible}.kh-cashbar{padding:16px 18px;border-bottom:1px solid var(--kh-border);display:flex;align-items:center;justify-content:space-between;gap:12px}.kh-cashbar h5{margin:0;font-size:15px;font-weight:700}.kh-cashbar small{font-size:11px;color:var(--kh-muted)}.kh-cash-actions{display:flex;gap:7px;flex-wrap:wrap}.kh-cash-actions .btn{min-width:105px}
+                .kh-header{padding:20px 22px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:18px}.kh-title{display:flex;align-items:center;gap:13px;min-width:0}.kh-business-logo{width:52px;height:52px;flex:0 0 52px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--kh-border);overflow:hidden}.kh-business-logo img{width:100%;height:100%;object-fit:contain;padding:4px;display:block}.kh-title h2{margin:0;font-size:21px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kh-title p{margin:4px 0 0;color:var(--kh-muted);font-size:16px}.kh-header-actions,.kh-actions{display:flex;gap:7px;flex-wrap:wrap}.kh-header .btn,.kh-quick .btn,.kh-cashbar .btn{border-radius:0!important;font-size:12px;font-weight:600;min-height:38px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+                .kh-quick{padding:14px 18px;margin-bottom:14px}.kh-quick-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.kh-quick-head strong{font-size:13px}.kh-quick-head span{font-size:18px;color:var(--kh-muted)}
+                .main-display{padding:0!important;overflow:visible}.kh-cashbar{padding:16px 18px;border-bottom:1px solid var(--kh-border);display:flex;align-items:center;justify-content:space-between;gap:12px}.kh-cashbar h5{margin:0;font-size:15px;font-weight:700}.kh-cashbar small{font-size:18px;color:var(--kh-muted)}.kh-cash-actions{display:flex;gap:7px;flex-wrap:wrap}.kh-cash-actions .btn{min-width:105px}
                 .kh-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:16px 18px;border-bottom:1px solid var(--kh-border)}.book-dash{position:relative;margin:0!important;padding:15px!important;min-height:100px;background:#fff;border:1px solid var(--kh-border)!important;border-radius:0!important}.book-dash:before{content:'';position:absolute;left:-1px;top:-1px;bottom:-1px;width:4px;background:#64748b}.book-dash.in:before{background:var(--kh-success)}.book-dash.out:before{background:var(--kh-danger)}.book-dash.balance:before{background:var(--kh-primary)}.kh-stat-icon{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:var(--kh-soft);margin-bottom:10px;color:#64748b}.in .kh-stat-icon{background:#f0fdf4;color:var(--kh-success)}.out .kh-stat-icon{background:#fef2f2;color:var(--kh-danger)}.balance .kh-stat-icon{background:#eff6ff;color:var(--kh-primary)}.kh-stat-label{font-size:10px;font-weight:700;color:var(--kh-muted);text-transform:uppercase;letter-spacing:.4px}.kh-stat-value{font-size:19px;font-weight:700;margin-top:3px;color:var(--kh-text)}
-                .transaction-report-toolbar{padding:18px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px}.transaction-report-toolbar h5{font-size:15px;font-weight:700}.transaction-report-toolbar small{font-size:11px}.transaction-report-actions{display:flex;gap:7px}.transaction-report-actions .btn{border-radius:0!important;font-size:11px;font-weight:700;min-height:35px}.filter-active-count{display:inline-flex;min-width:18px;height:18px;align-items:center;justify-content:center;margin-left:4px;background:#fff;color:var(--kh-primary);font-size:10px}
-                .transaction-table-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--kh-border);background:#fff}.transaction-table-wrapper table{min-width:900px;margin:0!important;font-size:12px}.transaction-table-wrapper thead th{background:#f8fafc;color:#475569;border-top:0!important;border-bottom:1px solid var(--kh-border)!important;padding:10px!important;font-size:10px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}.transaction-table-wrapper tbody td{padding:10px!important;vertical-align:middle!important;border-top:1px solid #f0f2f5!important}.transaction-table-wrapper tbody tr:hover{background:#f8fbff!important}.transaction-table-wrapper .btn{border-radius:0!important}.mobile-table-hint{display:none;font-size:11px;color:var(--kh-muted);background:#f8fafc;border:1px solid var(--kh-border);border-bottom:0;padding:8px 10px}
-                .transaction-filter-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1040;opacity:0;visibility:hidden;transition:.2s}.transaction-filter-overlay.open{opacity:1;visibility:visible}.transaction-filter-drawer{position:fixed;right:-390px;top:0;width:370px;max-width:92vw;height:100vh;background:#fff;z-index:1050;display:flex;flex-direction:column;box-shadow:-10px 0 30px rgba(15,23,42,.12);transition:right .25s}.transaction-filter-drawer.open{right:0}.filter-drawer-header{min-height:74px;padding:17px 19px;border-bottom:1px solid var(--kh-border);display:flex;justify-content:space-between;align-items:center}.filter-drawer-header h5{margin:0;font-size:15px;font-weight:700}.filter-drawer-header small{font-size:11px;color:var(--kh-muted)}.filter-drawer-close{width:34px;height:34px;border:1px solid var(--kh-border);background:#fff;font-size:22px}.filter-drawer-body{padding:19px;overflow-y:auto;flex:1}.filter-group{margin-bottom:16px}.filter-group label{display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:6px}.filter-group .form-control{border-radius:0!important;height:41px;border:1px solid #d8dde5;box-shadow:none!important;font-size:13px}.filter-group .form-control:focus{border-color:var(--kh-primary)}.filter-drawer-footer{border-top:1px solid var(--kh-border);padding:14px 19px;display:flex;justify-content:space-between;gap:8px}.filter-drawer-footer .btn{border-radius:0!important;min-height:38px;font-size:12px;font-weight:600}body.filter-drawer-open{overflow:hidden}
+                .transaction-report-toolbar{padding:18px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px}.transaction-report-toolbar h5{font-size:15px;font-weight:700}.transaction-report-toolbar small{font-size:18px}.transaction-report-actions{display:flex;gap:7px}.transaction-report-actions .btn{border-radius:0!important;font-size:18px;font-weight:700;min-height:35px}.filter-active-count{display:inline-flex;min-width:18px;height:18px;align-items:center;justify-content:center;margin-left:4px;background:#fff;color:var(--kh-primary);font-size:10px}
+                .transaction-table-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--kh-border);background:#fff}.transaction-table-wrapper table{min-width:900px;margin:0!important;font-size:18px}.transaction-table-wrapper thead th{background:#f8fafc;color:#475569;border-top:0!important;border-bottom:1px solid var(--kh-border)!important;padding:10px!important;font-size:10px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}.transaction-table-wrapper tbody td{padding:10px!important;vertical-align:middle!important;border-top:1px solid #f0f2f5!important}.transaction-table-wrapper tbody tr:hover{background:#f8fbff!important}.transaction-table-wrapper .btn{border-radius:0!important}.mobile-table-hint{display:none;font-size:18px;color:var(--kh-muted);background:#f8fafc;border:1px solid var(--kh-border);border-bottom:0;padding:8px 10px}
+                .transaction-filter-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1040;opacity:0;visibility:hidden;transition:.2s}.transaction-filter-overlay.open{opacity:1;visibility:visible}.transaction-filter-drawer{position:fixed;right:-390px;top:0;width:370px;max-width:92vw;height:100vh;background:#fff;z-index:1050;display:flex;flex-direction:column;box-shadow:-10px 0 30px rgba(15,23,42,.12);transition:right .25s}.transaction-filter-drawer.open{right:0}.filter-drawer-header{min-height:74px;padding:17px 19px;border-bottom:1px solid var(--kh-border);display:flex;justify-content:space-between;align-items:center}.filter-drawer-header h5{margin:0;font-size:15px;font-weight:700}.filter-drawer-header small{font-size:18px;color:var(--kh-muted)}.filter-drawer-close{width:34px;height:34px;border:1px solid var(--kh-border);background:#fff;font-size:22px}.filter-drawer-body{padding:19px;overflow-y:auto;flex:1}.filter-group{margin-bottom:16px}.filter-group label{display:block;font-size:18px;font-weight:700;color:#374151;margin-bottom:6px}.filter-group .form-control{border-radius:0!important;height:41px;border:1px solid #d8dde5;box-shadow:none!important;font-size:13px}.filter-group .form-control:focus{border-color:var(--kh-primary)}.filter-drawer-footer{border-top:1px solid var(--kh-border);padding:14px 19px;display:flex;justify-content:space-between;gap:8px}.filter-drawer-footer .btn{border-radius:0!important;min-height:38px;font-size:12px;font-weight:600}body.filter-drawer-open{overflow:hidden}
                 .side-modal-tall{position:fixed!important;top:0!important;right:0!important;height:100vh!important;width:460px!important;max-width:95vw!important;z-index:1060!important;border:0!important;border-left:1px solid var(--kh-border)!important;border-radius:0!important;box-shadow:-12px 0 35px rgba(15,23,42,.16)!important;overflow-y:auto!important}.side-modal-header{min-height:68px;padding:14px 19px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;background:var(--kh-primary)!important}.side-modal-title{margin:0!important;font-size:15px!important;font-weight:700!important}.side-modal-close{width:34px;height:34px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;font-size:22px}.side-modal-content{padding:19px!important}.side-modal-content .form-control,.side-modal-content .btn{border-radius:0!important}
                 @media(max-width:991.98px){.kh-summary{grid-template-columns:repeat(2,1fr)}}
                 @media(max-width:767.98px){.kh-book-page{padding:12px 8px 30px}.kh-header{padding:15px;display:block}.kh-business-logo{width:46px;height:46px;flex-basis:46px}.kh-title h2{font-size:18px}.kh-header-actions{margin-top:13px}.kh-header-actions .btn{flex:1}.kh-quick{padding:13px}.kh-actions{display:grid;grid-template-columns:repeat(2,1fr)}.kh-actions .btn{margin:0!important}.kh-cashbar{display:block;padding:14px}.kh-cash-actions{margin-top:12px;display:grid;grid-template-columns:1fr 1fr}.kh-cash-actions .btn{width:100%;margin:0!important}.kh-cash-actions .report-btn{grid-column:1/-1}.kh-summary{grid-template-columns:1fr 1fr;gap:8px;padding:11px}.book-dash{min-height:94px;padding:12px!important}.kh-stat-value{font-size:17px}.transaction-report-toolbar{padding:14px 12px 10px;align-items:flex-start}.transaction-report-toolbar small{display:none}.mobile-table-hint{display:block}.side-modal-tall{width:100%!important;max-width:100%!important}}
@@ -65,17 +65,40 @@
                     <div class="kh-header-actions"><a href="../dashboard/?bkid=<?=request('bkid');?>" class="btn btn-primary btn-flat"><i class="fas fa-chart-line"></i> Dashboard</a><a href="../report/?bkid=<?=request('bkid');?>" class="btn btn-outline-secondary btn-flat"><i class="fas fa-chart-bar"></i> Reports</a></div>
                 </div>
                 <?php if(hasRole(['owner','partner','superadministrator'])):?>
-                <div class="kh-quick"><div class="kh-quick-head"><strong><i class="fas fa-bolt mr-1 text-primary"></i> Quick Actions</strong><span>Manage this cashbook</span></div><div class="kh-actions">
-                    <a href="../stock/?bkid=<?=request('bkid');?>" class="btn btn-outline-primary"><i class="fas fa-boxes"></i> Stock</a>
-                    <button class="btn btn-outline-success btn-click" data-title="add category" data-section="category"><i class="fas fa-tags"></i> Category</button>
-                    <button class="btn btn-outline-primary btn-click" data-title="add customer" data-section="customer"><i class="fas fa-user-plus"></i> Customer</button>
-                    <button class="btn btn-outline-info btn-click" data-title="add member" data-section="member"><i class="fas fa-users"></i> Members</button>
-                    <button class="btn btn-outline-secondary btn-click" data-title="add item" data-section="item"><i class="fas fa-box"></i> Items</button>
-                    <button class="btn btn-outline-success btn-click" data-title="add payment mode" data-section="paymode"><i class="fas fa-wallet"></i> Payment Modes</button>
-                </div></div>
+                <div class="kh-quick">
+                    <div class="kh-quick-head"><strong><i class="fas fa-bolt mr-1 text-primary"></i> Quick Actions</strong><span>Manage this cashbook</span></div><div class="kh-actions">
+                        <a href="../stock/?bkid=<?=request('bkid');?>" class="btn btn-outline-primary"><i class="fas fa-boxes"></i> Stock</a>
+                        <button class="btn btn-outline-success btn-click" data-title="add category" data-section="category"><i class="fas fa-tags"></i> Category</button>
+                        <button class="btn btn-outline-primary btn-click" data-title="add customer" data-section="customer"><i class="fas fa-user-plus"></i> Customer</button>
+                        <button class="btn btn-outline-info btn-click" data-title="add member" data-section="member"><i class="fas fa-users"></i> Members</button>
+                        <button class="btn btn-outline-secondary btn-click" data-title="add item" data-section="item"><i class="fas fa-box"></i> Items</button>
+                        <button class="btn btn-outline-success btn-click" data-title="add payment mode" data-section="paymode"><i class="fas fa-wallet"></i> Payment Modes</button>
+                        <span class="right border">
+                        <?php
+                            if(isset($_SESSION['entry_date']) && !empty($_SESSION['entry_date'])){
+                                $entryDate = $_SESSION['entry_date'];
+                                ?>
+                                    <div class="p-2">
+                                        <strong>Entry Date:</strong> <?=htmlspecialchars($entryDate,ENT_QUOTES,'UTF-8');?>
+                                        <button class="btn btn-sm btn-outline-danger ml-2 resetEntryDate" id="resetEntryDate"><i class="fas fa-times"></i> Reset</button>  
+                                    </div>
+                                <?php
+                            }
+                        ?>
+                        </span>
+                    </div>
+                </div>
                 <?php endif;?>
                 <div class="main-display">
-                    <div class="kh-cashbar"><div><h5><i class="fas fa-exchange-alt mr-1 text-primary"></i> Today's Cashbook</h5><small>Record money coming in or going out</small></div><div class="kh-cash-actions"><button class="btn btn-success cash-in btn-click" data-title="add cashin" data-section="cashin"><i class="fas fa-arrow-down"></i> CASH IN</button><button class="btn btn-danger cash-out btn-click" data-title="add cashout" data-section="cashout"><i class="fas fa-arrow-up"></i> CASH OUT</button><a href="../report/?bkid=<?=encryptor('encrypt',$book->id);?>" class="btn btn-outline-secondary report-btn"><i class="fas fa-file-alt"></i> REPORT</a></div></div>
+                    <div class="kh-cashbar"><div><h5><i class="fas fa-exchange-alt mr-1 text-primary"></i> Today's Cashbook</h5><small>Record money coming in or going out</small>
+                </div>
+                <div class="kh-cash-actions">
+                    <button class="btn btn-success cash-in btn-click" data-title="add cashin" data-section="cashin"><i class="fas fa-arrow-down"></i> CASH IN</button>
+                    <button class="btn btn-danger cash-out btn-click" data-title="add cashout" data-section="cashout"><i class="fas fa-arrow-up"></i> CASH OUT</button>
+                    <a href="../report/?bkid=<?=encryptor('encrypt',$book->id);?>" class="btn btn-outline-secondary report-btn"><i class="fas fa-file-alt"></i> REPORT</a>
+                    <button class="btn btn-outline-primary entry-date"><i class="fas fa-arrow-up"></i> ENTRY DATE</button>
+                </div>
+            </div>
                     <?php
                         $resi=prepared_statements("SELECT SUM(amount) cashin FROM cashbook_cashins WHERE book_id=? AND created_at<DATE_FORMAT(NOW(),'%Y-%m-%d')",'i',[$id]);$rwi=$resi->fetch_assoc();$cashinbbf=(float)($rwi['cashin']??0);
                         $reso=prepared_statements("SELECT SUM(amount) cashout FROM cashbook_cashouts WHERE book_id=? AND DATE(created_at)<DATE_FORMAT(NOW(),'%Y-%m-%d')",'i',[$id]);$rwo=$reso->fetch_assoc();$cashoutbbf=(float)($rwo['cashout']??0);$bbf=$cashinbbf-$cashoutbbf;
@@ -443,10 +466,12 @@
                     },
                     success:function(res){
                          xdialog.info('Transaction successful');
-                        window.location.reload();
+                         console.log(res);
+                        // window.location.reload();
                     },
                     error:function(err){
                         xdialog.warn('Transaction failed');
+                        console.log(err);
                     }
                 });
                 });                
@@ -610,4 +635,48 @@
                 }
             }
         });
+
+        // set data entry date to avoid over selecting date
+        $(document).on('click','.entry-date',function(){
+            const option = "<input type='date' class='form-control' id='entry_date' name='entry_date' max='<?=date('Y-m-d');?>'>";
+            xdialog.confirm("Select the date for data entry (YYYY-MM-DD):"+ option,function(){
+                var date = $('#entry_date').val();
+                if(date !='')
+                {
+                    $.ajax({
+                        url:'save/index.php',
+                        data:{
+                            action:'setEntryDate',
+                            entry_date:date
+                        },
+                        success:function(res){
+                            xdialog.info('Entry date set to '+date);
+                            window.location.reload();
+                        },
+                        error:function(err){
+                            xdialog.warn('Failed to set entry date');
+                        }
+                    });
+                }else{
+                    xdialog.warn('Please select a date');
+                }
+            });
+        });
+        $(document).on('click','.resetEntryDate',function(){
+            xdialog.confirm("Reset entry date to default? - Today",function(){
+                $.ajax({
+                    url:'save/index.php',
+                    data:{
+                        action:'ResetsetEntryDate',
+                    },
+                    success:function(res){
+                        xdialog.info('Entry date reset to default');
+                        window.location.reload();
+                    },
+                    error:function(err){
+                        xdialog.warn('Failed to set entry date');
+                    }
+                });
+            });
+        })
     </script>

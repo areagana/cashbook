@@ -1565,7 +1565,22 @@ switch($action)
 
 
     break;
+    
+    case 'deleteRoute':
+        $routeId = request('route_id') ?? null;
 
+        if ($routeId) {
+            // Assuming you have a function to delete the route from the database
+            $deleteSuccess = deleteRouteById($routeId);
+            if ($deleteSuccess) {
+                echo json_encode(['success' => true, 'message' => 'Route deleted successfully.']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to delete route.']);
+            }
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Route ID is required.']);
+        }
+    break;
 }
 
 ?>
