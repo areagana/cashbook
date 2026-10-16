@@ -24,7 +24,7 @@
                         FROM cashbook_customer_ledger ccl
                         LEFT JOIN cashbook_items ci ON ci.id=ccl.item_id AND ci.book_id=ccl.book_id
                         LEFT JOIN cashbook_paymodes pm ON pm.id=ccl.paymode_id AND pm.book_id=ccl.book_id
-                        WHERE ccl.customer_id=? AND ccl.book_id=? ORDER BY ccl.id ASC";
+                        WHERE ccl.customer_id=? AND ccl.book_id=? ORDER BY ccl.created_at ASC, ccl.transaction_id ASC";
                     $res=prepared_statements($sql,'ii',[$id,$book_id]);
                     $rows=[];
                     $totalDebit=0.0;
@@ -94,23 +94,30 @@
                             <div class="kh-stats"><div class="kh-stat"><small>Total Debits</small><strong>UGX <?=$money($totalDebit);?></strong></div><div class="kh-stat"><small>Total Credits</small><strong>UGX <?=$money($totalCredit);?></strong></div><div class="kh-stat"><small>Net Balance</small><strong>UGX <?=$money($running);?></strong></div></div>
                             <h3 class="kh-section">TRANSACTION HISTORY</h3>
                             <div class="kh-scroll">
-                                <table>
+                                <table class="kh-sortable-ledger">
                                     <thead>
                                         <tr>
-                                            <th>Date</th>
-                                            <th>Ref.</th>
-                                            <th>Type</th>
+                                            <th data-sort="date">Date ↕</th>
+                                            <th data-sort="ref">Ref. ↕</th>
+                                            <th data-sort="type">Type ↕</th>
                                             <th>Description / Item</th>
                                             <th class="">Qty</th>
                                             <th>Mode</th>
-                                            <th class="kh-num">Debit</th>
-                                            <th class="kh-num">Credit</th>
-                                            <th class="kh-num">Balance</th>
+                                            <th data-sort="debit">Debit ↕</th>
+                                            <th data-sort="credit">Credit ↕</th>
+                                            <th data-sort="balance">Balance ↕</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                     <?php if($rows):foreach($rows as $r):?>
-                                    <tr>
+                                    <tr
+                                        data-date="<?=$esc($r['created_at'] ?? '');?>"
+                                        data-ref="<?=(int)($r['transaction_id'] ?? 0);?>"
+                                        data-type="<?=$esc($r['type'] ?? '');?>"
+                                        data-debit="<?=(float)($r['debit_amount'] ?? 0);?>"
+                                        data-credit="<?=(float)($r['credit_amount'] ?? 0);?>"
+                                        data-balance="<?=(float)$r['statement_balance'];?>"
+                                    >
                                         <td class="kh-date"><?=!empty($r['created_at'])?date('d-m-Y',strtotime($r['created_at'])):'—';?></td>
                                         <td class="kh-nowrap"><?=$esc($r['transaction_id']??'—');?></td>
                                         <td><?=$esc(str_replace('_',' ',(string)($r['type']??'')));?></td>

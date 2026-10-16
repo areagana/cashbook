@@ -90,138 +90,103 @@
 
             switch($action)
             {
-                case 'ItemDetails';
-                    $id = request('item_id');
-                    $item = itemFind($id);
-                    
-                    //fetch item records
-                    $sql = "SELECT * FROM cashbook_items WHERE id =?";
-                    $s =0;
+                case 'ItemDetails':
+                    $id=(int)request('item_id');
+                    $item=itemFind($id);
+                    if(!$item){echo '<div class="alert alert-danger">Stock item not found.</div>';break;}
+                    $esc=static fn($value)=>htmlspecialchars((string)($value??''),ENT_QUOTES,'UTF-8');
+                    $fmt=static fn($value)=>number_format((float)$value,2);
+                    $sql="SELECT id,created_at,transaction_type,quantity_in,quantity_out,balance,reference,unit_cost,total_cost
+                          FROM cashbook_stocks WHERE item_id=? AND book_id=? ORDER BY id ASC";
+                    $res=prepared_statements($sql,'ii',[(int)$item->id,(int)$item->book_id]);
+                    $movements=[];$totalIn=0;$totalOut=0;
+                    if($res){while($record=$res->fetch_assoc()){
+                        $totalIn+=(float)$record['quantity_in'];$totalOut+=(float)$record['quantity_out'];
+                        $movements[]=$record;
+                    }}
+                    $balanceResult=prepared_statements('SELECT balance FROM cashbook_item_stock_balances WHERE item_id=? AND book_id=? LIMIT 1','ii',[(int)$item->id,(int)$item->book_id]);
+                    $balanceRow=$balanceResult?$balanceResult->fetch_assoc():null;
+                    $balance=(float)($balanceRow['balance']??0);
+                    $stockStatus=$balance<0?'Negative stock':($balance==0?'Out of stock':($balance<10?'Low stock':'In stock'));
                     ?>
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <h3 class="p-2"><?=$item->name;?></h3>
-                            </div>
-                            <div class="col p-2">
-                                <button class="btn btn-flat btn-outline-danger right stock-control m-2" data-id ="<?=$item->id;?>" data-type='stock_out'><i class="fa"></i> Issue Stock</button>
-                                <button class="btn btn-flat btn-outline-primary right stock-control m-2" data-id ="<?=$item->id;?>" data-type='stock_in'><i class="fa fa-plus-circle"></i> Add Stock</button>
-                            </div>
-                        </div>
-                        <hr>
-                        <div class="row mx-1 stock-statement">
-                            <?php
-                                // fetch stock records from the database based on the item
-                                $sql = "SELECT * FROM cashbook_stocks WHERE item_id = ? ORDER BY id";
-                                $res = prepared_statements($sql,'i',[$item->id]);
-                                $balance
-                            ?>
-                            <div class="col p-2">
-                                <table class="table table-striped table-bordered">
-                                    <thead>
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Date</th>
-                                            <th>Type</th>
-                                            <th>Qty In</th>
-                                            <th>Qty Out</th>
-                                            <th>Balance</th>
-                                            <th>Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php while($r = $res->fetch_assoc()):?>
-                                        <tr>
-                                            <td><?=++$s;?></td>
-                                            <td><?=date_format(date_create($r['created_at']),"d-m-Y");?></td>
-                                            <td><?=$r['transaction_type'];?></td>
-                                            <td><?=($r['quantity_in'] > 0) ? $r['quantity_in'] : "";?></td>
-                                            <td><?=($r['quantity_out'] > 0) ? $r['quantity_out'] : "";?></td>
-                                            <td><?=$r['balance'];?></td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-info btn-flat"><i class="fa fa-edit"></i></button>
-                                                <button class="btn btn-sm btn-outline-danger btn-flat delete-stock-record" data-id="<?=$r['id'];?>"><i class="fa fa-trash"></i></button>
-                                            </td>
-                                        </tr>
-                                    <?php endwhile;?>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="col-md-3 p-2 border-left stock-balance">
-                                <h3 class="p-2 border-bottom text-center">STOCK BALANCE</h3>
-                                <h3 class="balance-info text-center">
-                                    <?php
-                                        $query = "SELECT balance FROM cashbook_item_stock_balances WHERE item_id = ? ORDER BY item_id desc";
-                                        $rs = prepared_statements($query,'i',[$item->id]);
-                                        $row = $rs->fetch_assoc();
-                                        echo isset($row['balance']) ? number_format($row['balance'],0)." ".$item->units : 0 ." ".$item->units;
-                                    ?>
-                                </h3>
+                    <style>
+                    .kh-stock-detail{font-family:Arial,sans-serif;color:#253347;font-size:13px}
+                    .kh-stock-detail *{box-sizing:border-box}.kh-stock-detail .kh-detail-top{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+                    .kh-stock-detail h3{font-size:19px;font-weight:800;margin:0}.kh-stock-detail .kh-sub{color:#667085;font-size:12px;margin-top:4px}
+                    .kh-stock-detail .kh-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 18px}
+                    .kh-stock-detail .kh-metric{border:1px solid #d9e2e7;border-left:3px solid #176b51;padding:12px;background:#fff}
+                    .kh-stock-detail .kh-metric small{display:block;color:#667085;font-weight:700;text-transform:uppercase;font-size:10px;margin-bottom:6px}
+                    .kh-stock-detail .kh-metric strong{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+                    .kh-stock-detail .kh-table-wrap{overflow-x:auto;border:1px solid #d9e2e7}
+                    .kh-stock-detail table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}
+                    .kh-stock-detail th,.kh-stock-detail td{padding:10px 9px;border-bottom:1px solid #e4e9ee;text-align:left}
+                    .kh-stock-detail th{background:#edf4f1;color:#244c3d;font-size:11px;text-transform:uppercase}
+                    .kh-stock-detail .kh-num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+                    .kh-stock-detail .kh-empty{text-align:center;padding:25px;color:#667085}
+                    .kh-stock-detail .kh-pill{display:inline-block;padding:4px 8px;background:#eef4f1;color:#176b51;font-weight:700}
+                    .kh-stock-form{font-family:Arial,sans-serif;color:#253347}.kh-stock-form .kh-form-heading{padding:12px 14px;background:#edf4f1;border-left:3px solid #176b51;margin-bottom:16px}
+                    .kh-stock-form .kh-form-heading strong{display:block;font-size:15px}.kh-stock-form .kh-form-heading small{color:#667085}
+                    .kh-stock-form .kh-form-field{margin-bottom:14px}.kh-stock-form label{font-size:12px;font-weight:700;margin-bottom:6px;display:block}
+                    .kh-stock-form input.form-control{border-radius:2px}.kh-stock-form .kh-form-actions{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #e4e9ee;padding-top:12px}
+                    @media(max-width:650px){.kh-stock-detail .kh-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.kh-stock-detail .kh-metric strong{font-size:15px}}
+                    </style>
+                    <div class="kh-stock-detail">
+                        <div class="kh-detail-top">
+                            <div><h3><?=$esc($item->name);?></h3><div class="kh-sub">Stock movement history · <?=$esc($item->units);?> · Item #<?=(int)$item->id;?></div></div>
+                            <div class="d-flex flex-wrap" style="gap:6px">
+                                <button type="button" class="btn btn-sm btn-flat btn-outline-primary stock-control" data-id="<?=(int)$item->id;?>" data-type="stock_in"><i class="fa fa-plus-circle"></i> Add Stock</button>
+                                <button type="button" class="btn btn-sm btn-flat btn-outline-danger stock-control" data-id="<?=(int)$item->id;?>" data-type="stock_out"><i class="fa fa-minus-circle"></i> Issue Stock</button>
                             </div>
                         </div>
-
+                        <div class="kh-metrics">
+                            <div class="kh-metric"><small>Available Balance</small><strong><?=$fmt($balance);?> <?=$esc($item->units);?></strong></div>
+                            <div class="kh-metric"><small>Total Received</small><strong><?=$fmt($totalIn);?></strong></div>
+                            <div class="kh-metric"><small>Total Issued</small><strong><?=$fmt($totalOut);?></strong></div>
+                            <div class="kh-metric"><small>Stock Status</small><span class="kh-pill"><?=$esc($stockStatus);?></span></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2"><strong>STOCK MOVEMENT HISTORY</strong><small class="text-muted"><?=count($movements);?> records</small></div>
+                        <div class="kh-table-wrap"><table><thead><tr><th>#</th><th>Date</th><th>Movement</th><th>Reference</th><th class="kh-num">Qty In</th><th class="kh-num">Qty Out</th><th class="kh-num">Balance</th><th>Action</th></tr></thead><tbody>
+                        <?php if($movements):foreach($movements as $index=>$record):?>
+                            <tr><td><?=$index+1;?></td><td><?=!empty($record['created_at'])?$esc(date('d M Y',strtotime($record['created_at']))):'—';?></td>
+                            <td><?=$esc(str_replace('_',' ',ucwords((string)$record['transaction_type'],'_')));?></td><td><?=$esc($record['reference']?:'—');?></td>
+                            <td class="kh-num"><?=((float)$record['quantity_in']!=0)?$fmt($record['quantity_in']):'—';?></td>
+                            <td class="kh-num"><?=((float)$record['quantity_out']!=0)?$fmt($record['quantity_out']):'—';?></td>
+                            <td class="kh-num"><strong><?=$fmt($record['balance']);?></strong></td>
+                            <td><button type="button" class="btn btn-sm btn-flat btn-outline-danger delete-stock-record" data-id="<?=(int)$record['id'];?>" title="Delete stock record"><i class="fa fa-trash"></i></button></td></tr>
+                        <?php endforeach;else:?><tr><td colspan="8" class="kh-empty">No stock movements have been recorded for this item.</td></tr><?php endif;?></tbody></table></div>
+                        <small class="text-muted d-block mt-2">Balances shown in history are stored movement balances. Historical adjustments may require stock reconciliation.</small>
+                    </div>
                     <?php
                     break;
+
                 case 'stock_in':
-                    $item = itemFind(request('id'));
-                    ?>
-                        <form id='AddStockForm' method="post">
-                            <div class="row mx-1">
-                                <input type="hidden" name="book_id" value="<?=$item->book_id;?>">
-                                <input type="hidden" name="type" value='stock_in'>
-                                <input type="hidden" name="item_id" id='item_id' value="<?=$item->id;?>">
-                                <input type="hidden" name="form" value='AddStockForm'>
-                                <input type="hidden" id='item_title' value="<?=$item->name;?>">
-                                <input type="hidden" name="action" value='SaveForm'>
-                                <div class="col-md-3 p-2">
-                                    <label for="quantity">QUANTITY:</label>
-                                </div>
-                                <div class="col p-2">
-                                    <input type="text" name="quantity" id="quantity" class="form-control">
-                                </div>
-                            </div>
-                            <div class="row mx-1">
-                                <div class="col-md-3 p-2">
-                                    <label for="unit_cost">COST PER (<?=strToUpper($item->units);?>):</label>
-                                </div>
-                                <div class="col p-2">
-                                    <input type="text" name="unit_cost" id="unit_cost" class="form-control">
-                                </div>
-                            </div>
-                            <div class="roww mx-1">
-                                <div class="col p-2">
-                                    <button type='submit' class="btn btn-flat btn-primary right saveNewStock">Save</button>
-                                </div>
-                            </div>
-                        </form>
-
-                    <?php
-                    break;
                 case 'stock_out':
-                        $item = itemFind(request('id'));
+                    $movementType=$action;
+                    $item=itemFind((int)request('id'));
+                    if(!$item){echo '<div class="alert alert-danger">Stock item not found.</div>';break;}
+                    $isStockIn=$movementType==='stock_in';
+                    $formId=$isStockIn?'AddStockForm':'IssueStockForm';
+                    $saveClass=$isStockIn?'saveNewStock':'saveIssueStock';
+                    $heading=$isStockIn?'Receive Stock':'Issue Stock';
+                    $esc=static fn($value)=>htmlspecialchars((string)($value??''),ENT_QUOTES,'UTF-8');
                     ?>
-                        <form id='IssueStockForm' method="post">
-                            <div class="row mx-1">
-                                <input type="hidden" name="book_id" value="<?=$item->book_id;?>">
-                                <input type="hidden" name="type" value='stock_out'>
-                                <input type="hidden" name="item_id" id='item_id' value="<?=$item->id;?>">
-                                <input type="hidden" name="form" value='IssueStockForm'>
-                                <input type="hidden" id='item_title' value="<?=$item->name;?>">
-                                <input type="hidden" name="action" value='SaveForm'>
-                                <div class="col-md-3 p-2">
-                                    <label for="quantity">QUANTITY:</label>
-                                </div>
-                                <div class="col p-2">
-                                    <input type="text" name="quantity" id="quantity" class="form-control">
-                                </div>
-                            </div>
-                            <div class="roww mx-1">
-                                <div class="col p-2">
-                                    <button type='submit' class="btn btn-flat btn-primary right saveIssueStock">Save</button>
-                                </div>
-                            </div>
+                    <div class="kh-stock-form">
+                        <div class="kh-form-heading"><strong><?=$heading;?></strong><small><?=$esc($item->name);?> · <?=$esc($item->units);?></small></div>
+                        <form id="<?=$formId;?>" method="post">
+                            <input type="hidden" name="book_id" value="<?=(int)$item->book_id;?>">
+                            <input type="hidden" name="type" value="<?=$movementType;?>">
+                            <input type="hidden" name="item_id" id="item_id" value="<?=(int)$item->id;?>">
+                            <input type="hidden" name="form" value="<?=$formId;?>">
+                            <input type="hidden" id="item_title" value="<?=$esc($item->name);?>">
+                            <input type="hidden" name="action" value="SaveForm">
+                            <div class="kh-form-field"><label for="quantity">Quantity (<?=$esc($item->units);?>)</label><input type="number" name="quantity" id="quantity" class="form-control" min="0.01" step="any" required placeholder="Enter quantity"></div>
+                            <?php if($isStockIn):?><div class="kh-form-field"><label for="unit_cost">Cost per <?=$esc($item->units);?> (UGX)</label><input type="number" name="unit_cost" id="unit_cost" class="form-control" min="0" step="any" placeholder="Optional unit cost"></div><?php endif;?>
+                            <div class="kh-form-actions"><button type="submit" class="btn btn-flat btn-success <?=$saveClass;?>"><i class="fa fa-check"></i> Save <?=$heading;?></button></div>
                         </form>
+                    </div>
                     <?php
                     break;
+
                 case 'SaveForm':
                     $form = request('form');
                      switch($form)

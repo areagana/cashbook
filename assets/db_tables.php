@@ -755,6 +755,127 @@
         create_table($table, $columns);
     }
 
+    function cashbook_stocktakes()
+    {
+        $table = 'cashbook_stocktakes';
+        $columns = [
+            'book_id'     => 'INT(11) NOT NULL',
+            'period_month'=> 'CHAR(7) NOT NULL',
+            'count_date'  => 'DATE NOT NULL',
+            'status'      => "ENUM('draft','counting','review','approved','posted','cancelled') NOT NULL DEFAULT 'draft'",
+            'notes'       => 'TEXT NULL',
+            'created_by'  => 'INT(11) NOT NULL',
+            'approved_by' => 'INT(11) NULL',
+            'posted_by'   => 'INT(11) NULL',
+            'approved_at' => 'DATETIME NULL',
+            'posted_at'   => 'DATETIME NULL'
+        ];
+        create_Table($table, $columns);
+    }
+
+    function cashbook_stocktake_items()
+    {
+        $table = 'cashbook_stocktake_items';
+        $columns = [
+            'stocktake_id'=> 'INT(11) NOT NULL',
+            'book_id'     => 'INT(11) NOT NULL',
+            'item_id'     => 'INT(11) NOT NULL',
+            'expected_qty'=> 'DECIMAL(18,3) NOT NULL DEFAULT 0',
+            'counted_qty' => 'DECIMAL(18,3) NULL',
+            'unit_cost'   => 'DECIMAL(18,4) NULL',
+            'reason'      => 'VARCHAR(255) NULL',
+            'counted_by'  => 'INT(11) NULL',
+            'counted_at'  => 'DATETIME NULL'
+        ];
+        create_Table($table, $columns);
+    }
+
+    function cashbook_stock_adjustments()
+    {
+        $table = 'cashbook_stock_adjustments';
+        $columns = [
+            'stocktake_item_id' => 'INT(11) NOT NULL',
+            'stocktake_id'      => 'INT(11) NOT NULL',
+            'book_id'           => 'INT(11) NOT NULL',
+            'item_id'           => 'INT(11) NOT NULL',
+            'variance_qty'      => 'DECIMAL(18,3) NOT NULL',
+            'unit_cost'         => 'DECIMAL(18,4) NULL',
+            'stock_movement_id' => 'INT(11) NULL',
+            'posted_by'         => 'INT(11) NOT NULL',
+            'posted_at'         => 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
+        ];
+        create_Table($table, $columns);
+    }
+
+    function cashbook_stock_periods()
+    {
+        $table = 'cashbook_stock_periods';
+        $columns = [
+            'book_id'            => 'INT(11) NOT NULL',
+            'period_month'       => 'CHAR(7) NOT NULL',
+            'stocktake_id'       => 'INT(11) NULL',
+            'closing_stock_value'=> 'DECIMAL(18,2) NULL',
+            'valuation_complete' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'closed_at'          => 'DATETIME NULL'
+        ];
+        create_Table($table, $columns);
+    }
+    function cashbook_stocktake_deletion_audit()
+    {
+        create_Table('cashbook_stocktake_deletion_audit', [
+            'book_id' => 'INT(11) NOT NULL',
+            'stocktake_id' => 'INT(11) NOT NULL',
+            'period_month' => 'CHAR(7) NOT NULL',
+            'original_status' => 'VARCHAR(30) NOT NULL',
+            'deleted_by' => 'INT(11) NOT NULL',
+            'reason' => 'VARCHAR(500) NOT NULL',
+            'snapshot_json' => 'LONGTEXT NOT NULL',
+            'deleted_at' => 'DATETIME NOT NULL'
+        ]);
+    }
+
+    function cashbook_role_user()
+{
+    $table = 'cashbook_role_user';
+    $columns = [
+        'user_id'     => 'INT(11) NOT NULL',
+        'role_id'     => 'INT(11) NOT NULL',
+        'business_id' => 'INT(11) NOT NULL DEFAULT 0', // 0 = system-wide role
+        'assigned_by' => 'INT(11) NOT NULL',
+        'assigned_at' => 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
+    ];
+
+    create_Table($table, $columns);
+}
+
+function cashbook_role_audit()
+{
+    $table = 'cashbook_role_audit';
+    $columns = [
+        'actor_user_id'  => 'INT(11) NOT NULL',
+        'target_user_id' => 'INT(11) NOT NULL',
+        'role_id'        => 'INT(11) NOT NULL',
+        'business_id'    => 'INT(11) NOT NULL DEFAULT 0',
+        'action'         => 'VARCHAR(16) NOT NULL',
+        'reason'         => 'VARCHAR(255) NULL'
+    ];
+
+    create_Table($table, $columns);
+}
+
+    /** Run parent tables before child tables. */
+    function createCashbookStocktakeTables()
+    {
+        cashbook_stocktakes();
+        cashbook_stocktake_items();
+        cashbook_stock_adjustments();
+        cashbook_stock_periods();
+        cashbook_stocktake_deletion_audit();
+        cashbook_role_audit();
+        cashbook_role_user();
+    }
+
+    createCashbookStocktakeTables();
     cashbook_creditor_ledger();
     cashbook_creditor_balances();
     cashbook_creditors();
