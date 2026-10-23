@@ -1,225 +1,102 @@
 <?php
-
 require_once(__DIR__.'/../assets/functions.php');
-
-
-/*
-|--------------------------------------------------------------------------
-| AUTHENTICATION
-|--------------------------------------------------------------------------
-*/
-
-if (!isVerified())
+if (isVerified())
 {
-    redirect('../');
-    exit;
-}
+    pageHeader('Home');
+    $business = businessFind(auth());
 
-
-/*
-|--------------------------------------------------------------------------
-| PAGE HEADER
-|--------------------------------------------------------------------------
-|
-| pageHeader() will determine which sidebar should be displayed.
-|
-*/
-
-pageHeader('Home');
-
-/*
-|--------------------------------------------------------------------------
-| BUSINESS
-|--------------------------------------------------------------------------
-*/
-
-$business = businessFind(auth());
-
-if (!$business && isset(auth()->business_id))
-{
-    $business = businessFindId(auth()->business_id);
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| VALIDATE BUSINESS
-|--------------------------------------------------------------------------
-*/
-
-if (!$business)
-{
-    ?>
-
-        <div class="container-fluid p-4">
-
-            <div class="alert alert-warning">
-
-                <h5>
-                    <i class="fa fa-exclamation-triangle"></i>
-                    Business Profile Not Found
-                </h5>
-
-                <p class="mb-0">
-                    We could not find a business profile attached to your account.
-                    Please contact your administrator.
-                </p>
-
-            </div>
-
-        </div>
-
-    <?php
-
-    pageFooter();
-
-    exit;
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| BUSINESS BOOKS
-|--------------------------------------------------------------------------
-*/
-
-$books = [];
-
-$totalCredits = 0;
-$totalDebits = 0;
-$totalBalance = 0;
-
-
-$stmt = "
-    SELECT *
-    FROM cashbook_books
-    WHERE business_id = ?
-    ORDER BY id DESC
-";
-
-
-$bookResult = prepared_statements(
-    $stmt,
-    'i',
-    [$business->id]
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| BOOK BALANCES
-|--------------------------------------------------------------------------
-*/
-
-$cashins = "
-    SELECT
-        COALESCE(SUM(amount),0) AS credits
-    FROM cashbook_cashins
-    WHERE book_id = ?
-";
-
-
-$cashouts = "
-    SELECT
-        COALESCE(SUM(amount),0) AS debits
-    FROM cashbook_cashouts
-    WHERE book_id = ?
-";
-
-
-if ($bookResult)
-{
-    while ($book = $bookResult->fetch_assoc())
+    if (!$business && isset(auth()->business_id))
     {
-
-        /*
-        |--------------------------------------------------------------------------
-        | CASH IN
-        |--------------------------------------------------------------------------
-        */
-
-        $cashinResult = prepared_statements(
-            $cashins,
-            'i',
-            [$book['id']]
-        );
-
-
-        $cashinRow = $cashinResult
-            ? $cashinResult->fetch_assoc()
-            : ['credits' => 0];
-
-
-        $credits = (float)($cashinRow['credits'] ?? 0);
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | CASH OUT
-        |--------------------------------------------------------------------------
-        */
-
-        $cashoutResult = prepared_statements(
-            $cashouts,
-            'i',
-            [$book['id']]
-        );
-
-
-        $cashoutRow = $cashoutResult
-            ? $cashoutResult->fetch_assoc()
-            : ['debits' => 0];
-
-
-        $debits = (float)($cashoutRow['debits'] ?? 0);
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BALANCE
-        |--------------------------------------------------------------------------
-        */
-
-        $balance = $credits - $debits;
-
-
-        $book['credits'] = $credits;
-
-        $book['debits'] = $debits;
-
-        $book['balance'] = $balance;
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | TOTALS
-        |--------------------------------------------------------------------------
-        */
-
-        $totalCredits += $credits;
-
-        $totalDebits += $debits;
-
-        $totalBalance += $balance;
-
-
-        $books[] = $book;
+        $business = businessFindId(auth()->business_id);
     }
-}
 
-
-$totalBooks = count($books);
-
-?>
-
-
-<style>
 
     /*
     |--------------------------------------------------------------------------
-    | BUSINESS HOME
+    | VALIDATE BUSINESS
     |--------------------------------------------------------------------------
     */
+
+    if (!$business)
+    {
+        ?>
+
+            <div class="container-fluid p-4">
+
+                <div class="alert alert-warning">
+
+                    <h5>
+                        <i class="fa fa-exclamation-triangle"></i>
+                        Business Profile Not Found
+                    </h5>
+
+                    <p class="mb-0">
+                        We could not find a business profile attached to your account.
+                        Please contact your administrator.
+                    </p>
+
+                </div>
+
+            </div>
+
+        <?php
+
+        pageFooter();
+
+        exit;
+    }
+    // Profile editing is restricted to business administrators.
+    // The save endpoint must independently enforce this permission and business scope.
+    $canManageBusinessProfile = hasRole(['owner', 'superadministrator']);
+
+    $books = [];
+
+    $totalCredits = 0;
+    $totalDebits = 0;
+    $totalBalance = 0;
+
+
+    $stmt = "SELECT * FROM cashbook_books WHERE business_id = ? ORDER BY id DESC";
+    $bookResult = prepared_statements($stmt,'i', [$business->id]);
+
+    $cashins = "SELECT COALESCE(SUM(amount),0) AS credits FROM cashbook_cashins WHERE book_id = ?";
+    $cashouts = "SELECT COALESCE(SUM(amount),0) AS debits FROM cashbook_cashouts WHERE book_id = ?";
+
+    if ($bookResult)
+    {
+        while ($book = $bookResult->fetch_assoc())
+        {
+            $cashinResult = prepared_statements($cashins,'i',[$book['id']]);
+            $cashinRow = $cashinResult ? $cashinResult->fetch_assoc() : ['credits' => 0];
+            $credits = (float)($cashinRow['credits'] ?? 0);
+            $cashoutResult = prepared_statements($cashouts,'i', [$book['id']]);
+            $cashoutRow = $cashoutResult ? $cashoutResult->fetch_assoc() : ['debits' => 0];
+            $debits = (float)($cashoutRow['debits'] ?? 0);
+
+            $balance = $credits - $debits;
+
+            $book['credits'] = $credits;
+            $book['debits'] = $debits;
+            $book['balance'] = $balance;
+
+            /*
+            |--------------------------------------------------------------------------
+            | TOTALS
+            |--------------------------------------------------------------------------
+            */
+
+            $totalCredits += $credits;
+            $totalDebits += $debits;
+            $totalBalance += $balance;
+
+            $books[] = $book;
+        }
+    }
+
+    $totalBooks = count($books);
+?>
+
+<style>
 
     .business-home
     {
@@ -227,22 +104,12 @@ $totalBooks = count($books);
     }
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | WELCOME HEADER
-    |--------------------------------------------------------------------------
-    */
-
     .business-welcome
     {
         position: relative;
-
         overflow: hidden;
-
         padding: 30px;
-
         margin-bottom: 24px;
-
         background:
             linear-gradient(
                 135deg,
@@ -252,56 +119,40 @@ $totalBooks = count($books);
             );
 
         color: #ffffff;
-
         border-radius: 12px;
-
-        box-shadow:
-            0 8px 25px rgba(0,0,0,.08);
+        box-shadow: 0 8px 25px rgba(0,0,0,.08);
     }
 
 
     .business-welcome::after
     {
         content: "";
-
         position: absolute;
-
         width: 220px;
         height: 220px;
-
         right: -80px;
         top: -100px;
-
         border-radius: 50%;
-
-        background:
-            rgba(255,255,255,.06);
+        background:rgba(255,255,255,.06);
     }
 
 
     .business-welcome::before
     {
         content: "";
-
         position: absolute;
-
         width: 150px;
         height: 150px;
-
         right: 100px;
         bottom: -100px;
-
         border-radius: 50%;
-
-        background:
-            rgba(255,255,255,.04);
+        background:  rgba(255,255,255,.04);
     }
 
 
     .welcome-content
     {
         position: relative;
-
         z-index: 2;
     }
 
@@ -309,26 +160,18 @@ $totalBooks = count($books);
     .welcome-label
     {
         margin-bottom: 6px;
-
         font-size: 11px;
-
         font-weight: 700;
-
         letter-spacing: 1.5px;
-
         text-transform: uppercase;
-
-        color:
-            rgba(255,255,255,.65);
+        color:  rgba(255,255,255,.65);
     }
 
 
     .business-welcome h1
     {
         margin: 0 0 8px;
-
         font-size: 29px;
-
         font-weight: 700;
     }
 
@@ -336,14 +179,9 @@ $totalBooks = count($books);
     .business-welcome p
     {
         max-width: 720px;
-
         margin: 0;
-
-        color:
-            rgba(255,255,255,.78);
-
+        color: rgba(255,255,255,.78);
         font-size: 14px;
-
         line-height: 1.7;
     }
 
@@ -357,17 +195,11 @@ $totalBooks = count($books);
     .welcome-actions
     {
         position: relative;
-
         z-index: 2;
-
         display: flex;
-
         align-items: center;
-
         justify-content: flex-end;
-
         gap: 8px;
-
         flex-wrap: wrap;
     }
 
@@ -1030,7 +862,6 @@ $totalBooks = count($books);
 </style>
 
 
-
 <!-- ================================================================
      BUSINESS HOME
 ================================================================ -->
@@ -1068,7 +899,7 @@ $totalBooks = count($books);
             </div>
 
 
-            <?php if(hasRole(['owner','superadministrator'])): ?>
+            <?php if($canManageBusinessProfile): ?>
 
                 <div class="col-lg-5">
 
@@ -1307,7 +1138,6 @@ $totalBooks = count($books);
 
                         </h2>
 
-
                         <p>
 
                             Select the book you want to work with.
@@ -1322,8 +1152,7 @@ $totalBooks = count($books);
                     ?>
 
                         <button
-                            type="button"
-                            class="
+                            type="button" class="
                                 btn
                                 btn-sm
                                 btn-success
@@ -1738,7 +1567,7 @@ $totalBooks = count($books);
 
 
 
-                    <?php if(hasRole(['owner','superadministrator'])): ?>
+                    <?php if($canManageBusinessProfile): ?>
                         <!-- STEP 4 -->
 
                         <div class="business-guide-step">
@@ -1953,6 +1782,7 @@ $totalBooks = count($books);
      BUSINESS PROFILE / BRAND IDENTITY MODAL
 ================================================================ -->
 
+<?php if ($canManageBusinessProfile): ?>
 <div class="p-2 bg-white side-modal-tall absolute border shadow" id="side-modal-new-profile">
     <div class="side-modal-header">
         <div>
@@ -2037,6 +1867,8 @@ $totalBooks = count($books);
     </div>
 </div>
 
+
+<?php endif; // End restricted business profile modal ?>
 
 <!-- ================================================================
      PAGE JAVASCRIPT
@@ -2393,16 +2225,8 @@ document.addEventListener(
 
 
 <?php
-
-/*
-|--------------------------------------------------------------------------
-| PAGE FOOTER
-|--------------------------------------------------------------------------
-|
-| Important:
-| Do NOT load jQuery, Bootstrap, FontAwesome, custom.js or script.js again
-| on this page. pageFooter() handles our global assets and their versioning.
-|
-*/
-
+}else{
+     redirect('../');
+    exit;
+}
 ?>

@@ -1320,7 +1320,48 @@
 
                 });
 
-            </script>
+                 /*
+|--------------------------------------------------------------------------
+| CUSTOMER STATEMENT TABLE SORTING
+|--------------------------------------------------------------------------
+*/
+        document.addEventListener('click', function(event){
+            const header = event.target.closest('.kh-sortable-ledger th[data-sort]');
+            if(!header) return;
+
+            const table = header.closest('table');
+            const tbody = table.tBodies[0];
+            if(!tbody) return;
+
+            const key = header.dataset.sort;
+            const previousKey = table.dataset.sortKey;
+            const previousDirection = table.dataset.sortDirection;
+
+            const direction = previousKey === key && previousDirection === 'asc'
+                ? 'desc'
+                : 'asc';
+
+            const numericColumns = ['ref', 'debit', 'credit', 'balance'];
+
+            const rows = Array.from(tbody.querySelectorAll('tr[data-date]'));
+
+            rows.sort((a, b) => {
+                const first = a.dataset[key] || '';
+                const second = b.dataset[key] || '';
+
+                const comparison = numericColumns.includes(key)
+                    ? Number(first) - Number(second)
+                    : first.localeCompare(second, undefined, {numeric: true});
+
+                return comparison * (direction === 'asc' ? 1 : -1);
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+
+            table.dataset.sortKey = key;
+            table.dataset.sortDirection = direction;
+        });
+    </script>
         <?php
     }else{
         redirect('../');

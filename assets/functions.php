@@ -14,87 +14,87 @@
     $scriptVersion = file_exists(__DIR__ . '/../assets/script.js')
         ? filemtime(__DIR__ . '/../assets/script.js')
         : time();
-function prepared_statements($stat,$binds='',$vars=[])
-{
-    global $server;
+    function prepared_statements($stat,$binds='',$vars=[])
+    {
+        global $server;
 
-    if(trim($stat)===''){
-        throw new InvalidArgumentException('SQL statement cannot be empty.');
-    }
-
-    if(!$server || $server->connect_errno){
-        throw new RuntimeException('Database connection is unavailable.');
-    }
-
-    $binds = (string)$binds;
-    $vars = array_values($vars);
-
-    if(strlen($binds)!==count($vars)){
-        throw new InvalidArgumentException(
-            'Parameter mismatch: '.strlen($binds).' types for '.count($vars).' values.'
-        );
-    }
-
-    if($binds!=='' && preg_match('/[^idsb]/',$binds)){
-        throw new InvalidArgumentException('Invalid parameter binding type.');
-    }
-
-    $stmt = null;
-
-    try{
-        $stmt = $server->prepare($stat);
-
-        if(!$stmt){
-            throw new RuntimeException('SQL prepare failed: '.$server->error);
+        if(trim($stat)===''){
+            throw new InvalidArgumentException('SQL statement cannot be empty.');
         }
 
-        if($binds!==''){
-            if(!$stmt->bind_param($binds,...$vars)){
-                throw new RuntimeException('Parameter binding failed: '.$stmt->error);
-            }
+        if(!$server || $server->connect_errno){
+            throw new RuntimeException('Database connection is unavailable.');
         }
 
-        if(!$stmt->execute()){
-            throw new RuntimeException('SQL execution failed: '.$stmt->error);
+        $binds = (string)$binds;
+        $vars = array_values($vars);
+
+        if(strlen($binds)!==count($vars)){
+            throw new InvalidArgumentException(
+                'Parameter mismatch: '.strlen($binds).' types for '.count($vars).' values.'
+            );
         }
 
-        $query = ltrim($stat);
+        if($binds!=='' && preg_match('/[^idsb]/',$binds)){
+            throw new InvalidArgumentException('Invalid parameter binding type.');
+        }
 
-        // Remove leading SQL comments
-        $query = preg_replace(
-            '/\A(?:(?:--[^\r\n]*|#[^\r\n]*)(?:\r?\n|$)|\/\*.*?\*\/\s*)*/s',
-            '',
-            $query
-        );
+        $stmt = null;
 
-        $queryType = strtoupper(strtok(ltrim($query)," \t\r\n"));
+        try{
+            $stmt = $server->prepare($stat);
 
-        if(in_array($queryType,['SELECT','SHOW','DESCRIBE','EXPLAIN'],true)){
-            $result = $stmt->get_result();
-
-            if($result===false){
-                throw new RuntimeException('Unable to retrieve query results: '.$stmt->error);
+            if(!$stmt){
+                throw new RuntimeException('SQL prepare failed: '.$server->error);
             }
 
-            return $result;
-        }
+            if($binds!==''){
+                if(!$stmt->bind_param($binds,...$vars)){
+                    throw new RuntimeException('Parameter binding failed: '.$stmt->error);
+                }
+            }
 
-        if($queryType==='INSERT' || $queryType==='REPLACE'){
-            return (int)$stmt->insert_id;
-        }
+            if(!$stmt->execute()){
+                throw new RuntimeException('SQL execution failed: '.$stmt->error);
+            }
 
-        // Successful UPDATE / DELETE / other write statements
-        return true;
+            $query = ltrim($stat);
 
-    }catch(Throwable $e){
-        error_log('prepared_statements error: '.$e->getMessage());
-        throw $e;
-    }finally{
-        if($stmt instanceof mysqli_stmt){
-            $stmt->close();
+            // Remove leading SQL comments
+            $query = preg_replace(
+                '/\A(?:(?:--[^\r\n]*|#[^\r\n]*)(?:\r?\n|$)|\/\*.*?\*\/\s*)*/s',
+                '',
+                $query
+            );
+
+            $queryType = strtoupper(strtok(ltrim($query)," \t\r\n"));
+
+            if(in_array($queryType,['SELECT','SHOW','DESCRIBE','EXPLAIN'],true)){
+                $result = $stmt->get_result();
+
+                if($result===false){
+                    throw new RuntimeException('Unable to retrieve query results: '.$stmt->error);
+                }
+
+                return $result;
+            }
+
+            if($queryType==='INSERT' || $queryType==='REPLACE'){
+                return (int)$stmt->insert_id;
+            }
+
+            // Successful UPDATE / DELETE / other write statements
+            return true;
+
+        }catch(Throwable $e){
+            error_log('prepared_statements error: '.$e->getMessage());
+            throw $e;
+        }finally{
+            if($stmt instanceof mysqli_stmt){
+                $stmt->close();
+            }
         }
     }
-}
 
 
     function redirect($link)
@@ -317,56 +317,25 @@ function prepared_statements($stat,$binds='',$vars=[])
     // check business profile on Login
     function checkBusinessProfile()
     {
-    global $server;
-    $user = auth();
-    $sql = "SELECT * FROM cashbook_business_profile WHERE user_id = ?";
-    $res = prepared_statements($sql,'i',[$user->id]);
+        global $server;
+        $user = auth();
+        $sql = "SELECT * FROM cashbook_business_profile WHERE user_id = ?";
+        $res = prepared_statements($sql,'i',[$user->id]);
 
-    // check if beongs to a business
-    $stmt = "SELECT business_id FROM cashbook_users WHERE id = ?";
-    $ress = prepared_statements($stmt,'i',[$user->id]);
-    $r = $ress->fetch_assoc();
+        // check if beongs to a business
+        $stmt = "SELECT business_id FROM cashbook_users WHERE id = ?";
+        $ress = prepared_statements($stmt,'i',[$user->id]);
+        $r = $ress->fetch_assoc();
 
-    if($res->num_rows > 0 || !empty($r['business_id']) > 0)
-    {
-        $_SESSION['hasbusiness'] = true;
-        return true;
-    }else{
-        return false;
+        if($res->num_rows > 0 || !empty($r['business_id']) > 0)
+        {
+            $_SESSION['hasbusiness'] = true;
+            return true;
+        }else{
+            return false;
+        }
     }
-    }
-    // check roles
-    // function hasRole($array)
-    // {
-    //     global $server;
-    //     $auth = auth();
-    //     $roles = mysqli_query($server,"SELECT * FROM cashbook_roles");
-    //     $dat =[];
-    //     print_r($auth);
 
-    //     while($r = $roles->fetch_assoc())
-    //     {
-    //         if($r['id'] == $auth->role_id)
-    //         {
-    //             $dat[] = $r['name'];
-    //         }
-    //     }
-
-    //     foreach($array as $role)
-    //     {
-    //         if(in_array($role,$dat))
-    //         {
-    //             return true;
-    //         }else{
-    //             return false;
-    //         }
-    //     }
-    // }
-    /**
-     * Check effective system roles and legacy primary roles.
-     * System assignments are stored in cashbook_role_user (business_id = 0).
-     * Business-specific permissions must use krHasBusinessRole() with a business ID.
-     */
     function hasRole($array)
     {
         global $server;
@@ -1252,44 +1221,46 @@ function prepared_statements($stat,$binds='',$vars=[])
 
     /** Stock submenu: self-contained and independent of legacy sidebar click handlers. */
     function khStockNavigationAssets()
-    { ?>
-        <style>
-        .kh-stock-toggle{width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}
-        .kh-stock-toggle .kh-stock-chevron{margin-left:auto;font-size:11px;transition:transform .2s}
-        .kh-stock-nav.kh-open .kh-stock-chevron{transform:rotate(180deg)}
-        .kh-stock-submenu{list-style:none;margin:0;padding:3px 0 6px 27px}
-        .kh-stock-submenu[hidden]{display:none!important}
-        .kh-stock-submenu a{display:flex;align-items:center;gap:9px;padding:9px 12px;color:inherit;text-decoration:none;font-size:13px}
-        .kh-stock-submenu a:hover,.kh-stock-submenu a.kh-active{background:rgba(128,128,128,.16)}
-        .kh-stock-nav:not(.kh-open) .kh-stock-submenu{display:none!important}
-        </style>
-        <script>
-        (function(){
-            function initStockMenu(){
-                document.querySelectorAll('.kh-stock-nav').forEach(function(nav){
-                    if(nav.dataset.khReady==='1')return;
-                    nav.dataset.khReady='1';
-                    var button=nav.querySelector('.kh-stock-toggle');
-                    var menu=nav.querySelector('.kh-stock-submenu');
-                    if(!button||!menu)return;
-                    var path=location.pathname.replace(/\/+$/,'/') ;
-                    var active=Array.from(menu.querySelectorAll('a')).some(function(a){
-                        var target=new URL(a.href,location.href).pathname.replace(/\/+$/,'/');
-                        if(path===target||(target.indexOf('/stock/')!==-1&&path.startsWith(target))) {
-                            a.classList.add('kh-active');return true;
-                        }
-                        return false;
-                    });
-                    function setOpen(open){nav.classList.toggle('kh-open',open);menu.hidden=!open;button.setAttribute('aria-expanded',String(open));}
-                    setOpen(active);
-                    button.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();setOpen(!nav.classList.contains('kh-open'));});
-                });
-            }
-            if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initStockMenu);
-            else initStockMenu();
-        })();
-        </script>
-    <?php }
+    { 
+        ?>
+            <style>
+                .kh-stock-toggle{width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}
+                .kh-stock-toggle .kh-stock-chevron{margin-left:auto;font-size:11px;transition:transform .2s}
+                .kh-stock-nav.kh-open .kh-stock-chevron{transform:rotate(180deg)}
+                .kh-stock-submenu{list-style:none;margin:0;padding:3px 0 6px 27px}
+                .kh-stock-submenu[hidden]{display:none!important}
+                .kh-stock-submenu a{display:flex;align-items:center;gap:9px;padding:9px 12px;color:inherit;text-decoration:none;font-size:13px}
+                .kh-stock-submenu a:hover,.kh-stock-submenu a.kh-active{background:rgba(128,128,128,.16)}
+                .kh-stock-nav:not(.kh-open) .kh-stock-submenu{display:none!important}
+            </style>
+            <script>
+                (function(){
+                    function initStockMenu(){
+                        document.querySelectorAll('.kh-stock-nav').forEach(function(nav){
+                            if(nav.dataset.khReady==='1')return;
+                            nav.dataset.khReady='1';
+                            var button=nav.querySelector('.kh-stock-toggle');
+                            var menu=nav.querySelector('.kh-stock-submenu');
+                            if(!button||!menu)return;
+                            var path=location.pathname.replace(/\/+$/,'/') ;
+                            var active=Array.from(menu.querySelectorAll('a')).some(function(a){
+                                var target=new URL(a.href,location.href).pathname.replace(/\/+$/,'/');
+                                if(path===target||(target.indexOf('/stock/')!==-1&&path.startsWith(target))) {
+                                    a.classList.add('kh-active');return true;
+                                }
+                                return false;
+                            });
+                            function setOpen(open){nav.classList.toggle('kh-open',open);menu.hidden=!open;button.setAttribute('aria-expanded',String(open));}
+                            setOpen(active);
+                            button.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();setOpen(!nav.classList.contains('kh-open'));});
+                        });
+                    }
+                    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initStockMenu);
+                    else initStockMenu();
+                })();
+            </script>
+        <?php 
+    }
 
     function pageFooter()
     {
@@ -3384,16 +3355,6 @@ function prepared_statements($stat,$binds='',$vars=[])
         return '/cashbook/assets/uploads/business_logos/'
             . rawurlencode($filename);
     }
-
-    // invoice find function
-    // function invoiceFind($id)
-    // {
-    //     $stmt = "SELECT ci.*,cc.name as customer,cc.contact FROM cashbook_invoices ci 
-    //                 LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id
-    //             WHERE ci.id = ?";
-    //     $res = prepared_statements($stmt,'i',[$id]);
-    //     return myObject($res->fetch_assoc());
-    // }
     
     function invoiceFind($id)
     {
@@ -3429,64 +3390,36 @@ function prepared_statements($stat,$binds='',$vars=[])
         $res = prepared_statements($stmt,'i',[$id]);
         return myObject($res->fetch_assoc());
     }
-
-    // function getCustomerBalance($customer_id)
-    // {
-    //     global $server;
-
-    //     $stmt = $server->prepare("
-    //         SELECT COALESCE(balance, 0) AS balance
-    //         FROM cashbook_customer_ledger
-    //         WHERE customer_id = ?
-    //         ORDER BY id DESC
-    //         LIMIT 1
-    //     ");
-
-    //     if (!$stmt) {
-    //         return 0;
-    //     }
-
-    //     $stmt->bind_param('i', $customer_id);
-    //     $stmt->execute();
-
-    //     $result = $stmt->get_result();
-    //     $row = $result->fetch_assoc();
-
-    //     $stmt->close();
-
-    //     return $row ? (float)$row['balance'] : 0;
-    // }
     
-function getCustomerBalance($customer_id)
-{
-    global $server;
+    function getCustomerBalance($customer_id)
+    {
+        global $server;
 
-    $customer_id = (int)$customer_id;
+        $customer_id = (int)$customer_id;
 
-    $stmt = $server->prepare("
-        SELECT COALESCE(balance,0) AS balance
-        FROM cashbook_customer_balances
-        WHERE customer_id=?
-        LIMIT 1
-    ");
+        $stmt = $server->prepare("
+            SELECT COALESCE(balance,0) AS balance
+            FROM cashbook_customer_balances
+            WHERE customer_id=?
+            LIMIT 1
+        ");
 
-    if(!$stmt) throw new Exception($server->error);
+        if(!$stmt) throw new Exception($server->error);
 
-    $stmt->bind_param('i',$customer_id);
+        $stmt->bind_param('i',$customer_id);
 
-    if(!$stmt->execute()){
-        $error = $stmt->error;
+        if(!$stmt->execute()){
+            $error = $stmt->error;
+            $stmt->close();
+            throw new Exception($error);
+        }
+
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
         $stmt->close();
-        throw new Exception($error);
+
+        return $row ? (float)$row['balance'] : 0;
     }
-
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $stmt->close();
-
-    return $row ? (float)$row['balance'] : 0;
-}
-
 
     function getCreditorBalance($creditor_id)
     {
@@ -3568,24 +3501,6 @@ function getCustomerBalance($customer_id)
 
         return $row ? (float)$row['balance'] : 0;
     }
-
-    // function insertCustomerLedgerInvoice($customer_id, $type,$amount,$invoice_id,$trans_id,$book_id,$invoice_no)
-    // {
-    //     global $server;
-
-    //     $currentBalance = getCustomerBalance($customer_id);
-    //     $invoice = invoiceFind($invoice_id);
-    //     $user_id = auth()->id;
-    //     // get new balance
-    //     $newBalance = $currentBalance + $amount;
-
-    //     $stmt = $server->prepare("INSERT INTO cashbook_customer_ledger(customer_id,type,debit_amount,balance,invoice_id,invoice_amount,transaction_id,book_id,user_id,details,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-    //     $stmt->bind_param('isddidiiiss',$customer_id,$type,$amount,$newBalance,$invoice_id,$amount,$trans_id,$book_id,$user_id,$invoice_no,$invoice->created_at);
-
-    //     // update customer balance
-    //     saveCustomerBalance($customer_id,$newBalance,$invoice->created_at); 
-    //     return $stmt->execute();
-    // }
     
     function insertCustomerLedgerInvoice($customer_id,$type,$amount,$invoice_id,$trans_id,$book_id,$invoice_no)
     {
@@ -4211,99 +4126,97 @@ function getCustomerBalance($customer_id)
         }
     }
 
+    function stockOut($item_id,$qty,$trans_id=false)
+    {
+        global $server;
 
-function stockOut($item_id,$qty,$trans_id=false)
-{
-    global $server;
+        $item_id=(int)$item_id;
+        $qty=round((float)$qty,2);
+        $user_id=(int)auth()->id;
+        $reference=($trans_id!==false && $trans_id!==null && $trans_id!=='')
+            ? (int)$trans_id : null;
 
-    $item_id=(int)$item_id;
-    $qty=round((float)$qty,2);
-    $user_id=(int)auth()->id;
-    $reference=($trans_id!==false && $trans_id!==null && $trans_id!=='')
-        ? (int)$trans_id : null;
-
-    if($item_id<=0 || $qty<=0){
-        throw new Exception("A valid stock item and quantity are required.");
-    }
-
-    $item=itemFind($item_id);
-
-    if(!$item){
-        throw new Exception("The selected stock item was not found.");
-    }
-
-    $book_id=(int)$item->book_id;
-
-    if($book_id<=0){
-        throw new Exception("The stock item has no valid business book.");
-    }
-
-    // Check for a previously recorded movement.
-    if($reference!==null){
-        $existing=prepared_statements(
-            "SELECT id,quantity_out
-             FROM cashbook_stocks
-             WHERE reference=? AND transaction_type='stock_out'
-             AND item_id=? AND book_id=?
-             LIMIT 1",
-            'iii',[$reference,$item_id,$book_id]
-        );
-
-        if($existing===false){
-            throw new Exception("Unable to check existing stock movements.");
+        if($item_id<=0 || $qty<=0){
+            throw new Exception("A valid stock item and quantity are required.");
         }
 
-        if($existing->num_rows>0){
-            $row=$existing->fetch_assoc();
-            $oldQty=round((float)$row['quantity_out'],2);
+        $item=itemFind($item_id);
 
-            if(abs($oldQty-$qty)<0.001){
-                return true;
+        if(!$item){
+            throw new Exception("The selected stock item was not found.");
+        }
+
+        $book_id=(int)$item->book_id;
+
+        if($book_id<=0){
+            throw new Exception("The stock item has no valid business book.");
+        }
+
+        // Check for a previously recorded movement.
+        if($reference!==null){
+            $existing=prepared_statements(
+                "SELECT id,quantity_out
+                FROM cashbook_stocks
+                WHERE reference=? AND transaction_type='stock_out'
+                AND item_id=? AND book_id=?
+                LIMIT 1",
+                'iii',[$reference,$item_id,$book_id]
+            );
+
+            if($existing===false){
+                throw new Exception("Unable to check existing stock movements.");
             }
 
+            if($existing->num_rows>0){
+                $row=$existing->fetch_assoc();
+                $oldQty=round((float)$row['quantity_out'],2);
+
+                if(abs($oldQty-$qty)<0.001){
+                    return true;
+                }
+
+                throw new Exception(
+                    "This transaction already has a stock-out of {$oldQty}. ".
+                    "Changing its quantity requires stock reconciliation."
+                );
+            }
+        }
+
+        // Read the available stock.
+        $balance=round((float)getItemStockBalance($item_id),2);
+
+        if($qty>$balance){
             throw new Exception(
-                "This transaction already has a stock-out of {$oldQty}. ".
-                "Changing its quantity requires stock reconciliation."
+                "Insufficient stock. Available: {$balance}, requested: {$qty}."
             );
         }
-    }
 
-    // Read the available stock.
-    $balance=round((float)getItemStockBalance($item_id),2);
+        $newBalance=round($balance-$qty,2);
 
-    if($qty>$balance){
-        throw new Exception(
-            "Insufficient stock. Available: {$balance}, requested: {$qty}."
+        // Insert the new stock movement.
+        $sql="INSERT INTO cashbook_stocks
+            (item_id,book_id,transaction_type,quantity_in,
+            quantity_out,balance,reference,user_id)
+            VALUES (?,?,'stock_out',0,?,?,?,?)";
+
+        $result=prepared_statements(
+            $sql,'iiddii',
+            [$item_id,$book_id,$qty,$newBalance,$reference,$user_id]
         );
+
+        if($result===false){
+            throw new Exception("Failed to insert stock-out movement.");
+        }
+
+        // Update the item's current stock balance.
+        $updated=updateStockItemBalance($item_id,$newBalance);
+
+        if($updated===false){
+            throw new Exception("Failed to update the item's stock balance.");
+        }
+
+        return true;
     }
-
-    $newBalance=round($balance-$qty,2);
-
-    // Insert the new stock movement.
-    $sql="INSERT INTO cashbook_stocks
-          (item_id,book_id,transaction_type,quantity_in,
-           quantity_out,balance,reference,user_id)
-          VALUES (?,?,'stock_out',0,?,?,?,?)";
-
-    $result=prepared_statements(
-        $sql,'iiddii',
-        [$item_id,$book_id,$qty,$newBalance,$reference,$user_id]
-    );
-
-    if($result===false){
-        throw new Exception("Failed to insert stock-out movement.");
-    }
-
-    // Update the item's current stock balance.
-    $updated=updateStockItemBalance($item_id,$newBalance);
-
-    if($updated===false){
-        throw new Exception("Failed to update the item's stock balance.");
-    }
-
-    return true;
-}
-
 
     function restoreStockOut($item_id, $qty)
     {
@@ -4752,58 +4665,87 @@ function stockOut($item_id,$qty,$trans_id=false)
     }
 
     
-function rebuildCustomerLedgerAfterDelete($customer_id,$book_id)
-{
-    global $server;
+    function rebuildCustomerLedgerAfterDelete($customer_id,$book_id)
+    {
+        global $server;
 
-    $customer_id = (int)$customer_id;
-    $book_id = (int)$book_id;
-    if($customer_id <= 0 || $book_id <= 0) return false;
+        $customer_id = (int)$customer_id;
+        $book_id = (int)$book_id;
+        if($customer_id <= 0 || $book_id <= 0) return false;
 
-    try{
-        $sql = "SELECT id,credit_amount,debit_amount,created_at
-                FROM cashbook_customer_ledger
-                WHERE customer_id = ? AND book_id = ?
-                ORDER BY created_at ASC,id ASC";
-        $result = prepared_statements($sql,'ii',[$customer_id,$book_id]);
+        try{
+            $sql = "SELECT id,credit_amount,debit_amount,created_at
+                    FROM cashbook_customer_ledger
+                    WHERE customer_id = ? AND book_id = ?
+                    ORDER BY created_at ASC,id ASC";
+            $result = prepared_statements($sql,'ii',[$customer_id,$book_id]);
 
-        if($result === false) return false;
+            if($result === false) return false;
 
-        $balance = 0;
-        $lastDate = date('Y-m-d');
+            $balance = 0;
+            $lastDate = date('Y-m-d');
 
-        while($row = $result->fetch_assoc()){
-            $balance += (float)$row['debit_amount'] - (float)$row['credit_amount'];
-            $lastDate = $row['created_at'];
+            while($row = $result->fetch_assoc()){
+                $balance += (float)$row['debit_amount'] - (float)$row['credit_amount'];
+                $lastDate = $row['created_at'];
 
-            $sql = "UPDATE cashbook_customer_ledger SET balance = ? WHERE id = ?";
-            $update = prepared_statements($sql,'di',[$balance,$row['id']]);
+                $sql = "UPDATE cashbook_customer_ledger SET balance = ? WHERE id = ?";
+                $update = prepared_statements($sql,'di',[$balance,$row['id']]);
 
-            if($update === false) return false;
-        }
+                if($update === false) return false;
+            }
 
-        $sql = "SELECT customer_id FROM cashbook_customer_balances
-                WHERE customer_id = ? AND book_id = ?";
-        $check = prepared_statements($sql,'ii',[$customer_id,$book_id]);
-
-        if($check === false) return false;
-
-        if($check->num_rows > 0){
-            $sql = "UPDATE cashbook_customer_balances
-                    SET balance = ?,date = ?
+            $sql = "SELECT customer_id FROM cashbook_customer_balances
                     WHERE customer_id = ? AND book_id = ?";
-            $saved = prepared_statements($sql,'dsii',[$balance,$lastDate,$customer_id,$book_id]);
-        }else{
-            $sql = "INSERT INTO cashbook_customer_balances
-                    (customer_id,book_id,balance,date) VALUES (?,?,?,?)";
-            $saved = prepared_statements($sql,'iids',[$customer_id,$book_id,$balance,$lastDate]);
+            $check = prepared_statements($sql,'ii',[$customer_id,$book_id]);
+
+            if($check === false) return false;
+
+            if($check->num_rows > 0){
+                $sql = "UPDATE cashbook_customer_balances
+                        SET balance = ?,date = ?
+                        WHERE customer_id = ? AND book_id = ?";
+                $saved = prepared_statements($sql,'dsii',[$balance,$lastDate,$customer_id,$book_id]);
+            }else{
+                $sql = "INSERT INTO cashbook_customer_balances
+                        (customer_id,book_id,balance,date) VALUES (?,?,?,?)";
+                $saved = prepared_statements($sql,'iids',[$customer_id,$book_id,$balance,$lastDate]);
+            }
+
+            return $saved !== false;
+
+        }catch(Throwable $e){
+            error_log('Customer ledger rebuild: '.$e->getMessage());
+            return false;
+        }
+    }
+
+    function hasRoleId($roleId)
+    {
+        return in_array(
+            (int) $roleId,
+            $_SESSION['role_ids'] ?? [],
+            true
+        );
+    }
+
+    function hasAnyRoleId(array $roleIds)
+    {
+        foreach ($roleIds as $roleId) {
+            if (hasRoleId($roleId)) {
+                return true;
+            }
         }
 
-        return $saved !== false;
-
-    }catch(Throwable $e){
-        error_log('Customer ledger rebuild: '.$e->getMessage());
         return false;
     }
-}
+
+    function isAssignedToBook($bookId)
+    {
+        return in_array(
+            (int) $bookId,
+            $_SESSION['assigned_books'] ?? [],
+            true
+        );
+    }
 
