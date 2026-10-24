@@ -56,44 +56,41 @@
                 {
                     if(password_verify($password,$dat['password']))
                     {
-                        // Load role assignments once, immediately after password verification.
-                        $roleResult = prepared_statements(
-                            "SELECT role_id FROM cashbook_role_user WHERE user_id = ?",
-                            'i',
-                            [(int) $dat['id']]
-                        );
-                        $roleIds = [];
-                        while ($role = $roleResult->fetch_assoc()) {
-                            $roleIds[] = (int) $role['role_id'];
-                        }
-
-                        // Load the user's book memberships for session-based access checks.
-                        $bookResult = prepared_statements(
-                            "SELECT book_id FROM cashbook_book_users WHERE user_id = ?",
-                            'i',
-                            [(int) $dat['id']]
-                        );
-                        $assignedBooks = [];
-                        while ($book = $bookResult->fetch_assoc()) {
-                            $assignedBooks[] = (int) $book['book_id'];
-                        }
-
-                        // Regenerate the session ID to protect against session fixation.
+                        // Establish a fresh authenticated session.
                         session_regenerate_id(true);
                         $_SESSION['verified'] = 1;
                         $_SESSION['code'] = time();
                         $_SESSION['auth'] = (object) $dat;
                         unset($_SESSION['auth']->password);
                         $_SESSION['user_id'] = (int) $dat['id'];
-                        $_SESSION['role_ids'] = array_values(array_unique($roleIds));
-                        $_SESSION['assigned_books'] = array_values(array_unique($assignedBooks));
-                        
-                        $response = [
-                            'message'=>'Successfully Verified',
-                            'link'=>'../',
-                            'access'=>1
-                        ];
-                        
+
+                        // RBAC: load role names, book assignments and permissions.
+                        // This must run AFTER auth is established, and only once at login.
+                        try {
+                            // Initialize ONLY RBAC tables; db_tables.php runs unrelated
+                            // migrations and redirects when included, so do not include it.
+                            if (!function_exists('khCreatePermissionTables') || !function_exists('khLoadAccessSession')) {
+                                throw new RuntimeException('RBAC functions are unavailable; check assets/rbac.php inclusion.');
+                            }
+                            khCreatePermissionTables();
+                            khLoadAccessSession((int) $dat['id']);
+
+                            $response = [
+                                'message' => 'Successfully Verified',
+                                'link' => '../',
+                                'access' => 1
+                            ];
+                        } catch (Throwable $error) {
+                            error_log('KashHub login RBAC error: ' . $error->getMessage());
+                            unset($_SESSION['verified'], $_SESSION['code'], $_SESSION['auth'], $_SESSION['user_id']);
+                            unset($_SESSION['role_ids'], $_SESSION['role_names'], $_SESSION['assigned_books']);
+                            unset($_SESSION['permissions'], $_SESSION['owned_businesses'], $_SESSION['permissions_loaded_at']);
+                            $response = [
+                                'message' => 'Unable to load account permissions. Contact your administrator.',
+                                'link' => '',
+                                'access' => 0
+                            ];
+                        }
                     }else{ // not verified
                         $response = [
                             'message'=>'Wrong Password Entered!!. Please try again',
@@ -108,7 +105,9 @@
                         'access'=>0
                     ];
                 }
-                echo json_encode($response);   
+                // Preserve a valid JSON response even if an included file emitted whitespace.
+                if (ob_get_length()) ob_clean();
+                echo json_encode($response);
                 exit;   
                 break;
         }

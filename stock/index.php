@@ -2,13 +2,22 @@
     require_once(__dir__.'/../assets/functions.php');
     if(isVerified())
     {
-        pageHeader('Stock');
         $bsid = request('bkid');
         $book = bookFind(encryptor('decrypt',$bsid));
         if(!$book){
             $_SESSION['error']='Business book not found.';
             redirect('../books/');
         }
+        // Enforce book-scoped permissions before rendering any inventory data.
+        $bookId = (int)$book->id;
+        $canViewStock = khCan('stock.view', $bookId);
+        $canStocktake = khCan('stocktake.view', $bookId);
+        $canManageItems = khCan('items.view', $bookId);
+        if (!$canViewStock && !$canStocktake) {
+            http_response_code(403);
+            exit('Access denied. You do not have permission to view stock for this book.');
+        }
+        pageHeader('Stock');
         $stockRows=[];
         $stockSql="SELECT i.id,i.name,i.units,COALESCE(sb.balance,0) AS balance
                    FROM cashbook_items i
@@ -45,16 +54,19 @@
         </style>
         <div class="container-fluid stock-body" id="stock-dashboard">
             <section class="stock-hero">
-                <div class="stock-crumb"><a href="../books/?bkid=<?=$esc($bsid);?>">Books</a> &nbsp; / &nbsp; Stock Management</div>
+                <div class="stock-crumb">Stock Management &nbsp; / &nbsp; <?=$esc($book->name);?></div>
                 <div class="stock-hero-line">
                     <div><h2><i class="fa fa-cubes" aria-hidden="true"></i> <?=$esc($book->name);?> — Stock Management</h2><p>Inventory balances, stock alerts and item movement controls</p></div>
                     <div class="stock-header-actions">
-                        <?php if(hasRole(['owner','partner','staff','superadministrator'])):?>
+                        <?php if($canStocktake):?>
+                            <a href="daily/?bkid=<?=$esc($bsid);?>" class="btn btn-success btn-flat stock-action">
+                                <i class="fa fa-calendar-check"></i> Daily Stock Taking
+                            </a>
                             <a href="stocktake/?bkid=<?=$esc($bsid);?>" class="btn btn-outline-success btn-flat stock-action">
                                 <i class="fa fa-clipboard-check"></i> Stock Taking &amp; Reconciliation
                             </a>
                         <?php endif;?>
-                        <?php if(hasRole(['owner','partner','superadministrator'])):?>
+                        <?php if($canManageItems):?>
                             <button type="button" class="btn btn-success btn-flat btn-click stock-action" data-title="Add Stock Item" data-section="item">
                                 <i class="fa fa-plus-circle"></i> Add Stock Item
                             </button>
@@ -113,6 +125,7 @@
             'use strict';
             const bookId=<?=json_encode((int)$book->id);?>;
             const backend='save/index.php';
+            const bookSaveBackend='../books/save/index.php';
             const safeText=(value)=>String(value??'');
             function notify(message){if(window.xdialog&&typeof xdialog.info==='function')xdialog.info(message);else alert(message);}
             function showLoading(selector){$(selector).html('<div class="p-4 text-center text-muted"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');}
@@ -162,22 +175,22 @@
                 if(window.xdialog&&typeof xdialog.startSpin==='function')xdialog.startSpin();
                 fetch(url,{method:'POST',body:new FormData(form)}).then(async response=>{
                     const body=await response.text();let result;
-                    try{result=JSON.parse(body);}catch(error){throw new Error('Unexpected server response: '+body.slice(0,150));}
+                    try{result=JSON.parse(body);}catch(error){if(formId==='newItemForm' && response.ok && !/<(?:!doctype|html|body)\b/i.test(body)){result={success:true,message:'Stock item saved.'};}else{throw new Error('Unexpected server response: '+body.slice(0,150));}}
                     if(!response.ok||result.success===false||result.status===false||result.error){throw new Error(result.message||result.error||'Unable to save stock.');}
                     return result;
                 }).then(result=>{
                     $('.side-modal-tall').hide();notify(result.message||'Stock saved successfully.');
                     const itemId=$('#item_id').val(),itemTitle=$('#item_title').val();
-                    if(itemId)openDetails(itemId,itemTitle||'Stock item');
+                    if(itemId && formId!=='newItemForm')openDetails(itemId,itemTitle||'Stock item');
                     refreshStockSection();
                 }).catch(error=>notify(error.message||'Unable to save stock.')).finally(()=>{
                     form.dataset.submitting='0';if(window.xdialog&&typeof xdialog.stopSpin==='function')xdialog.stopSpin();
                 });
             }
-            $(document).on('submit','#IssueStockForm,#AddStockForm,#newItemForm',function(event){event.preventDefault();submitStockForm(this.id,backend);});
+            $(document).on('submit','#IssueStockForm,#AddStockForm,#newItemForm',function(event){event.preventDefault();submitStockForm(this.id,this.id==='newItemForm'?bookSaveBackend:backend);});
             $(document).on('click','.saveIssueStock,.saveNewStock,.saveItem',function(event){
                 event.preventDefault();const id=$(this).hasClass('saveIssueStock')?'IssueStockForm':($(this).hasClass('saveNewStock')?'AddStockForm':'newItemForm');
-                submitStockForm(id,backend);
+                submitStockForm(id,id==='newItemForm'?bookSaveBackend:backend);
             });
             $(document).on('click','.delete-stock-record',function(event){
                 event.preventDefault();const recordId=$(this).data('id');

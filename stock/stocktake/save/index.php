@@ -4,6 +4,22 @@ require_once __DIR__ . '/../bootstrap.php';
 [$encryptedBookId, $bookId, $book, $userId] = stContext();
 $action = (string)($_REQUEST['action'] ?? '');
 
+/** Review access is separate from permission to perform a physical count. */
+function stCanReview(int $bookId): bool
+{
+    return stocktakeOwnerHasBookAccess((int)auth()->id, $bookId)
+        || (hasRole(['superadministrator']) && khCan('stocktake.view', $bookId))
+        || (hasRole(['partner']) && khCan('stocktake.view', $bookId));
+}
+
+function stRequireReview(int $bookId): void
+{
+    if (!stCanReview($bookId)) {
+        throw new RuntimeException('Only an authorised stocktaking reviewer can perform this action.');
+    }
+}
+
+
 // Only the modal detail view is a GET operation. All mutations require POST + CSRF.
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'details') {
     try {
@@ -12,7 +28,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'details') {
         $lines=stLines($takeId,$bookId);
         $summary=stSummary($lines);
         $editable=in_array($take['status'],['draft','counting'],true);
-        $approver=hasRole(['owner','partner','superadministrator']);
+        $approver=stCanReview($bookId);
+        $canReview=$approver;
+        // The modal must use $canReview to omit sensitive columns entirely.
+        // Do not return confidential stock figures to counting personnel.
+        if (!$canReview) {
+            foreach ($lines as &$line) {
+                unset($line['expected_qty'], $line['unit_cost']);
+            }
+            unset($line);
+            $summary=['total'=>count($lines),'counted'=>count(array_filter($lines, static fn($line)=>$line['counted_qty']!==null)),
+                'variance'=>null,'expected_value'=>null,'counted_value'=>null,'missing_cost'=>null];
+        }
         $csrf=stToken();
         include __DIR__ . '/../session_modal.php';
     } catch (Throwable $exception) {
@@ -34,6 +61,7 @@ try {
 
     switch ($action) {
         case 'create':
+            stRequireReview($bookId);
             $period=trim((string)($_POST['period'] ?? ''));
             $countDate=trim((string)($_POST['count_date'] ?? ''));
             if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$period)) throw new RuntimeException('Invalid month.');
@@ -54,18 +82,32 @@ try {
             if (!in_array($take['status'],['draft','counting'],true)) throw new RuntimeException('This session is locked.');
             $quantities=$_POST['qty'] ?? [];
             $costs=$_POST['cost'] ?? [];
+            $canEditCost=stCanReview($bookId);
             $reasons=$_POST['reason'] ?? [];
             if (!is_array($quantities)||!is_array($costs)||!is_array($reasons)) throw new RuntimeException('Invalid stock count data.');
             foreach (stLines($takeId,$bookId) as $line) {
                 $key=(string)$line['id'];
                 $rawQty=trim((string)($quantities[$key] ?? ''));
-                $rawCost=trim((string)($costs[$key] ?? ''));
+                $rawCost=$canEditCost ? trim((string)($costs[$key] ?? '')) : ''; 
                 if ($rawQty!=='' && (!is_numeric($rawQty)||!is_finite((float)$rawQty)||(float)$rawQty<0||(float)$rawQty>999999999999999)) throw new RuntimeException('Invalid quantity: '.$line['name']);
                 if ($rawCost!=='' && (!is_numeric($rawCost)||!is_finite((float)$rawCost)||(float)$rawCost<0||(float)$rawCost>99999999999999)) throw new RuntimeException('Invalid cost: '.$line['name']);
                 $qty=$rawQty===''?null:round((float)$rawQty,3);
                 $cost=$rawCost===''?null:round((float)$rawCost,4);
                 $reason=mb_substr(trim((string)($reasons[$key] ?? '')),0,255);
-                stQuery('UPDATE cashbook_stocktake_items SET counted_qty=?,unit_cost=?,reason=?,counted_by=?,counted_at=NOW() WHERE id=? AND stocktake_id=? AND book_id=?','ddsiiii',[$qty,$cost,$reason,$userId,(int)$line['id'],$takeId,$bookId]);
+                if ($canEditCost) {
+                    // Reviewer may update costs; omitted cost fields preserve existing values.
+                    if (array_key_exists($key, $costs)) {
+                        stQuery('UPDATE cashbook_stocktake_items SET counted_qty=?,unit_cost=?,reason=?,counted_by=?,counted_at=NOW() WHERE id=? AND stocktake_id=? AND book_id=?',
+                            'ddsiiii',[$qty,$cost,$reason,$userId,(int)$line['id'],$takeId,$bookId]);
+                    } else {
+                        stQuery('UPDATE cashbook_stocktake_items SET counted_qty=?,reason=?,counted_by=?,counted_at=NOW() WHERE id=? AND stocktake_id=? AND book_id=?',
+                            'dsiiii',[$qty,$reason,$userId,(int)$line['id'],$takeId,$bookId]);
+                    }
+                } else {
+                    // Counting personnel cannot overwrite or erase unit costs.
+                    stQuery('UPDATE cashbook_stocktake_items SET counted_qty=?,reason=?,counted_by=?,counted_at=NOW() WHERE id=? AND stocktake_id=? AND book_id=?',
+                        'dsiiii',[$qty,$reason,$userId,(int)$line['id'],$takeId,$bookId]);
+                }
             }
             stQuery("UPDATE cashbook_stocktakes SET status='counting' WHERE id=? AND book_id=?",'ii',[$takeId,$bookId]);
             $message='Physical counts saved successfully.';
@@ -83,9 +125,7 @@ try {
             break;
 
         case 'return_corrections':
-            if (!hasRole(['owner','partner','superadministrator'])) {
-                throw new RuntimeException('Only an authorised reviewer may return a count for corrections.');
-            }
+            stRequireReview($bookId);
             $takeId = (int)($_POST['take_id'] ?? 0);
             $take = stSession($takeId, $bookId, true);
             if ($take['status'] !== 'review') {
@@ -146,7 +186,7 @@ try {
             break;
 
         case 'approve':
-            if (!hasRole(['owner','partner','superadministrator'])) throw new RuntimeException('Only authorised approvers may approve counts.');
+            stRequireReview($bookId);
             $takeId=(int)($_POST['take_id'] ?? 0);
             $take=stSession($takeId,$bookId,true);
             if ($take['status']!=='review') throw new RuntimeException('Only reviewed sessions may be approved.');

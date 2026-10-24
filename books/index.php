@@ -2,11 +2,45 @@
         require_once('../assets/functions.php');
         if(isVerified())
         {
-            pageHeader('Book-details');
             $id = request('bkid');
             $id = encryptor('decrypt',$id);
             $book = bookFind($id);
+            if (!$book) { http_response_code(404); exit('Book not found.'); }
+            $bookId = (int)$book->id;
+            $scope = khTransactionScope($bookId);
+            $canCreate = khCan('transactions.create', $bookId);
+            $canEdit = khCan('transactions.edit', $bookId);
+            $canDelete = khCan('transactions.delete', $bookId);
+            $canSummary = khCan('transactions.summary', $bookId);
+            $canReport = khCan('reports.view', $bookId);
+            $canDashboard = khCan('dashboard.view', $bookId);
+            $canManageRoles = khCan('roles.manage', $bookId);
+            $canManageItems = khCan('items.view', $bookId);
+            $canManageCustomers = khCan('customers.view', $bookId);
+            $canManageCategories = khCan('categories.view', $bookId);
+            $canManagePaymodes = khCan('paymodes.view', $bookId);
+            $canStock = khCan('stock.view', $bookId);
+            if ($scope === 'none' && !$canCreate) {
+                $bookToken = rawurlencode((string)request('bkid'));
+                $destinations = [
+                    ['stock.view', '../stock/?bkid='],
+                    ['stocktake.view', '../stock/stocktake/?bkid='],
+                    ['invoices.view', '../invoices/?bsid='],
+                    ['customers.view', '../customers/?bkid='],
+                    ['reports.view', '../report/?bkid='],
+                    ['dashboard.view', '../dashboard/?bkid=']
+                ];
+                foreach ($destinations as [$permission, $url]) {
+                    if (khCan($permission, $bookId)) {
+                        header('Location: '.$url.$bookToken);
+                        exit;
+                    }
+                }
+                http_response_code(403);
+                exit('No authorized modules are assigned for this book.');
+            }
             setBook($book);
+            pageHeader('Book-details');
 
             /*
             |--------------------------------------------------------------------------
@@ -62,16 +96,16 @@
                             </p>
                         </div>
                     </div>
-                    <div class="kh-header-actions"><a href="../dashboard/?bkid=<?=request('bkid');?>" class="btn btn-primary btn-flat"><i class="fas fa-chart-line"></i> Dashboard</a><a href="../report/?bkid=<?=request('bkid');?>" class="btn btn-outline-secondary btn-flat"><i class="fas fa-chart-bar"></i> Reports</a></div>
+                    <div class="kh-header-actions"><?php if($canDashboard):?><a href="../dashboard/?bkid=<?=request('bkid');?>" class="btn btn-primary btn-flat"><i class="fas fa-chart-line"></i> Dashboard</a><?php endif; if($canReport):?><a href="../report/?bkid=<?=request('bkid');?>" class="btn btn-outline-secondary btn-flat"><i class="fas fa-chart-bar"></i> Reports</a><?php endif;?></div>
                 </div>
-                <?php if(hasRole(['owner','partner','superadministrator'])):?>
+                <?php if($canStock || $canManageCategories || $canManageCustomers || $canManageRoles || $canManageItems || $canManagePaymodes):?>
                 <div class="kh-quick">
                     <div class="kh-quick-head"><strong><i class="fas fa-bolt mr-1 text-primary"></i> Quick Actions</strong><span>Manage this cashbook</span></div><div class="kh-actions">
-                        <a href="../stock/?bkid=<?=request('bkid');?>" class="btn btn-outline-primary"><i class="fas fa-boxes"></i> Stock</a>
-                        <button class="btn btn-outline-success btn-click" data-title="add category" data-section="category"><i class="fas fa-tags"></i> Category</button>
-                        <button class="btn btn-outline-primary btn-click" data-title="add customer" data-section="customer"><i class="fas fa-user-plus"></i> Customer</button>
-                        <button class="btn btn-outline-info btn-click" data-title="add member" data-section="member"><i class="fas fa-users"></i> Members</button>
-                        <button class="btn btn-outline-secondary btn-click" data-title="add item" data-section="item"><i class="fas fa-box"></i> Items</button>
+                        <?php if($canStock):?><a href="../stock/?bkid=<?=request('bkid');?>" class="btn btn-outline-primary"><i class="fas fa-boxes"></i> Stock</a><?php endif;?>
+                        <?php if($canManageCategories):?><?php if($canManagePaymodes):?><button class="btn btn-outline-success btn-click" data-title="add category" data-section="category"><i class="fas fa-tags"></i> Category</button><?php endif;?><?php endif;?>
+                        <?php if($canManageCustomers):?><button class="btn btn-outline-primary btn-click" data-title="add customer" data-section="customer"><i class="fas fa-user-plus"></i> Customer</button><?php endif;?>
+                        <?php if($canManageRoles):?><button class="btn btn-outline-info btn-click" data-title="add member" data-section="member"><i class="fas fa-users"></i> Members</button><?php endif;?>
+                        <?php if($canManageItems):?><button class="btn btn-outline-secondary btn-click" data-title="add item" data-section="item"><i class="fas fa-box"></i> Items</button><?php endif;?>
                         <button class="btn btn-outline-success btn-click" data-title="add payment mode" data-section="paymode"><i class="fas fa-wallet"></i> Payment Modes</button>
                         <span class="right border">
                         <?php
@@ -93,12 +127,13 @@
                     <div class="kh-cashbar"><div><h5><i class="fas fa-exchange-alt mr-1 text-primary"></i> Today's Cashbook</h5><small>Record money coming in or going out</small>
                 </div>
                 <div class="kh-cash-actions">
-                    <button class="btn btn-success cash-in btn-click" data-title="add cashin" data-section="cashin"><i class="fas fa-arrow-down"></i> CASH IN</button>
+                    <?php if($canCreate):?><button class="btn btn-success cash-in btn-click" data-title="add cashin" data-section="cashin"><i class="fas fa-arrow-down"></i> CASH IN</button>
                     <button class="btn btn-danger cash-out btn-click" data-title="add cashout" data-section="cashout"><i class="fas fa-arrow-up"></i> CASH OUT</button>
-                    <a href="../report/?bkid=<?=encryptor('encrypt',$book->id);?>" class="btn btn-outline-secondary report-btn"><i class="fas fa-file-alt"></i> REPORT</a>
-                    <button class="btn btn-outline-primary entry-date"><i class="fas fa-arrow-up"></i> ENTRY DATE</button>
+                    <?php endif; if($canReport):?><a href="../report/?bkid=<?=encryptor('encrypt',$book->id);?>" class="btn btn-outline-secondary report-btn"><i class="fas fa-file-alt"></i> REPORT</a>
+                    <?php endif; if($canCreate):?><button class="btn btn-outline-primary entry-date"><i class="fas fa-arrow-up"></i> ENTRY DATE</button><?php endif;?>
                 </div>
             </div>
+                    <?php if($canSummary):?>
                     <?php
                         $resi=prepared_statements("SELECT SUM(amount) cashin FROM cashbook_cashins WHERE book_id=? AND created_at<DATE_FORMAT(NOW(),'%Y-%m-%d')",'i',[$id]);$rwi=$resi->fetch_assoc();$cashinbbf=(float)($rwi['cashin']??0);
                         $reso=prepared_statements("SELECT SUM(amount) cashout FROM cashbook_cashouts WHERE book_id=? AND DATE(created_at)<DATE_FORMAT(NOW(),'%Y-%m-%d')",'i',[$id]);$rwo=$reso->fetch_assoc();$cashoutbbf=(float)($rwo['cashout']??0);$bbf=$cashinbbf-$cashoutbbf;
@@ -111,6 +146,7 @@
                         <div class="book-dash out"><div class="kh-stat-icon"><i class="fas fa-arrow-up"></i></div><div class="kh-stat-label">Today's Cash Out</div><div class="kh-stat-value"><?=number_format($cashout,0);?></div></div>
                         <div class="book-dash balance"><div class="kh-stat-icon"><i class="fas fa-wallet"></i></div><div class="kh-stat-label">Current Balance</div><div class="kh-stat-value"><?=number_format($bbf+$cashin-$cashout,0);?></div></div>
                     </div>
+                    <?php endif;?>
                     <!-- TRANSACTION REPORT TOOLBAR -->
                     <div class="transaction-report-toolbar">
                         <div>
@@ -156,8 +192,11 @@
 
                             <?php
                                 $sqlm="SELECT DISTINCT MONTH(created_at) month,YEAR(created_at) year
-                                       FROM cashbook_transactions WHERE book_id=? ORDER BY YEAR(created_at) DESC,MONTH(created_at) DESC";
-                                $months=prepared_statements($sqlm,'i',[$book->id]);
+                                       FROM cashbook_transactions WHERE book_id=?".
+                                       ($scope==='own' ? " AND user_id=?" : "").
+                                       " ORDER BY YEAR(created_at) DESC,MONTH(created_at) DESC";
+                                $months=prepared_statements($sqlm,$scope==='own'?'ii':'i',
+                                    $scope==='own'?[$bookId,(int)auth()->id]:[$bookId]);
                                 $month_names=[1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',
                                     7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'];
                             ?>
@@ -214,11 +253,13 @@
                     </aside>
                     <div class="row mx-1">
                         <?php
-                            $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.created_at,ct.details,cu.name as customer FROM cashbook_transactions ct 
+                            $stmt_ = "SELECT ct.credit_amount as credits, ct.debit_amount as debits,cc.name as category,ct.id,ct.user_id,ct.created_at,ct.details,cu.name as customer FROM cashbook_transactions ct 
                                     LEFT JOIN cashbook_categories cc ON cc.id = ct.category_id
                                     LEFT JOIn cashbook_customers cu ON cu.id = ct.customer_id
-                                WHERE ct.book_id = ? ORDER BY ct.id DESC LIMIT 20";
-                            $res_ = prepared_statements($stmt_,'i',[$id]);
+                                WHERE ct.book_id = ?".($scope==='own' ? " AND ct.user_id=?" : "").
+                                " ORDER BY ct.id DESC LIMIT 20";
+                            $res_ = prepared_statements($stmt_,$scope==='own'?'ii':'i',
+                                $scope==='own'?[$bookId,(int)auth()->id]:[$bookId]);
                             $t = 0;
                             $cashin = 0;
                             $cashout = 0;
@@ -256,10 +297,10 @@
                                         <td class ="<?=$r['credits'] > 0 ? " text-primary" : "";?>"><?=number_format($r['credits'],0);?></td>
                                         <td class ="<?=$r['debits'] > 0 ? " text-danger" : "";?>"><?=number_format($debit,0);?></td>
                                         <td>
-                                            <?php if(hasRole(['owner','partner','superadministrator'])):?>
+                                            <?php if(($canEdit || $canDelete) && ($scope==='all' || (int)$r['user_id']===(int)auth()->id)):?>
                                                 <span class="hover-display text-sms">
-                                                    <button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
-                                                    <button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button> 
+                                                    <?php if($canEdit):?><button class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-edit"></i></button>
+                                                    <?php endif; if($canDelete):?><button class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=($r['credits'] > 0) ? 'credit':'debit';?>"><i class="fa fa-trash"></i></button><?php endif;?> 
                                                 </span>
                                             <?php endif;?>
                                         </td>
@@ -373,7 +414,7 @@
                     method: "POST",
                     body: formData
                 })
-                .then(res => res.text()) // or .json() if backend returns JSON
+                .then(async res => { const body = await res.text(); if (!res.ok) throw new Error(body); return body; })
                 .then(response => {
                     // Optionally show response below form
                     let responseDiv = document.getElementById("response_" + formId);
@@ -385,6 +426,8 @@
                     window.location.reload();
                 })
                 .catch(err => {
+                    xdialog.stopSpin();
+                    xdialog.warn(err.message || 'Request failed');
                     console.error("AJAX error:", err);
                 });
             });

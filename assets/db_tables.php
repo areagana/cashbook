@@ -863,6 +863,85 @@ function cashbook_role_audit()
     create_Table($table, $columns);
 }
 
+
+    // ============================================================
+    // ROLE-BASED ACCESS CONTROL (RBAC)
+    // ============================================================
+
+    function cashbook_permissions()
+    {
+        create_Table('cashbook_permissions', [
+            'permission_key' => 'VARCHAR(100) NOT NULL UNIQUE',
+            'module'         => 'VARCHAR(60) NOT NULL',
+            'description'    => 'VARCHAR(200) NOT NULL'
+        ]);
+    }
+
+    function cashbook_role_permissions()
+    {
+        create_Table('cashbook_role_permissions', [
+            'role_id'       => 'INT(11) NOT NULL',
+            'permission_id' => 'INT(11) NOT NULL'
+        ]);
+    }
+
+    /** Add a missing index without altering existing role assignments. */
+    function cashbookRbacEnsureIndex($table, $index, $definition)
+    {
+        global $server, $db_name;
+
+        $check = $server->prepare('SELECT COUNT(*) AS total FROM information_schema.statistics
+            WHERE table_schema = ? AND table_name = ? AND index_name = ?');
+        if (!$check) {
+            throw new RuntimeException('Could not check RBAC index.');
+        }
+        $check->bind_param('sss', $db_name, $table, $index);
+        $check->execute();
+        $result = $check->get_result()->fetch_assoc();
+        $check->close();
+
+        if ((int) $result['total'] === 0) {
+            if (!$server->query("ALTER TABLE `$table` ADD $definition")) {
+                throw new RuntimeException('Could not create RBAC index ' . $index);
+            }
+        }
+    }
+
+    /** Create permission tables and seed permission definitions (not role grants). */
+    function createCashbookRbacTables()
+    {
+        global $server;
+
+        cashbook_permissions();
+        cashbook_role_permissions();
+
+        cashbookRbacEnsureIndex('cashbook_role_permissions', 'role_permission',
+            'UNIQUE KEY `role_permission` (`role_id`, `permission_id`)');
+        cashbookRbacEnsureIndex('cashbook_role_permissions', 'idx_permission',
+            'INDEX `idx_permission` (`permission_id`)');
+
+        // Reuse the permission catalog in assets/rbac.php when it is loaded.
+        if (!function_exists('khPermissionCatalog')) {
+            return;
+        }
+
+        $statement = $server->prepare('INSERT INTO cashbook_permissions
+            (permission_key, module, description) VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE module = VALUES(module), description = VALUES(description)');
+        if (!$statement) {
+            throw new RuntimeException('Could not prepare RBAC permission seed.');
+        }
+
+        foreach (khPermissionCatalog() as $key => $description) {
+            $module = explode('.', $key, 2)[0];
+            $statement->bind_param('sss', $key, $module, $description);
+            if (!$statement->execute()) {
+                throw new RuntimeException('Could not seed RBAC permission: ' . $key);
+            }
+        }
+        $statement->close();
+    }
+
     /** Run parent tables before child tables. */
     function createCashbookStocktakeTables()
     {
@@ -898,6 +977,7 @@ function cashbook_role_audit()
     cashbook_customers();
     cashbook_business_profile();
     cashbook_roles();
+    createCashbookRbacTables();
     cashbook_stocks();
     cashbook_transaction_edits();
     cashbook_customer_ledger();

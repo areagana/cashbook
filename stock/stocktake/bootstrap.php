@@ -36,20 +36,19 @@ function stocktakeOwnerHasBookAccess(int $userId, int $bookId): bool
 function stocktakeCanDeleteSession(int $userId, int $bookId): bool
 {
     if ($userId <= 0 || $bookId <= 0) return false;
-    return stocktakeOwnerHasBookAccess($userId, $bookId)
-        || hasRole(['superadministrator']);
+    // A book-scoped permission avoids granting rights through a role name
+    // assigned in a different business. Owners and system admins are handled by khCan().
+    return khCan('stocktake.delete', $bookId);
 }
 
-/** Access for business owner, users assigned to that business, or system administrator. */
+/** Verify stocktake access against the current book and its business. */
 function stocktakeUserHasBookAccess(int $userId, int $bookId): bool
 {
-    if (stocktakeOwnerHasBookAccess($userId, $bookId)) return true;
-    if (hasRole(['superadministrator'])) return true;
-    $matches = stRows(
-        'SELECT b.id FROM cashbook_books b INNER JOIN cashbook_users u ON u.business_id=b.business_id WHERE b.id=? AND u.id=? LIMIT 1',
-        'ii', [$bookId, $userId]
-    );
-    return !empty($matches);
+    if ($userId <= 0 || $bookId <= 0) return false;
+    if ((int)(auth()->id ?? 0) !== $userId) return false;
+
+    // khCan checks authentication, book/business membership and effective roles.
+    return khCan('stocktake.view', $bookId);
 }
 
 function stContext(): array
@@ -59,9 +58,8 @@ function stContext(): array
     catch (Throwable $exception) { $bookId = 0; }
     $book = $bookId > 0 ? bookFind($bookId) : null;
     if (!$book) { http_response_code(404); exit('Business book not found.'); }
-    if (!hasRole(['owner','partner','staff','superadministrator'])) {
-        http_response_code(403); exit('Permission denied.');
-    }
+    // Permission-based access supports custom roles such as Stock Manager.
+    // Do not use hasRole() here: a role name alone cannot authorize this book.
     $userId = (int)auth()->id;
     if (!stocktakeUserHasBookAccess($userId, $bookId)) {
         http_response_code(403);

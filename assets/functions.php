@@ -14,6 +14,7 @@
     $scriptVersion = file_exists(__DIR__ . '/../assets/script.js')
         ? filemtime(__DIR__ . '/../assets/script.js')
         : time();
+    require_once(__dir__.'/nav.php');
     function prepared_statements($stat,$binds='',$vars=[])
     {
         global $server;
@@ -96,17 +97,16 @@
         }
     }
 
-
     function redirect($link)
     {
         header('location:'.$link);
     }
 
     function back()
-	{
-		$previousUrl = $_SERVER['HTTP_REFERER'];
-		return $previousUrl;
-	}
+    {
+        $previousUrl = $_SERVER['HTTP_REFERER'];
+        return $previousUrl;
+    }
 
     function request($key,$default=null)
     {
@@ -139,7 +139,7 @@
     function transactionFind($id)
     {
         global $server;
-        $stmt = "SELECT ct.*,c.name as category,p.name as paymode,i.name as item_name,cust.name as customer_name,ci.id as invoice_id,ci.invoice_no,cred.name as creditor_name FROM cashbook_transactions ct 
+        $stmt = "SELECT ct.*,c.name as category,p.name as paymode,i.name as item_name,cust.name as customer_name,ci.id as invoice_id,ci.invoice_no,cred.name as creditor_name FROM cashbook_transactions ct
                     LEFT JOIN cashbook_categories c ON c.id = ct.category_id
                     LEFT JOIN cashbook_paymodes p ON p.id = ct.paymode_id
                     LEFT JOIN cashbook_items i ON i.id = ct.item_id
@@ -157,7 +157,7 @@
         $user = $_SESSION['auth'];
         return $user;
     }
-    
+
     function myObject($array)
     {
         return json_decode(json_encode($array));
@@ -185,8 +185,8 @@
     function getCustomer($id)
     {
         global $server;
-        $stmt = "SELECT cc.*,cr.name as route,crm.id as route_manager_id,crm.name as route_manager FROM cashbook_customers cc 
-                    LEFT JOIN cashbook_routes cr ON cr.id = cc.route_id 
+        $stmt = "SELECT cc.*,cr.name as route,crm.id as route_manager_id,crm.name as route_manager FROM cashbook_customers cc
+                    LEFT JOIN cashbook_routes cr ON cr.id = cc.route_id
                     LEFT JOIN cashbook_route_managers crm ON crm.id = cc.route_manager_id
                 WHERE cc.id = ?";
         $res = prepared_statements($stmt,'i',[$id]);
@@ -215,7 +215,6 @@
         $row = $res->fetch_assoc();
         return myObject($row);
     }
-
 
     // find category
     function routeManagerFind($id)
@@ -257,7 +256,7 @@
     function customerItems($customer_id)
     {
         global $server;
-        $sql = "SELECT cci.*,ci.name as item_name FROM cashbook_customer_items cci 
+        $sql = "SELECT cci.*,ci.name as item_name FROM cashbook_customer_items cci
                     LEFT JOIN cashbook_items ci ON ci.id = cci.item_id
                 WHERE cci.customer_id = ?";
         $res = prepared_statements($sql,'i',[$customer_id]);
@@ -277,20 +276,20 @@
     }
 
     // encryptor function
-    function encryptor($action, $string) 
-	{
+    function encryptor($action, $string)
+    {
         $output = false;
         $encrypt_method = "AES-256-CBC";
         //pls set your unique hashing key
         $secret_key = 'raytechnologies';
         $secret_iv = 'raytech2025';
-    
+
         // hash
         $key = hash('sha1', $secret_key);
-    
+
         // iv - encrypt method AES-256-CBC expects 16 bytes - else you will get a warning
         $iv = substr(hash('sha1', $secret_iv), 0, 16);
-    
+
         //do the encyption given text/string/number
         if( $action == 'encrypt' ) {
             $output = openssl_encrypt($string, $encrypt_method, $key, 0, $iv);
@@ -336,44 +335,67 @@
         }
     }
 
-    function hasRole($array)
-    {
-        global $server;
-
-        if (!isset($_SESSION['auth']->id) || !is_array($array) || !$array) return false;
-        $userId = (int) $_SESSION['auth']->id;
-        $requested = array_map('strtolower', array_map('trim', $array));
-
-        // Keep legacy roles operational while migrating existing accounts.
-        $legacy = $server->prepare('SELECT LOWER(r.name) AS role_name FROM cashbook_users u JOIN cashbook_roles r ON r.id=u.role_id WHERE u.id=? LIMIT 1');
-        if ($legacy) {
-            $legacy->bind_param('i', $userId);
-            if ($legacy->execute()) {
-                $record = $legacy->get_result()->fetch_assoc();
-                if ($record && in_array($record['role_name'], $requested, true)) {
-                    $legacy->close();
-                    return true;
-                }
-            }
-            $legacy->close();
-        }
-
-        // The new table grants SYSTEM roles only. Never turn a business-scoped
-        // assignment into unrestricted access to other businesses.
-        $assigned = $server->prepare('SELECT LOWER(r.name) AS role_name FROM cashbook_role_user ru JOIN cashbook_roles r ON r.id=ru.role_id WHERE ru.user_id=? AND ru.business_id=0');
-        if (!$assigned) return false;
-        $assigned->bind_param('i', $userId);
-        if (!$assigned->execute()) { $assigned->close(); return false; }
-        $result = $assigned->get_result();
-        while ($record = $result->fetch_assoc()) {
-            if ($record['role_name'] === 'superadministrator' && in_array('superadministrator', $requested, true)) {
-                $assigned->close();
-                return true;
-            }
-        }
-        $assigned->close();
+    // Role names loaded during login by khLoadAccessSession().
+    // function hasRole($array)
+    // {
+    //     if (!isVerified() || !is_array($array)) return false;
+    //     $assigned = khRoleNames();
+    //     foreach ($array as $name) {
+    //         if (in_array(strtolower(trim((string)$name)), $assigned, true)) return true;
+    //     }
+    //     return false;
+    // }
+    
+function hasRole($roles, $permission = null, $bookId = null, $businessId = null)
+{
+    // ---------------------------------------------------------
+    // 1. Authentication
+    // ---------------------------------------------------------
+    if (!isVerified()) {
         return false;
     }
+
+    // ---------------------------------------------------------
+    // 2. Permission-based access (when explicitly requested)
+    // ---------------------------------------------------------
+    if ($permission !== null && $permission !== '') {
+
+        if (!function_exists('khCan')) {
+            return false;
+        }
+
+        $bookId = $bookId !== null
+            ? (int) $bookId
+            : (int) ($_SESSION['book_id'] ?? 0);
+
+        $businessId = $businessId !== null
+            ? (int) $businessId
+            : (int) ($_SESSION['business_id'] ?? 0);
+
+        return khCan($permission, $bookId, $businessId);
+    }
+
+    // ---------------------------------------------------------
+    // 3. Existing role-based access
+    // ---------------------------------------------------------
+    if (!is_array($roles)) {
+        return false;
+    }
+
+    $assignedRoles = khRoleNames();
+
+    foreach ($roles as $role) {
+
+        $role = strtolower(trim((string) $role));
+
+        if (in_array($role, $assignedRoles, true)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 
     // display session message
     function sessionMessage()
@@ -381,8 +403,7 @@
         if(isset($_SESSION['success']))
         {
             ?>
-                <div class="p-2 success-message" style='position:absolute;background: green !important;
-                            color: white !important;padding: 15px;z-index: 99999;'>
+                <div class="p-2 success-message" style='position:absolute;background: green !important; color: white !important;padding: 15px;z-index: 99999;'>
                     <i class="fa fa-check-circle"></i> <?php echo $_SESSION['success'];?>
                 </div>
             <?php
@@ -391,8 +412,7 @@
         if(isset($_SESSION['error']))
         {
             ?>
-                <div class="p-2 shadow success-message" style='position:absolute;background: red !important;
-                            color: white !important;padding: 15px;z-index: 99999;'>
+                <div class="p-2 shadow success-message" style='position:absolute;background: red !important; color: white !important;padding: 15px;z-index: 99999;'>
                     <i class="fa fa-times-circle text-dark"></i> <?php echo $_SESSION['error'];?>
                 </div>
             <?php
@@ -413,7 +433,7 @@
     function fetchBusiness()
     {
         global $server;
-        // $business = 
+        // $business =
     }
 
     // track transaction edits
@@ -426,7 +446,7 @@
         $old_value = json_encode($row);
         $user_id = auth()->id;
         $book_id = $row['book_id'];
-        
+
         $sql = "INSERT INTO cashbook_transaction_edits (book_id,transaction_id, user_id, previous_data, edit_type) VALUES (?, ?, ?, ?, ?)";
         prepared_statements($sql, 'iiiss', [$book_id,$transaction_id, $user_id, $old_value,$type]);
     }
@@ -610,13 +630,11 @@
             [$trans_id]
         );
 
-
         if($check_res && $check_res->num_rows > 0)
         {
             $oldLedger = $check_res->fetch_assoc();
 
             $old_creditor_id = (int)$oldLedger['creditor_id'];
-
 
             /*
             |--------------------------------------------------------------------------
@@ -638,7 +656,6 @@
                     $balance +
                     $credit -
                     $debit;
-
 
                 $update_sql = "
                     UPDATE cashbook_creditor_ledger SET
@@ -677,7 +694,6 @@
                     ]
                 );
 
-
                 /*
                 * Save current creditor balance.
                 */
@@ -687,7 +703,6 @@
                     $date
                 );
             }
-
 
             /*
             |--------------------------------------------------------------------------
@@ -711,7 +726,6 @@
                     [$trans_id]
                 );
 
-
                 /*
                 * Recalculate old creditor's current balance.
                 */
@@ -723,7 +737,6 @@
                     $date
                 );
 
-
                 /*
                 * Now create the transaction against the newly selected creditor.
                 */
@@ -733,7 +746,6 @@
                     $balance +
                     $credit -
                     $debit;
-
 
                 $insert_sql = "
                     INSERT INTO cashbook_creditor_ledger SET
@@ -772,7 +784,6 @@
                     ]
                 );
 
-
                 saveCreditorBalance(
                     $creditor_id,
                     $newBalance,
@@ -780,12 +791,10 @@
                 );
             }
 
-
             $_SESSION['success'] = "Creditor transaction updated successfully.";
 
             return true;
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -799,7 +808,6 @@
             $balance +
             $credit -
             $debit;
-
 
         $stmt = "
             INSERT INTO cashbook_creditor_ledger SET
@@ -838,7 +846,6 @@
             ]
         );
 
-
         saveCreditorBalance(
             $creditor_id,
             $newBalance,
@@ -869,7 +876,8 @@
         $hasBookContext =
             isset($_REQUEST['book_id']) ||
             isset($_REQUEST['bkid']) ||
-            isset($_REQUEST['bsid']);
+            isset($_REQUEST['bsid']) ||
+            (!empty($_SESSION['book_id']) && preg_match('~/(dashboard|home|customers|creditors|stock|items|purchases|members|category|modes|invoices|report|routes|route_managers)(/|$)~', $_SERVER['SCRIPT_NAME'] ?? ''));
 
         ?>
 
@@ -880,151 +888,73 @@
 
             <meta charset="UTF-8">
 
-            <meta
-                name="viewport"
-                content="width=device-width, initial-scale=1.0"
-            >
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-            <meta
-                name="theme-color"
-                content="#198754"
-            >
+            <meta name="theme-color" content="#198754">
 
-            <meta
-                name="mobile-web-app-capable"
-                content="yes"
-            >
+            <meta name="mobile-web-app-capable" content="yes">
 
-            <meta
-                name="apple-mobile-web-app-capable"
-                content="yes"
-            >
+            <meta name="apple-mobile-web-app-capable" content="yes">
 
-            <meta
-                name="apple-mobile-web-app-status-bar-style"
-                content="default"
-            >
+            <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
-            <meta
-                name="apple-mobile-web-app-title"
-                content="KashHub"
-            >
-
+            <meta name="apple-mobile-web-app-title" content="KashHub">
 
             <!-- ICONS -->
 
-            <link
-                rel="apple-touch-icon"
-                href="/cashbook/icons/icon-192.png"
-            >
+            <link rel="apple-touch-icon" href="/cashbook/icons/icon-192.png">
 
-            <link
-                rel="apple-touch-icon"
-                sizes="180x180"
-                href="/cashbook/icons/apple-touch-icon.png"
-            >
+            <link rel="apple-touch-icon" sizes="180x180" href="/cashbook/icons/apple-touch-icon.png">
 
-            <link
-                rel="icon"
-                type="image/png"
-                sizes="32x32"
-                href="/cashbook/icons/favicon-32x32.png"
-            >
+            <link rel="icon" type="image/png" sizes="32x32" href="/cashbook/icons/favicon-32x32.png">
 
-            <link
-                rel="icon"
-                type="image/png"
-                sizes="16x16"
-                href="/cashbook/icons/favicon-16x16.png"
-            >
-
+            <link rel="icon" type="image/png" sizes="16x16" href="/cashbook/icons/favicon-16x16.png">
 
             <title>
                 <?= $header ? htmlspecialchars($header) . ' | KashHub' : 'KashHub';
                 ?>
             </title>
 
-
-            <link
-                rel="manifest"
-                href="/cashbook/manifest.json"
-            >
-
+            <link rel="manifest" href="/cashbook/manifest.json">
 
             <!-- BOOTSTRAP -->
 
-            <link
-                rel="stylesheet"
-                href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.18/css/bootstrap-select.min.css"
-            >
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.18/css/bootstrap-select.min.css">
 
-            <link
-                rel="stylesheet"
-                href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css"
-            >
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css">
 
-            <link
-                rel="stylesheet"
-                href="../assets/css/bootstrap.min.css"
-            >
-
+            <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
 
             <!-- FONT AWESOME -->
 
-            <link
-                rel="stylesheet"
-                href="../assets/fontawesome-free-5.14.0-web/css/all.css"
-            >
-
+            <link rel="stylesheet" href="../assets/fontawesome-free-5.14.0-web/css/all.css">
 
             <!-- CUSTOM CSS -->
 
-            <link
-                rel="stylesheet"
-                href="../assets/css/custom.css"
-            >
+            <link rel="stylesheet" href="../assets/css/custom.css">
 
             <link
                 rel="stylesheet"
                 href="../assets/style.css?v=<?=$styleVersion;?>"
             >
 
-            <link
-                rel="stylesheet"
-                href="../assets/css/xdialog.3.4.0.min.css"
-            >
-
+            <link rel="stylesheet" href="../assets/css/xdialog.3.4.0.min.css">
 
             <!-- LINE ICONS -->
 
-            <link
-                rel="stylesheet"
-                href="https://cdn.lineicons.com/5.1/line/lineicons.css"
-            >
+            <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/line/lineicons.css">
 
-            <link
-                rel="stylesheet"
-                href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css"
-            >
-
+            <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css">
 
             <!-- DATATABLES -->
 
-            <link
-                rel="stylesheet"
-                href="https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css"
-            >
-
+            <link rel="stylesheet" href="https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css">
 
             <!-- SELECT2 -->
 
-            <link
-                rel="stylesheet"
-                href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css"
-            >
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css">
 
         </head>
-
 
         <body>
 
@@ -1052,7 +982,7 @@
                     sideBar();
                 }
                 // System administration.
-                elseif (hasRole(['superadministrator'])) {
+                elseif (khIsSuperAdmin()) {
                     superAdminSideBar();
                 }
                 // Normal authenticated business workspace.
@@ -1070,22 +1000,15 @@
 
                         <div class="container-fluid">
 
-
                             <!-- BRAND -->
 
-                            <a
-                                class="navbar-brand text-white"
-                                href="../"
-                            >
+                            <a class="navbar-brand text-white" href="../">
                                 <strong>KashHub</strong>
                             </a>
 
+                            <?php if (!$hasBookContext && khIsSuperAdmin()): ?>
 
-                            <?php if (!$hasBookContext && hasRole(['superadministrator'])): ?>
-
-                                <span
-                                    class="badge badge-light ml-2 d-none d-md-inline"
-                                >
+                                <span class="badge badge-light ml-2 d-none d-md-inline">
 
                                     <i class="fa fa-shield-alt mr-1"></i>
 
@@ -1095,18 +1018,14 @@
 
                             <?php endif; ?>
 
-
                             <div class="ml-auto">
-
 
                                 <?php if (
                                     isset($_SESSION['auth']) &&
                                     isset($_SESSION['auth']->name)
                                 ): ?>
 
-
                                     <div class="dropdown">
-
 
                                         <button
                                             class="btn btn-sm btn-outline-light dropdown-toggle"
@@ -1125,12 +1044,7 @@
 
                                         </button>
 
-
-                                        <div
-                                            class="dropdown-menu dropdown-menu-right"
-                                            aria-labelledby="userDropdown"
-                                        >
-
+                                        <div class="dropdown-menu dropdown-menu-right" aria-labelledby="userDropdown">
 
                                             <div class="px-3 py-2">
 
@@ -1150,14 +1064,9 @@
 
                                             </div>
 
-
                                             <div class="dropdown-divider"></div>
 
-
-                                            <a
-                                                class="dropdown-item"
-                                                href="../profile/"
-                                            >
+                                            <a class="dropdown-item" href="../profile/">
 
                                                 <i class="fa fa-user mr-2"></i>
 
@@ -1165,15 +1074,11 @@
 
                                             </a>
 
-
                                             <?php if (
-                                                hasRole(['superadministrator'])
+                                                khIsSuperAdmin()
                                             ): ?>
 
-                                                <a
-                                                    class="dropdown-item"
-                                                    href="../settings/"
-                                                >
+                                                <a class="dropdown-item" href="../settings/">
 
                                                     <i class="fa fa-cog mr-2"></i>
 
@@ -1183,14 +1088,9 @@
 
                                             <?php endif; ?>
 
-
                                             <div class="dropdown-divider"></div>
 
-
-                                            <a
-                                                class="dropdown-item text-danger"
-                                                href="../?logout=1"
-                                            >
+                                            <a class="dropdown-item text-danger" href="../?logout=1">
 
                                                 <i class="fa fa-sign-out-alt mr-2"></i>
 
@@ -1198,21 +1098,17 @@
 
                                             </a>
 
-
                                         </div>
 
                                     </div>
 
-
                                 <?php endif; ?>
-
 
                             </div>
 
                         </div>
 
                     </nav>
-
 
                     <?php sessionMessage(); ?>
 
@@ -1221,7 +1117,7 @@
 
     /** Stock submenu: self-contained and independent of legacy sidebar click handlers. */
     function khStockNavigationAssets()
-    { 
+    {
         ?>
             <style>
                 .kh-stock-toggle{width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}
@@ -1259,7 +1155,7 @@
                     else initStockMenu();
                 })();
             </script>
-        <?php 
+        <?php
     }
 
     function pageFooter()
@@ -1273,7 +1169,6 @@
             </div>
             <!-- END WRAPPER -->
 
-
             <!-- =====================================================
                 CORE JAVASCRIPT
             ====================================================== -->
@@ -1282,13 +1177,11 @@
 
             <script src="../assets/js/bootstrap.min.js"></script>
 
-
             <!-- =====================================================
                 CHART JS
             ====================================================== -->
 
             <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 
             <!-- =====================================================
                 DATATABLES
@@ -1296,23 +1189,17 @@
 
             <script src="https://cdn.datatables.net/2.3.8/js/dataTables.min.js"></script>
 
-
             <!-- =====================================================
                 XDIALOG
             ====================================================== -->
 
             <script src="../assets/js/xdialog.3.4.0.min.js"></script>
 
-
             <!-- =====================================================
                 SELECT2
             ====================================================== -->
 
-            <script
-                src="../assets/js/select2.min.js"
-                defer
-            ></script>
-
+            <script src="../assets/js/select2.min.js" defer></script>
 
             <!-- =====================================================
                 APPLICATION JS
@@ -1321,7 +1208,6 @@
             <script src="../assets/js/custom.js"></script>
 
             <script src="../assets/script.js?v=<?=$scriptVersion;?>"></script>
-
 
             <?php khStockNavigationAssets(); ?>
 
@@ -1374,7 +1260,6 @@
 
             </script>
 
-
         </body>
 
         </html>
@@ -1394,7 +1279,8 @@
         $hasBookContext =
             isset($_REQUEST['book_id']) ||
             isset($_REQUEST['bkid']) ||
-            isset($_REQUEST['bsid']);
+            isset($_REQUEST['bsid']) ||
+            (!empty($_SESSION['book_id']) && preg_match('~/(dashboard|home|customers|creditors|stock|items|purchases|members|category|modes|invoices|report|routes|route_managers)(/|$)~', $_SERVER['SCRIPT_NAME'] ?? ''));
 
         ?>
 
@@ -1405,151 +1291,73 @@
 
             <meta charset="UTF-8">
 
-            <meta
-                name="viewport"
-                content="width=device-width, initial-scale=1.0"
-            >
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-            <meta
-                name="theme-color"
-                content="#198754"
-            >
+            <meta name="theme-color" content="#198754">
 
-            <meta
-                name="mobile-web-app-capable"
-                content="yes"
-            >
+            <meta name="mobile-web-app-capable" content="yes">
 
-            <meta
-                name="apple-mobile-web-app-capable"
-                content="yes"
-            >
+            <meta name="apple-mobile-web-app-capable" content="yes">
 
-            <meta
-                name="apple-mobile-web-app-status-bar-style"
-                content="default"
-            >
+            <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
-            <meta
-                name="apple-mobile-web-app-title"
-                content="KashHub"
-            >
-
+            <meta name="apple-mobile-web-app-title" content="KashHub">
 
             <!-- ICONS -->
 
-            <link
-                rel="apple-touch-icon"
-                href="/cashbook/icons/icon-192.png"
-            >
+            <link rel="apple-touch-icon" href="/cashbook/icons/icon-192.png">
 
-            <link
-                rel="apple-touch-icon"
-                sizes="180x180"
-                href="/cashbook/icons/apple-touch-icon.png"
-            >
+            <link rel="apple-touch-icon" sizes="180x180" href="/cashbook/icons/apple-touch-icon.png">
 
-            <link
-                rel="icon"
-                type="image/png"
-                sizes="32x32"
-                href="/cashbook/icons/favicon-32x32.png"
-            >
+            <link rel="icon" type="image/png" sizes="32x32" href="/cashbook/icons/favicon-32x32.png">
 
-            <link
-                rel="icon"
-                type="image/png"
-                sizes="16x16"
-                href="/cashbook/icons/favicon-16x16.png"
-            >
-
+            <link rel="icon" type="image/png" sizes="16x16" href="/cashbook/icons/favicon-16x16.png">
 
             <title>
                 <?= $header ? htmlspecialchars($header) . ' | KashHub' : 'KashHub';
                 ?>
             </title>
 
-
-            <link
-                rel="manifest"
-                href="/cashbook/manifest.json"
-            >
-
+            <link rel="manifest" href="/cashbook/manifest.json">
 
             <!-- BOOTSTRAP -->
 
-            <link
-                rel="stylesheet"
-                href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.18/css/bootstrap-select.min.css"
-            >
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.18/css/bootstrap-select.min.css">
 
-            <link
-                rel="stylesheet"
-                href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css"
-            >
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css">
 
-            <link
-                rel="stylesheet"
-                href="../../assets/css/bootstrap.min.css"
-            >
-
+            <link rel="stylesheet" href="../../assets/css/bootstrap.min.css">
 
             <!-- FONT AWESOME -->
 
-            <link
-                rel="stylesheet"
-                href="../../assets/fontawesome-free-5.14.0-web/css/all.css"
-            >
-
+            <link rel="stylesheet" href="../../assets/fontawesome-free-5.14.0-web/css/all.css">
 
             <!-- CUSTOM CSS -->
 
-            <link
-                rel="stylesheet"
-                href="../../assets/css/custom.css"
-            >
+            <link rel="stylesheet" href="../../assets/css/custom.css">
 
             <link
                 rel="stylesheet"
                 href="../../assets/style.css?v=<?=$styleVersion;?>"
             >
 
-            <link
-                rel="stylesheet"
-                href="../../assets/css/xdialog.3.4.0.min.css"
-            >
-
+            <link rel="stylesheet" href="../../assets/css/xdialog.3.4.0.min.css">
 
             <!-- LINE ICONS -->
 
-            <link
-                rel="stylesheet"
-                href="https://cdn.lineicons.com/5.1/line/lineicons.css"
-            >
+            <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/line/lineicons.css">
 
-            <link
-                rel="stylesheet"
-                href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css"
-            >
-
+            <link rel="stylesheet" href="https://cdn.lineicons.com/5.1/solid/lineicons-solid.css">
 
             <!-- DATATABLES -->
 
-            <link
-                rel="stylesheet"
-                href="https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css"
-            >
-
+            <link rel="stylesheet" href="https://cdn.datatables.net/2.3.8/css/dataTables.dataTables.min.css">
 
             <!-- SELECT2 -->
 
-            <link
-                rel="stylesheet"
-                href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css"
-            >
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css">
 
         </head>
-
 
         <body>
 
@@ -1577,7 +1385,7 @@
                     sideBarLevel2();
                 }
                 // System administration.
-                elseif (hasRole(['superadministrator'])) {
+                elseif (khIsSuperAdmin()) {
                     superAdminSideBar();
                 }
                 // Normal authenticated business workspace.
@@ -1595,22 +1403,15 @@
 
                         <div class="container-fluid">
 
-
                             <!-- BRAND -->
 
-                            <a
-                                class="navbar-brand text-white"
-                                href="../../"
-                            >
+                            <a class="navbar-brand text-white" href="../../">
                                 <strong>KashHub</strong>
                             </a>
 
+                            <?php if (!$hasBookContext && khIsSuperAdmin()): ?>
 
-                            <?php if (!$hasBookContext && hasRole(['superadministrator'])): ?>
-
-                                <span
-                                    class="badge badge-light ml-2 d-none d-md-inline"
-                                >
+                                <span class="badge badge-light ml-2 d-none d-md-inline">
 
                                     <i class="fa fa-shield-alt mr-1"></i>
 
@@ -1620,18 +1421,14 @@
 
                             <?php endif; ?>
 
-
                             <div class="ml-auto">
-
 
                                 <?php if (
                                     isset($_SESSION['auth']) &&
                                     isset($_SESSION['auth']->name)
                                 ): ?>
 
-
                                     <div class="dropdown">
-
 
                                         <button
                                             class="btn btn-sm btn-outline-light dropdown-toggle"
@@ -1650,12 +1447,7 @@
 
                                         </button>
 
-
-                                        <div
-                                            class="dropdown-menu dropdown-menu-right"
-                                            aria-labelledby="userDropdown"
-                                        >
-
+                                        <div class="dropdown-menu dropdown-menu-right" aria-labelledby="userDropdown">
 
                                             <div class="px-3 py-2">
 
@@ -1675,14 +1467,9 @@
 
                                             </div>
 
-
                                             <div class="dropdown-divider"></div>
 
-
-                                            <a
-                                                class="dropdown-item"
-                                                href="../../profile/"
-                                            >
+                                            <a class="dropdown-item" href="../../profile/">
 
                                                 <i class="fa fa-user mr-2"></i>
 
@@ -1690,15 +1477,11 @@
 
                                             </a>
 
-
                                             <?php if (
-                                                hasRole(['superadministrator'])
+                                                khIsSuperAdmin()
                                             ): ?>
 
-                                                <a
-                                                    class="dropdown-item"
-                                                    href="../../settings/"
-                                                >
+                                                <a class="dropdown-item" href="../../settings/">
 
                                                     <i class="fa fa-cog mr-2"></i>
 
@@ -1708,14 +1491,9 @@
 
                                             <?php endif; ?>
 
-
                                             <div class="dropdown-divider"></div>
 
-
-                                            <a
-                                                class="dropdown-item text-danger"
-                                                href="../../?logout=1"
-                                            >
+                                            <a class="dropdown-item text-danger" href="../../?logout=1">
 
                                                 <i class="fa fa-sign-out-alt mr-2"></i>
 
@@ -1723,21 +1501,17 @@
 
                                             </a>
 
-
                                         </div>
 
                                     </div>
 
-
                                 <?php endif; ?>
-
 
                             </div>
 
                         </div>
 
                     </nav>
-
 
                     <?php sessionMessage(); ?>
 
@@ -1755,14 +1529,12 @@
             </div>
             <!-- END WRAPPER -->
 
-
             <!-- =====================================================
                 CORE JAVASCRIPT
             ====================================================== -->
 
             <script src="../../assets/js/jquery-3.5.1.min.js"></script>
             <script src="../../assets/js/bootstrap.min.js"></script>
-
 
             <!-- =====================================================
                 CHART JS
@@ -1774,7 +1546,6 @@
             ====================================================== -->
             <script src="https://cdn.datatables.net/2.3.8/js/dataTables.min.js"></script>
 
-
             <!-- =====================================================
                 XDIALOG
             ====================================================== -->
@@ -1784,7 +1555,6 @@
                 SELECT2
             ====================================================== -->
             <script src="../../assets/js/select2.min.js" defer></script>
-
 
             <!-- =====================================================
                 APPLICATION JS
@@ -1839,14 +1609,12 @@
 
             </script>
 
-
         </body>
 
         </html>
 
         <?php
     }
-
 
     /** Transitional access: business owner OR system superadministrator. */
     function canManageBusinessRolesNav($businessId)
@@ -1866,1462 +1634,12 @@
         return $allowed;
     }
 
-    /** System role assignments: legacy superadministrator until multi-role rollout. */
+    /** System roles are loaded once at login. */
     function canManageSystemRolesNav()
     {
-        if (!empty($_SESSION['auth']->id) && hasRole(['superadministrator'])) return true;
-        global $server;
-        $userId = (int)($_SESSION['auth']->id ?? 0);
-        if ($userId <= 0) return false;
-        // New role assignments may not yet be installed: avoid fatal SQL errors.
-        $exists = $server->query("SHOW TABLES LIKE 'cashbook_role_user'");
-        if (!$exists || !$exists->num_rows) return false;
-        $stmt = $server->prepare("SELECT ru.id FROM cashbook_role_user ru JOIN cashbook_roles r ON r.id=ru.role_id WHERE ru.user_id=? AND ru.business_id=0 AND LOWER(r.name)='superadministrator' LIMIT 1");
-        if (!$stmt) return false;
-        $stmt->bind_param('i', $userId);
-        $stmt->execute();
-        $allowed = $stmt->get_result()->num_rows > 0;
-        $stmt->close();
-        return $allowed;
+        return khIsSuperAdmin();
     }
-
-    function sideBar()
-    {
-        global $book;
-
-        /*
-        |--------------------------------------------------------------------------
-        | GET BOOK ID
-        |--------------------------------------------------------------------------
-        */
-
-        $encryptedBookId =
-            $_REQUEST['bkid']
-            ?? $_REQUEST['bsid']
-            ?? $_SESSION['book_id']
-            ?? null;
-
-        if (empty($encryptedBookId)) {
-            return;
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | DECRYPT BOOK ID
-        |--------------------------------------------------------------------------
-        */
-
-        $book_id = encryptor(
-            'decrypt',
-            $encryptedBookId
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | FIND BOOK
-        |--------------------------------------------------------------------------
-        */
-
-        $book = $book ?? bookFind($book_id);
-
-        if (!$book) {
-            return;
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | FIND BUSINESS THAT OWNS THIS BOOK
-        |--------------------------------------------------------------------------
-        |
-        | IMPORTANT:
-        | The company logo belongs to cashbook_business_profile,
-        | NOT cashbook_books.
-        |
-        */
-
-        $business = null;
-
-        if (!empty($book->business_id)) {
-            $business = businessFindId($book->business_id);
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BUSINESS INFORMATION
-        |--------------------------------------------------------------------------
-        */
-
-        $businessName =
-            !empty($business->name)
-            ? $business->name
-            : 'Business';
-
-
-        $bookName =
-            !empty($book->name)
-            ? $book->name
-            : 'Business Book';
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BUSINESS LOGO
-        |--------------------------------------------------------------------------
-        */
-
-        $businessLogo = businessLogo($business);
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | ENCRYPT BOOK ID ONCE
-        |--------------------------------------------------------------------------
-        */
-
-        $bsid = encryptor(
-            'encrypt',
-            $book->id
-        );
-
-        ?>
-
-        <!-- =============================================================
-            MOBILE MENU
-        ============================================================== -->
-
-        <button
-            id="mobile-menu-btn"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded="false"
-        >
-            <i class="fa fa-bars"></i>
-        </button>
-
-
-        <!-- =============================================================
-            MOBILE OVERLAY
-        ============================================================== -->
-
-        <div id="sidebar-overlay"></div>
-
-
-        <!-- =============================================================
-            SIDEBAR
-        ============================================================== -->
-
-        <aside id="sidebar" class="expand">
-
-
-            <!-- =========================================================
-                SIDEBAR HEADER
-            ========================================================== -->
-
-            <div class="sidebar-header">
-
-
-                <!-- DESKTOP TOGGLE -->
-
-                <button
-                    id="toggle-btn"
-                    type="button"
-                    aria-label="Toggle navigation"
-                    aria-expanded="true"
-                >
-                    <i class="fa fa-bars"></i>
-                </button>
-
-
-                <!-- =====================================================
-                    COMPANY BRAND
-                ====================================================== -->
-
-                <div class="sidebar-logo">
-
-                    <a
-                        href="../dashboard/?bkid=<?=$bsid;?>"
-                        class="sidebar-company-brand"
-                        title="<?=htmlspecialchars($businessName);?>"
-                    >
-
-                        <div class="sidebar-company-logo-wrap">
-
-                            <img
-                                src="<?=htmlspecialchars($businessLogo);?>"
-                                alt="<?=htmlspecialchars($businessName);?>"
-                                class="sidebar-company-logo"
-                            >
-
-                        </div>
-
-
-                        <div class="sidebar-company-details">
-
-                            <span class="sidebar-company-name">
-                                <?=htmlspecialchars($businessName);?>
-                            </span>
-
-                            <span class="sidebar-book-name">
-                                <?=htmlspecialchars($bookName);?>
-                            </span>
-
-                        </div>
-
-                    </a>
-
-                </div>
-
-
-                <!-- MOBILE CLOSE -->
-
-                <button
-                    id="mobile-close-btn"
-                    type="button"
-                    aria-label="Close navigation"
-                >
-                    <i class="fa fa-times"></i>
-                </button>
-
-            </div>
-
-
-            <!-- =========================================================
-                NAVIGATION
-            ========================================================== -->
-
-            <ul class="sidebar-nav">
-
-
-                <!-- DASHBOARD -->
-                <?php if(hasRole(['superadministrator'])):?>
-                    <li class="sidebar-item">
-                        <a  href="../super/?bkid=<?=$bsid;?>" class="sidebar-link">
-                            <i class="fa fa-shield-alt"></i>
-                            <span>Super Admin Dashboard</span>
-                        </a>
-                    </li>
-                <?php endif;?>
-                <?php if(hasRole(['owner','partner','superadministrator'])):?>
-                    <li class="sidebar-item">
-                        <a  href="../dashboard/?bkid=<?=$bsid;?>" class="sidebar-link">
-                            <i class="fa fa-home"></i>
-                            <span>Dashboard</span>
-                        </a>
-                    </li>
-                <?php endif;?>
-                <li class="sidebar-item">
-                    <a href="../home/?bkid=<?=$bsid;?>" class="sidebar-link">
-                        <i class="fa fa-building"></i>
-                        <span>Home</span>
-                    </a>
-                </li>
-
-
-                <!-- CUSTOMERS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../customers/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-user-friends"></i>
-
-                        <span>Customers</span>
-                    </a>
-
-                </li>
-
-
-                <!-- CREDITORS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../creditors/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-hand-holding-usd"></i>
-                        <span>Creditors</span>
-                    </a>
-
-                </li>
-
-
-                <!-- STOCK: expandable navigation -->
-                <?php $stockMenuId = 'kh-stock-menu-1'; ?>
-                <li class="sidebar-item kh-stock-nav">
-                    <button type="button" class="sidebar-link kh-stock-toggle" aria-expanded="false" aria-controls="<?=$stockMenuId;?>">
-                        <i class="fa fa-warehouse"></i>
-                        <span>Stock</span>
-                        <i class="fa fa-chevron-down kh-stock-chevron" aria-hidden="true"></i>
-                    </button>
-                    <ul id="<?=$stockMenuId;?>" class="kh-stock-submenu" hidden>
-                        <li><a href="../stock/?bkid=<?=$bsid;?>"><i class="fa fa-boxes"></i> Stock Overview</a></li>
-                        <li><a href="../stock/stocktake/?bkid=<?=$bsid;?>"><i class="fa fa-clipboard-check"></i> Stock Taking</a></li>
-                    </ul>
-                </li>
-
-
-                <!-- ITEMS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../items/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-box-open"></i>
-
-                        <span>Items</span>
-                    </a>
-
-                </li>
-
-
-                <!-- PURCHASES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../purchases/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-shopping-cart"></i>
-
-                        <span>Purchases</span>
-                    </a>
-
-                </li>
-
-
-                <!-- USERS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../members/?bkid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-users"></i>
-
-                        <span>Users</span>
-                    </a>
-
-                </li>
-
-
-                <!-- ROLE MANAGEMENT: owner or superadministrator (transitional) -->
-                <?php if (canManageBusinessRolesNav((int)($book->business_id ?? 0))): ?>
-                    <li class="sidebar-item">
-                        <a href="../roles/?business_id=<?= (int)$book->business_id; ?>" class="sidebar-link">
-                            <i class="fa fa-user-shield"></i>
-                            <span>Roles &amp; Access</span>
-                        </a>
-                    </li>
-                <?php endif; ?>
-
-                <!-- CATEGORIES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../category/?bkid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-tags"></i>
-
-                        <span>Categories</span>
-                    </a>
-
-                </li>
-
-
-                <!-- PAY MODES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../modes/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-handshake"></i>
-
-                        <span>Pay Modes</span>
-                    </a>
-
-                </li>
-
-
-                <!-- INVOICES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../invoices/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-file-invoice"></i>
-
-                        <span>Invoices</span>
-                    </a>
-
-                </li>
-
-
-                <!-- REPORT -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../report/?bkid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-chart-bar"></i>
-
-                        <span>Reports</span>
-                    </a>
-
-                </li>
-
-
-                <!-- ROUTES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../routes/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-route"></i>
-
-                        <span>Routes</span>
-                    </a>
-
-                </li>
-
-
-                <!-- ROUTE MANAGERS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../route_managers/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-users-cog"></i>
-
-                        <span>Route Managers</span>
-                    </a>
-
-                </li>
-
-            </ul>
-
-
-            <!-- =========================================================
-                SIDEBAR FOOTER / KASHHUB BRAND
-            ========================================================== -->
-
-            <div class="sidebar-footer">
-
-                <div class="sidebar-powered-by">
-
-                    <span>Powered by</span>
-
-                    <strong>KashHub</strong>
-
-                </div>
-
-
-                <a href="../?logout=1">
-
-                    <i class="fa fa-sign-out-alt"></i>
-
-                    <span>Logout</span>
-
-                </a>
-
-            </div>
-
-        </aside>
-
-        <?php
-    }
-
-    function sideBarLevel2()
-    {
-        global $book;
-
-        /*
-        |--------------------------------------------------------------------------
-        | GET BOOK ID
-        |--------------------------------------------------------------------------
-        */
-
-        $encryptedBookId =
-            $_REQUEST['bkid']
-            ?? $_REQUEST['bsid']
-            ?? $_SESSION['book_id']
-            ?? null;
-
-        if (empty($encryptedBookId)) {
-            return;
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | DECRYPT BOOK ID
-        |--------------------------------------------------------------------------
-        */
-
-        $book_id = encryptor(
-            'decrypt',
-            $encryptedBookId
-        );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | FIND BOOK
-        |--------------------------------------------------------------------------
-        */
-
-        $book = $book ?? bookFind($book_id);
-
-        if (!$book) {
-            return;
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | FIND BUSINESS THAT OWNS THIS BOOK
-        |--------------------------------------------------------------------------
-        |
-        | IMPORTANT:
-        | The company logo belongs to cashbook_business_profile,
-        | NOT cashbook_books.
-        |
-        */
-
-        $business = null;
-
-        if (!empty($book->business_id)) {
-            $business = businessFindId($book->business_id);
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BUSINESS INFORMATION
-        |--------------------------------------------------------------------------
-        */
-
-        $businessName =
-            !empty($business->name)
-            ? $business->name
-            : 'Business';
-
-
-        $bookName =
-            !empty($book->name)
-            ? $book->name
-            : 'Business Book';
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BUSINESS LOGO
-        |--------------------------------------------------------------------------
-        */
-
-        $businessLogo = businessLogo($business);
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | ENCRYPT BOOK ID ONCE
-        |--------------------------------------------------------------------------
-        */
-
-        $bsid = encryptor(
-            'encrypt',
-            $book->id
-        );
-
-        ?>
-
-        <!-- =============================================================
-            MOBILE MENU
-        ============================================================== -->
-
-        <button
-            id="mobile-menu-btn"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded="false"
-        >
-            <i class="fa fa-bars"></i>
-        </button>
-
-
-        <!-- =============================================================
-            MOBILE OVERLAY
-        ============================================================== -->
-
-        <div id="sidebar-overlay"></div>
-
-
-        <!-- =============================================================
-            SIDEBAR
-        ============================================================== -->
-
-        <aside id="sidebar">
-
-
-            <!-- =========================================================
-                SIDEBAR HEADER
-            ========================================================== -->
-
-            <div class="sidebar-header">
-
-
-                <!-- DESKTOP TOGGLE -->
-
-                <button
-                    id="toggle-btn"
-                    type="button"
-                    aria-label="Toggle navigation"
-                    aria-expanded="false"
-                >
-                    <i class="fa fa-bars"></i>
-                </button>
-
-
-                <!-- =====================================================
-                    COMPANY BRAND
-                ====================================================== -->
-
-                <div class="sidebar-logo">
-
-                    <a
-                        href="../../dashboard/?bkid=<?=$bsid;?>"
-                        class="sidebar-company-brand"
-                        title="<?=htmlspecialchars($businessName);?>"
-                    >
-
-                        <div class="sidebar-company-logo-wrap">
-
-                            <img
-                                src="<?=htmlspecialchars($businessLogo);?>"
-                                alt="<?=htmlspecialchars($businessName);?>"
-                                class="sidebar-company-logo"
-                            >
-
-                        </div>
-
-
-                        <div class="sidebar-company-details">
-
-                            <span class="sidebar-company-name">
-                                <?=htmlspecialchars($businessName);?>
-                            </span>
-
-                            <span class="sidebar-book-name">
-                                <?=htmlspecialchars($bookName);?>
-                            </span>
-
-                        </div>
-
-                    </a>
-
-                </div>
-
-
-                <!-- MOBILE CLOSE -->
-
-                <button
-                    id="mobile-close-btn"
-                    type="button"
-                    aria-label="Close navigation"
-                >
-                    <i class="fa fa-times"></i>
-                </button>
-
-            </div>
-
-
-            <!-- =========================================================
-                NAVIGATION
-            ========================================================== -->
-
-            <ul class="sidebar-nav">
-
-
-                <!-- DASHBOARD -->
-                <?php if(hasRole(['superadministrator'])):?>
-                    <li class="sidebar-item">
-                        <a  href="../../super/?bkid=<?=$bsid;?>" class="sidebar-link">
-                            <i class="fa fa-shield-alt"></i>
-                            <span>Super Admin Dashboard</span>
-                        </a>
-                    </li>
-                <?php endif;?>
-                <?php if(hasRole(['owner','partner','superadministrator'])):?>
-                    <li class="sidebar-item">
-                        <a  href="../../dashboard/?bkid=<?=$bsid;?>" class="sidebar-link">
-                            <i class="fa fa-home"></i>
-                            <span>Dashboard</span>
-                        </a>
-                    </li>
-                <?php endif;?>
-                <li class="sidebar-item">
-                    <a href="../../home/?bkid=<?=$bsid;?>" class="sidebar-link">
-                        <i class="fa fa-building"></i>
-                        <span>Home</span>
-                    </a>
-                </li>
-
-
-                <!-- CUSTOMERS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../customers/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-user-friends"></i>
-
-                        <span>Customers</span>
-                    </a>
-
-                </li>
-
-
-                <!-- CREDITORS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../creditors/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-hand-holding-usd"></i>
-                        <span>Creditors</span>
-                    </a>
-
-                </li>
-
-
-                <!-- STOCK: expandable navigation -->
-                <?php $stockMenuId = 'kh-stock-menu-2'; ?>
-                <li class="sidebar-item kh-stock-nav">
-                    <button type="button" class="sidebar-link kh-stock-toggle" aria-expanded="false" aria-controls="<?=$stockMenuId;?>">
-                        <i class="fa fa-warehouse"></i>
-                        <span>Stock</span>
-                        <i class="fa fa-chevron-down kh-stock-chevron" aria-hidden="true"></i>
-                    </button>
-                    <ul id="<?=$stockMenuId;?>" class="kh-stock-submenu" hidden>
-                        <li><a href="../../stock/?bkid=<?=$bsid;?>"><i class="fa fa-boxes"></i> Stock Overview</a></li>
-                        <li><a href="../../stock/stocktake/?bkid=<?=$bsid;?>"><i class="fa fa-clipboard-check"></i> Stock Taking</a></li>
-                    </ul>
-                </li>
-
-
-                <!-- ITEMS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../items/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-box-open"></i>
-
-                        <span>Items</span>
-                    </a>
-
-                </li>
-
-
-                <!-- PURCHASES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../purchases/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-shopping-cart"></i>
-
-                        <span>Purchases</span>
-                    </a>
-
-                </li>
-
-
-                <!-- USERS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../members/?bkid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-users"></i>
-
-                        <span>Users</span>
-                    </a>
-
-                </li>
-
-
-                <!-- ROLE MANAGEMENT: owner or superadministrator (transitional) -->
-                <?php if (canManageBusinessRolesNav((int)($book->business_id ?? 0))): ?>
-                    <li class="sidebar-item">
-                        <a href="../../roles/?business_id=<?= (int)$book->business_id; ?>" class="sidebar-link">
-                            <i class="fa fa-user-shield"></i>
-                            <span>Roles &amp; Access</span>
-                        </a>
-                    </li>
-                <?php endif; ?>
-
-                <!-- CATEGORIES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../category/?bkid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-tags"></i>
-
-                        <span>Categories</span>
-                    </a>
-
-                </li>
-
-
-                <!-- PAY MODES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../modes/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-handshake"></i>
-
-                        <span>Pay Modes</span>
-                    </a>
-
-                </li>
-
-
-                <!-- INVOICES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../invoices/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-file-invoice"></i>
-
-                        <span>Invoices</span>
-                    </a>
-
-                </li>
-
-
-                <!-- REPORT -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../report/?bkid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-chart-bar"></i>
-
-                        <span>Reports</span>
-                    </a>
-
-                </li>
-
-
-                <!-- ROUTES -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../routes/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-route"></i>
-
-                        <span>Routes</span>
-                    </a>
-
-                </li>
-
-
-                <!-- ROUTE MANAGERS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../../route_managers/?bsid=<?=$bsid;?>"
-                        class="sidebar-link"
-                    >
-                        <i class="fa fa-users-cog"></i>
-
-                        <span>Route Managers</span>
-                    </a>
-
-                </li>
-
-            </ul>
-
-
-            <!-- =========================================================
-                SIDEBAR FOOTER / KASHHUB BRAND
-            ========================================================== -->
-
-            <div class="sidebar-footer">
-
-                <div class="sidebar-powered-by">
-
-                    <span>Powered by</span>
-
-                    <strong>KashHub</strong>
-
-                </div>
-
-
-                <a href="../../?logout=1">
-
-                    <i class="fa fa-sign-out-alt"></i>
-
-                    <span>Logout</span>
-
-                </a>
-
-            </div>
-
-        </aside>
-
-        <?php
-    }
-
-    function superAdminSideBar()
-    {
-        /*
-        |--------------------------------------------------------------------------
-        | KASHHUB PLATFORM BRANDING
-        |--------------------------------------------------------------------------
-        | Super Admin represents KashHub itself.
-        | Do not resolve a business or book logo here.
-        */
-
-        $kashHubLogo = '/cashbook/assets/images/kashhub/logo.png';
-
-        ?>
-
-        <!-- Mobile menu button -->
-        <button
-            id="mobile-menu-btn"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded="false"
-        >
-            <i class="fa fa-bars"></i>
-        </button>
-
-        <!-- Mobile overlay -->
-        <div id="sidebar-overlay"></div>
-
-
-        <!-- ============================================================
-            SUPER ADMIN SIDEBAR
-        ============================================================= -->
-        <aside id="sidebar" class="expand">
-
-            <!-- ========================================================
-                HEADER
-            ========================================================= -->
-            <div class="sidebar-header">
-
-                <!-- Desktop toggle -->
-                <button
-                    id="toggle-btn"
-                    type="button"
-                    aria-label="Toggle navigation"
-                    aria-expanded="true"
-                >
-                    <i class="fa fa-bars"></i>
-                </button>
-
-
-                <!-- KashHub Brand -->
-                <div class="sidebar-logo">
-
-                    <a
-                        href="../super/"
-                        class="sidebar-company-brand"
-                        title="KashHub Administration"
-                    >
-
-                        <div class="sidebar-company-logo-wrap">
-                            <img
-                                src="<?= htmlspecialchars($kashHubLogo); ?>"
-                                alt="KashHub"
-                                class="sidebar-company-logo"
-                            >
-                        </div>
-
-                        <div class="sidebar-company-details">
-
-                            <span class="sidebar-company-name">
-                                KashHub
-                            </span>
-
-                            <span class="sidebar-book-name">
-                                System Administration
-                            </span>
-
-                        </div>
-
-                    </a>
-
-                </div>
-
-
-                <!-- Mobile close -->
-                <button
-                    id="mobile-close-btn"
-                    type="button"
-                    aria-label="Close navigation"
-                >
-                    <i class="fa fa-times"></i>
-                </button>
-
-            </div>
-
-
-            <!-- ========================================================
-                NAVIGATION
-            ========================================================= -->
-            <ul class="sidebar-nav">
-
-                <li class="sidebar-item">
-                    <a
-                        href="../super/"
-                        class="sidebar-link"
-                        title="Dashboard"
-                    >
-                        <i class="fa fa-home"></i>
-                        <span>Dashboard</span>
-                    </a>
-                </li>
-
-
-                <li class="sidebar-item">
-                    <a
-                        href="../books/"
-                        class="sidebar-link"
-                        title="Books"
-                    >
-                        <i class="fa fa-book"></i>
-                        <span>Books</span>
-                    </a>
-                </li>
-
-
-                <li class="sidebar-item">
-                    <a
-                        href="../businesses/"
-                        class="sidebar-link"
-                        title="Businesses"
-                    >
-                        <i class="fa fa-building"></i>
-                        <span>Businesses</span>
-                    </a>
-                </li>
-
-
-                <li class="sidebar-item">
-                    <a
-                        href="../users/"
-                        class="sidebar-link"
-                        title="System Users"
-                    >
-                        <i class="fa fa-users"></i>
-                        <span>System Users</span>
-                    </a>
-                </li>
-
-
-                <li class="sidebar-item">
-                    <a
-                        href="../support/"
-                        class="sidebar-link"
-                        title="Support"
-                    >
-                        <i class="fa fa-headphones"></i>
-                        <span>Support</span>
-                    </a>
-                </li>
-
-
-                <li class="sidebar-item">
-                    <a
-                        href="../activity/"
-                        class="sidebar-link"
-                        title="System Activity"
-                    >
-                        <i class="fa fa-history"></i>
-                        <span>System Activity</span>
-                    </a>
-                </li>
-
-
-                <li class="sidebar-item">
-                    <a
-                        href="../settings/"
-                        class="sidebar-link"
-                        title="System Settings"
-                    >
-                        <i class="fa fa-cog"></i>
-                        <span>Settings</span>
-                    </a>
-                </li>
-
-                <!-- SYSTEM ROLE MANAGEMENT -->
-                <?php if (canManageSystemRolesNav()): ?>
-                    <li class="sidebar-item">
-                        <a href="../roles/" class="sidebar-link">
-                            <i class="fa fa-user-shield"></i>
-                            <span>System Roles</span>
-                        </a>
-                    </li>
-                <?php endif; ?>
-
-            </ul>
-
-
-            <!-- ========================================================
-                FOOTER
-            ========================================================= -->
-            <div class="sidebar-footer">
-
-                <div class="sidebar-admin-context">
-
-                    <div class="sidebar-admin-icon">
-                        <i class="fa fa-shield-alt"></i>
-                    </div>
-
-                    <div class="sidebar-admin-details">
-                        <span>Administration</span>
-                        <strong>KashHub Platform</strong>
-                    </div>
-
-                </div>
-
-
-                <a
-                    href="../?logout=1"
-                    class="sidebar-logout"
-                    title="Logout"
-                >
-                    <i class="fa fa-sign-out-alt"></i>
-                    <span>Logout</span>
-                </a>
-
-            </div>
-
-        </aside>
-
-        <?php
-    }
-
-    function businessSideBar()
-    {
-        /*
-        |--------------------------------------------------------------------------
-        | FIND CURRENT BUSINESS
-        |--------------------------------------------------------------------------
-        */
-
-        $business = businessFind(auth());
-
-        if (
-            !$business &&
-            isset(auth()->business_id) &&
-            !empty(auth()->business_id)
-        ) {
-            $business = businessFindId(
-                auth()->business_id
-            );
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BUSINESS BRANDING
-        |--------------------------------------------------------------------------
-        */
-
-        $businessName =
-            !empty($business->name)
-            ? $business->name
-            : 'My Business';
-
-
-        $businessLogo =
-            businessLogo($business);
-
-        ?>
-
-        <!-- =============================================================
-            MOBILE MENU BUTTON
-        ============================================================== -->
-
-        <button
-            id="mobile-menu-btn"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded="false"
-        >
-            <i class="fa fa-bars"></i>
-        </button>
-
-
-        <!-- MOBILE OVERLAY -->
-
-        <div id="sidebar-overlay"></div>
-
-
-        <!-- =============================================================
-            BUSINESS SIDEBAR
-        ============================================================== -->
-
-        <aside id="sidebar" class="expand">
-
-
-            <!-- =========================================================
-                HEADER
-            ========================================================== -->
-
-            <div class="sidebar-header">
-
-
-                <!-- DESKTOP TOGGLE -->
-
-                <button
-                    id="toggle-btn"
-                    type="button"
-                    aria-label="Toggle navigation"
-                    aria-expanded="true"
-                >
-                    <i class="fa fa-bars"></i>
-                </button>
-
-
-                <!-- =====================================================
-                    BUSINESS BRAND
-                ====================================================== -->
-
-                <div class="sidebar-logo">
-
-                    <a
-                        href="../"
-                        class="sidebar-company-brand"
-                        title="<?=htmlspecialchars($businessName);?>"
-                    >
-
-                        <div class="sidebar-company-logo-wrap">
-
-                            <img
-                                src="<?=htmlspecialchars($businessLogo);?>"
-                                alt="<?=htmlspecialchars($businessName);?>"
-                                class="sidebar-company-logo"
-                            >
-
-                        </div>
-
-
-                        <div class="sidebar-company-details">
-
-                            <span class="sidebar-company-name">
-                                <?=htmlspecialchars($businessName);?>
-                            </span>
-
-                            <span class="sidebar-book-name">
-                                KashHub Business
-                            </span>
-
-                        </div>
-
-                    </a>
-
-                </div>
-
-
-                <!-- MOBILE CLOSE -->
-
-                <button
-                    id="mobile-close-btn"
-                    type="button"
-                    aria-label="Close navigation"
-                >
-                    <i class="fa fa-times"></i>
-                </button>
-
-            </div>
-
-
-            <!-- =========================================================
-                NAVIGATION
-            ========================================================== -->
-
-            <ul class="sidebar-nav">
-
-
-                <!-- HOME -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="../"
-                        class="sidebar-link"
-                    >
-
-                        <i class="fa fa-home"></i>
-
-                        <span>Home</span>
-
-                    </a>
-
-                </li>
-
-
-                <!-- BUSINESS PROFILE -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="#"
-                        class="sidebar-link new-profile"
-                        data-id="<?=
-                            !empty($business->id)
-                            ? (int)$business->id
-                            : '';
-                        ?>"
-                    >
-
-                        <i class="fa fa-building"></i>
-
-                        <span>Business Profile</span>
-
-                    </a>
-
-                </li>
-
-
-                <!-- TEAM -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="#"
-                        class="sidebar-link new-team"
-                    >
-
-                        <i class="fa fa-users"></i>
-
-                        <span>Team</span>
-
-                    </a>
-
-                </li>
-
-
-                <!-- BUSINESS ROLE MANAGEMENT: owner or superadministrator (transitional) -->
-                <?php if (!empty($business->id) && canManageBusinessRolesNav((int)$business->id)): ?>
-                    <li class="sidebar-item">
-                        <a href="../roles/?business_id=<?= (int)$business->id; ?>" class="sidebar-link">
-                            <i class="fa fa-user-shield"></i>
-                            <span>Roles &amp; Access</span>
-                        </a>
-                    </li>
-                <?php endif; ?>
-
-                <!-- SETTINGS -->
-
-                <li class="sidebar-item">
-
-                    <a
-                        href="#"
-                        class="sidebar-link new-settings"
-                    >
-
-                        <i class="fa fa-cog"></i>
-
-                        <span>Settings</span>
-
-                    </a>
-
-                </li>
-
-
-            </ul>
-
-
-            <!-- =========================================================
-                FOOTER
-            ========================================================== -->
-
-            <div class="sidebar-footer">
-
-
-                <!-- KASHHUB PLATFORM BRAND -->
-
-                <div class="sidebar-powered-by">
-
-                    <span>Powered by</span>
-
-                    <strong>KashHub</strong>
-
-                </div>
-
-
-                <!-- LOGOUT -->
-
-                <a href="../?logout=1">
-
-                    <i class="fa fa-sign-out-alt"></i>
-
-                    <span>Logout</span>
-
-                </a>
-
-
-            </div>
-
-
-        </aside>
-
-        <?php
-    }
-
+    
     function businessLogo($business = null)
     {
         /*
@@ -3332,7 +1650,6 @@
 
         $defaultLogo = '/cashbook/assets/images/kashhub/logo.png';
 
-
         /*
         |--------------------------------------------------------------------------
         | NO BUSINESS / NO CUSTOM LOGO
@@ -3342,7 +1659,6 @@
         if (!$business || empty($business->profile)) {
             return $defaultLogo;
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -3355,7 +1671,7 @@
         return '/cashbook/assets/uploads/business_logos/'
             . rawurlencode($filename);
     }
-    
+
     function invoiceFind($id)
     {
         $stmt = "SELECT ci.*,cc.name AS customer,cc.contact
@@ -3390,7 +1706,7 @@
         $res = prepared_statements($stmt,'i',[$id]);
         return myObject($res->fetch_assoc());
     }
-    
+
     function getCustomerBalance($customer_id)
     {
         global $server;
@@ -3501,7 +1817,7 @@
 
         return $row ? (float)$row['balance'] : 0;
     }
-    
+
     function insertCustomerLedgerInvoice($customer_id,$type,$amount,$invoice_id,$trans_id,$book_id,$invoice_no)
     {
         global $server;
@@ -3554,7 +1870,7 @@
         $check_stmt = "SELECT * FROM cashbook_customer_balances WHERE customer_id = ?";
         $check = prepared_statements($check_stmt,'i',[$customer_id]);
         $book_id = customerFind($customer_id)->book_id;
-        
+
         if($check->num_rows > 0)
         {
             $stmt = "UPDATE cashbook_customer_balances SET balance = ?,date = ? WHERE customer_id = ?";
@@ -3599,7 +1915,6 @@
             return false;
         }
 
-
         if($check->num_rows > 0)
         {
             $stmt = "
@@ -3622,7 +1937,6 @@
                 ]
             );
         }
-
 
         $stmt = "
             INSERT INTO cashbook_creditor_balances
@@ -3660,7 +1974,6 @@
             return false;
         }
 
-
         /*
         |--------------------------------------------------------------------------
         | FIND EDITED TRANSACTION
@@ -3686,18 +1999,15 @@
             ]
         );
 
-
         if(!$res || $res->num_rows <= 0)
         {
             return false;
         }
 
-
         $editedTransaction = $res->fetch_assoc();
 
         $ledger_id = (int)$editedTransaction['id'];
         $created_at = $editedTransaction['created_at'];
-
 
         /*
         |--------------------------------------------------------------------------
@@ -3737,9 +2047,7 @@
             ]
         );
 
-
         $runningBalance = 0;
-
 
         if($previous && $previous->num_rows > 0)
         {
@@ -3749,7 +2057,6 @@
             $runningBalance =
                 (float)$previousRow['balance'];
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -3787,15 +2094,12 @@
             ]
         );
 
-
         if(!$ledger)
         {
             return false;
         }
 
-
         $lastDate = $created_at;
-
 
         while($row = $ledger->fetch_assoc())
         {
@@ -3804,7 +2108,6 @@
 
             $debit =
                 (float)$row['debit_amount'];
-
 
             /*
             |--------------------------------------------------------------------------
@@ -3816,7 +2119,6 @@
                 $runningBalance
                 + $credit
                 - $debit;
-
 
             /*
             |--------------------------------------------------------------------------
@@ -3839,10 +2141,8 @@
                 ]
             );
 
-
             $lastDate = $row['created_at'];
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -3869,7 +2169,6 @@
             'i',
             [$creditor_id]
         );
-
 
         if($balanceCheck && $balanceCheck->num_rows > 0)
         {
@@ -3902,7 +2201,6 @@
 
             $book_id = (int)$creditor->book_id;
 
-
             $insertBalanceSql = "
                 INSERT INTO cashbook_creditor_balances
                 (
@@ -3925,7 +2223,6 @@
                 ]
             );
         }
-
 
         return $runningBalance;
     }
@@ -4247,12 +2544,12 @@
         =====================================================
         RESTORE THE PREVIOUS STOCK-OUT
         =====================================================
-        
+
         Example:
-        
+
         Current balance = 80
         Previous stock-out = 20
-        
+
         Restored balance = 80 + 20 = 100
         */
 
@@ -4366,7 +2663,6 @@
         return $balance;
     }
 
-    
     function rebuildCustomerLedgerBalances($customer_id,$book_id)
     {
         global $server;
@@ -4482,7 +2778,6 @@
         $types .= 'i';
         $params[] = (int)$book_id;
 
-
         /*
         |--------------------------------------------------------------------------
         | DATE FROM
@@ -4507,7 +2802,6 @@
             $params[] = $filters['max_date'];
         }
 
-
         /*
         |--------------------------------------------------------------------------
         | MONTH
@@ -4525,7 +2819,6 @@
 
         }
 
-
         /*
         |--------------------------------------------------------------------------
         | YEAR
@@ -4542,7 +2835,6 @@
             $params[] = (int)$filters['year'];
 
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -4564,7 +2856,6 @@
 
         }
 
-
         /*
         |--------------------------------------------------------------------------
         | CATEGORY
@@ -4579,7 +2870,6 @@
             $types .= 'i';
             $params[] = (int)$filters['category'];
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -4600,7 +2890,6 @@
             $params[] = (int)$filters['item'];
         }
 
-
         return [
             'where'  => implode(' AND ', $where),
             'types'  => $types,
@@ -4609,7 +2898,7 @@
     }
 
     // delete route function
-    
+
     function deleteRouteById($routeId)
     {
         global $server;
@@ -4664,7 +2953,6 @@
         }
     }
 
-    
     function rebuildCustomerLedgerAfterDelete($customer_id,$book_id)
     {
         global $server;
@@ -4749,3 +3037,5 @@
         );
     }
 
+// KashHub central access-control functions
+require_once __DIR__.'/rbac.php';

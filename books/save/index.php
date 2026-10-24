@@ -37,6 +37,40 @@
         {
             $user_id = auth()->id;
             $action = request('action');
+            // Authorization is checked on every request, including direct AJAX calls.
+            if ($action === 'fetchForm') {
+                $bookId = (int)request('book_id');
+                $formPermission = [
+                    'cashin'=>'transactions.create', 'cashout'=>'transactions.create',
+                    'category'=>'categories.view', 'edit-category'=>'categories.view',
+                    'customer'=>'customers.view', 'creditor'=>'creditors.view',
+                    'member'=>'roles.manage', 'member-edit'=>'roles.manage',
+                    'item'=>'items.view', 'item-edit'=>'items.view',
+                    'paymode'=>'paymodes.view', 'paymode-edit'=>'paymodes.view',
+                    'invoice'=>'invoices.view', 'purchase'=>'purchases.view',
+                    'route'=>'routes.view', 'route-edit'=>'routes.view',
+                    'route_manager'=>'route_managers.view', 'route-manager-edit'=>'route_managers.view'
+                ];
+                $section = (string)request('section');
+                if (!isset($formPermission[$section])) { http_response_code(403); exit('Unknown form.'); }
+                khRequirePermission($formPermission[$section], $bookId);
+            }
+            if ($action === 'SaveForm') {
+                $form = (string)request('form');
+                $newForms = ['newCashinSave','newCashoutSave'];
+                $editForms = ['editCashinSave','editCashoutSave'];
+                if (in_array($form,$newForms,true)) {
+                    khRequirePermission('transactions.create',(int)request('book_id'));
+                } elseif (in_array($form,$editForms,true)) {
+                    khRequireTransactionAccess((int)request('transaction_id'),'transactions.edit');
+                }
+            }
+            if ($action === 'editTransaction') {
+                khRequireTransactionAccess((int)request('id'),'transactions.edit');
+            }
+            if ($action === 'DeleteTransaction') {
+                khRequireTransactionAccess((int)request('id'),'transactions.delete');
+            }
             switch($action)
             {
                 case 'fetchForm':
@@ -1259,92 +1293,123 @@
                                 }
 
                             break;
+                        /* =============================================================
+                         * MEMBER CREATION / EDITING AND ROLE ASSIGNMENT
+                         * ============================================================= */
                         case 'MemberEditSave':
-                            $book_id = request('book_id');
-                            $email = request('email');
-                            $name = request('user_name');
-                            $contact = request('contact');
-                            $business_id = bookFind($book_id)->business_id;
-                            $password = request('password');
-                            $role = request('role_id');
-                            $member_id = request('member-id');
-
-                            // check if user already exists and edit
-                                // save the content
-                                if(!empty($member_id))
-                                {   
-                                    if(!empty($password)):  // update password is not empty
-                                        $password = password_hash($password,PASSWORD_DEFAULT);
-                                        // update user here, check user books
-                                        $sql = "UPDATE cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,password =?,role_id= ? WHERE id = ?";
-                                        prepared_statements($sql,'sssisii',[$name,$email,$contact,$business_id,$password,$role,$member_id]);
-                                        
-                                    else: // leave out password update
-                                        $sql = "UPDATE cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,role_id= ? WHERE id = ?";
-                                        prepared_statements($sql,'sssiii',[$name,$email,$contact,$business_id,$role,$member_id]);
-                                    endif;
-
-                                    $user_id = $member_id;
-                                }
-
-                                // check user book attachment
-                                $sql = "SELECT * FROM  cashbook_book_users WHERE user_id = ? AND book_id = ?";
-                                $check = prepared_statements($sql,'ii',[$member_id,$book_id]);
-                                
-                                // attach book if user is not linked
-                                if($check->num_rows == 0)
-                                {
-                                     // link user to books
-                                    $stmt = "INSERT INTO cashbook_book_users SET user_id = ?, book_id = ?";
-                                    prepared_statements($stmt,'ii',[$member,$book_id]);
-                                }
-
-                            break;
                         case 'newMemberSave':
+                            $book_id  = (int)request('book_id');
+                            $member_id = (int)(request('member_id') ?: request('member-id') ?: 0);
+                            $name     = trim((string)request('user_name'));
+                            $email    = trim((string)request('email'));
+                            $contact  = trim((string)request('contact'));
+                            $password = (string)request('password');
+                            $role_id  = (int)request('role_id');
+                            $selectedBook = bookFind($book_id);
 
-                            $book_id = request('book_id');
-                            $email = request('email');
-                            $name = request('user_name');
-                            $contact = request('contact');
-                            $business_id = bookFind($book_id)->business_id;
-                            $password = request('password');
-                            $role = request('role_id');
-                            $member_id = request('member_id') ?? "";
+                            if (!$selectedBook || $name === '' || $email === '' || $role_id <= 0) {
+                                http_response_code(422);
+                                exit('Invalid member details, role, or book.');
+                            }
 
-                                if(empty($member_id))
-                                {
-                                    $password = password_hash($password,PASSWORD_DEFAULT);
-                                    $sql = "INSERT INTO cashbook_users SET name = ?,email=?,contact = ?,business_id = ?,password =?,role_id=?";
-                                    prepared_statements($sql,'sssisi',[$name,$email,$contact,$business_id,$password,$role]);
-                                    $user_id = $server->insert_id;
-                                }else{
-    
-                                    if(!empty($password)):  // update password is not empty
-                                        $password = password_hash($password,PASSWORD_DEFAULT);
-                                        // update user here, check user books
-                                        $sql = "UPDATE cashbook_users SET name = ?,email=?,contact = ?,password =?,role_id= ? WHERE id = ?";
-                                        prepared_statements($sql,'ssssii',[$name,$email,$contact,$password,$role,$member_id]);
-                                        
-                                    else: // leave out password update
-                                        $sql = "UPDATE cashbook_users SET name = ?,email=?,contact = ?,role_id= ? WHERE id = ?";
-                                        prepared_statements($sql,'sssii',[$name,$email,$contact,$role,$member_id]);
-                                    endif;
-                                    $user_id = $member_id;  
+                            $business_id = (int)$selectedBook->business_id;
+
+                            // Only the business owner or global superadministrator may assign roles.
+                            if (!khIsSuperAdmin() && !khOwnsBusiness($business_id)) {
+                                http_response_code(403);
+                                exit('You are not authorized to assign member roles.');
+                            }
+
+                            // Validate role and prohibit assignment of privileged system roles here.
+                            $roleCheck = prepared_statements(
+                                'SELECT id, name FROM cashbook_roles WHERE id=? LIMIT 1',
+                                'i', [$role_id]
+                            );
+                            $selectedRole = $roleCheck ? $roleCheck->fetch_assoc() : null;
+                            if (!$selectedRole || in_array(strtolower((string)$selectedRole['name']),
+                                    ['owner', 'superadministrator', 'superadmin'], true)) {
+                                http_response_code(422);
+                                exit('The selected role cannot be assigned from Members.');
+                            }
+
+                            // Existing members must already belong to the selected business.
+                            if ($member_id > 0) {
+                                $memberCheck = prepared_statements(
+                                    'SELECT id FROM cashbook_users WHERE id=? AND business_id=? LIMIT 1',
+                                    'ii', [$member_id, $business_id]
+                                );
+                                if (!$memberCheck || !$memberCheck->num_rows) {
+                                    http_response_code(403);
+                                    exit('Member does not belong to this business.');
                                 }
-                                
+                            } elseif ($password === '') {
+                                http_response_code(422);
+                                exit('Password is required for a new member.');
+                            }
 
-                                // check user book attachment
-                                $sql = "SELECT * FROM  cashbook_book_users WHERE user_id = ? AND book_id = ?";
-                                $check = prepared_statements($sql,'ii',[$user_id,$book_id]);
-                                
-                                // attach book if user is not linked
-                                if($check->num_rows == 0)
-                                {
-                                     // link user to books
-                                    $stmt = "INSERT INTO cashbook_book_users SET user_id = ?, book_id = ?";
-                                    prepared_statements($stmt,'ii',[$user_id,$book_id]);
+                            try {
+                                $server->begin_transaction();
+
+                                if ($member_id === 0) {
+                                    $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+                                    $saved = prepared_statements(
+                                        'INSERT INTO cashbook_users SET name=?, email=?, contact=?, business_id=?, password=?, role_id=?',
+                                        'sssisi', [$name, $email, $contact, $business_id, $passwordHash, $role_id]
+                                    );
+                                    if ($saved === false) throw new RuntimeException('Could not create member.');
+                                    $member_id = (int)$server->insert_id;
+                                    if ($member_id <= 0) throw new RuntimeException('Member ID was not generated.');
+                                } else {
+                                    if ($password !== '') {
+                                        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+                                        $saved = prepared_statements(
+                                            'UPDATE cashbook_users SET name=?, email=?, contact=?, password=?, role_id=? WHERE id=? AND business_id=?',
+                                            'ssssiii', [$name, $email, $contact, $passwordHash, $role_id, $member_id, $business_id]
+                                        );
+                                    } else {
+                                        $saved = prepared_statements(
+                                            'UPDATE cashbook_users SET name=?, email=?, contact=?, role_id=? WHERE id=? AND business_id=?',
+                                            'sssiii', [$name, $email, $contact, $role_id, $member_id, $business_id]
+                                        );
+                                    }
+                                    if ($saved === false) throw new RuntimeException('Could not update member.');
                                 }
 
+                                // Keep one selected business role for this member, while preserving
+                                // unrelated business assignments and any global superadmin assignment.
+                                $deleted = prepared_statements(
+                                    'DELETE FROM cashbook_role_user WHERE user_id=? AND business_id=?',
+                                    'ii', [$member_id, $business_id]
+                                );
+                                if ($deleted === false) throw new RuntimeException('Could not update role assignment.');
+                                $assigned = prepared_statements(
+                                    'INSERT INTO cashbook_role_user (user_id, role_id, business_id) VALUES (?,?,?)',
+                                    'iii', [$member_id, $role_id, $business_id]
+                                );
+                                if ($assigned === false) throw new RuntimeException('Could not assign role.');
+
+                                // A role grants permissions; this mapping limits which book they apply to.
+                                $membership = prepared_statements(
+                                    'SELECT user_id FROM cashbook_book_users WHERE user_id=? AND book_id=? LIMIT 1',
+                                    'ii', [$member_id, $book_id]
+                                );
+                                if ($membership === false) throw new RuntimeException('Could not check book membership.');
+                                if (!$membership->num_rows) {
+                                    $linked = prepared_statements(
+                                        'INSERT INTO cashbook_book_users (user_id, book_id) VALUES (?,?)',
+                                        'ii', [$member_id, $book_id]
+                                    );
+                                    if ($linked === false) throw new RuntimeException('Could not assign member to book.');
+                                }
+
+                                $server->commit();
+                                echo 'Member saved successfully.';
+                            } catch (Throwable $e) {
+                                $server->rollback();
+                                error_log('KashHub member save failed: ' . $e->getMessage());
+                                http_response_code(500);
+                                exit('Unable to save member and role assignment. Check server error log.');
+                            }
                             break;
                         case 'newCustomerSave':
                             $book_id = request('book_id');
@@ -3399,7 +3464,14 @@
                     break;
                 case 'transactionFilter':
                     $book_id = (int)request('book_id');
+                    $scope = khTransactionScope($book_id);
+                    if ($scope === 'none') { http_response_code(403); exit('Transaction access denied.'); }
                     $where = ['t.book_id=?']; $params = [$book_id]; $types = 'i';
+                    if ($scope === 'own') {
+                        $where[] = 't.user_id=?';
+                        $params[] = (int)auth()->id;
+                        $types .= 'i';
+                    }
 
                     // ---------------- FILTERS ----------------
                     $min = trim($_POST['min_date'] ?? '');
@@ -3541,10 +3613,13 @@
                         <td class="text-right <?=$in>0?'text-success font-weight-bold':'';?>" data-amount="<?=$in;?>"><?=$in>0?$money($in):'';?></td>
                         <td class="text-right <?=$out>0?'text-danger font-weight-bold':'';?>" data-amount="<?=$out;?>"><?=$out>0?$money($out):'';?></td>
                         <td class="text-nowrap">
-                            <?php if(hasRole(['owner','partner','superadministrator'])):?>
+                            <?php if(khCan('transactions.edit',(int)$r['book_id']) || khCan('transactions.delete',(int)$r['book_id'])):?>
                             <span class="hover-display text-sms">
+                                <?php if(khCan('transactions.edit',(int)$r['book_id'])):?>
                                 <button type="button" class="btn btn-sm btn-outline-info edit-trans text-muted" data-id="<?=$r['id'];?>" data-type="<?=$in>0?'credit':'debit';?>"><i class="fa fa-edit"></i></button>
+                                <?php endif; if(khCan('transactions.delete',(int)$r['book_id'])):?>
                                 <button type="button" class="btn btn-sm btn-outline-danger delete-trans" data-id="<?=$r['id'];?>" data-type="<?=$in>0?'credit':'debit';?>"><i class="fa fa-trash"></i></button>
+                                <?php endif;?>
                             </span>
                             <?php endif;?>
                         </td>
@@ -3574,26 +3649,7 @@
                                                 <td class="text-center"><?=$item['count'];?></td><td class="text-right"><?=$qty($item['in']);?></td>
                                                 <td class="text-right"><?=$qty($item['out']);?></td>
                                                 <td class="text-right font-weight-bold <?=$net<0?'text-danger':'text-success';?>"><?=$qty($net);?></td>
-                                                <?php if(hasRole(['owner','partner'])):?>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-outline-info edit-trans text-muted"
-                                                    data-id="<?=$trans['id'];?>"
-                                                    data-type="<?=$trans['type'];?>"
-                                                    title="Edit transaction">
-                                                    <i class="fa fa-edit"></i>
-                                                </button>
 
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-outline-danger delete-trans"
-                                                    data-id="<?=$trans['id'];?>"
-                                                    data-type="<?=$trans['type'];?>"
-                                                    title="Delete transaction">
-                                                    <i class="fa fa-trash"></i>
-                                                </button>
-
-                                            <?php endif;?>
                                             </tr>
                                         <?php endforeach;?>
                                         </tbody>
@@ -3629,6 +3685,9 @@
                         */
 
                         $book_id = (int)request('book_id');
+                        khRequirePermission('reports.export',$book_id);
+                        $scope = khTransactionScope($book_id);
+                        if ($scope === 'none') { http_response_code(403); exit('Transaction access denied.'); }
                         $format = strtolower(request('format'));
 
                         /*
@@ -3660,6 +3719,11 @@
                         $where = $filterData['where'];
                         $types =  $filterData['types'];
                         $params =  $filterData['params'];
+                        if ($scope === 'own') {
+                            $where = '(' . $where . ') AND ct.user_id=?';
+                            $types .= 'i';
+                            $params[] = (int)auth()->id;
+                        }
                         $book = bookFind($book_id);
 
                         /*
