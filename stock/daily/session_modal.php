@@ -3,7 +3,7 @@ $total=count($lines); $counted=0; $variances=0;
 foreach ($lines as $line) {
     if ($line['counted_qty']!==null) {
         $counted++;
-        if ($reviewer && abs((float)$line['counted_qty']-(float)$line['expected_qty'])>.0005) $variances++;
+        if ($reviewer && $line['expected_qty']!==null && abs((float)$line['counted_qty']-(float)$line['expected_qty'])>.0005) $variances++;
     }
 }
 ?>
@@ -11,7 +11,7 @@ foreach ($lines as $line) {
     <div><strong><?=dsEsc($session['count_date']);?></strong> &nbsp; <span class="badge badge-secondary"><?=dsEsc(ucfirst($session['status']));?></span></div>
     <div class="text-muted small">Counted <?=$counted;?> / <?=$total;?><?= $reviewer ? ' · Discrepancies '.$variances : '';?></div>
 </div>
-<p class="small text-muted"><?= $reviewer ? 'Variance = physical count − expected stock. Uncounted items are excluded from variance.' : 'Enter physical quantities without reference to system balances. Leave uncounted items blank and add remarks where necessary.';?></p>
+<p class="small text-muted"><?= $reviewer ? 'Variance = physical count − expected stock, where a verified expected snapshot exists. Backdated counts without a historical snapshot have no calculated variance.' : 'Enter physical quantities without reference to system balances. Leave uncounted items blank and add remarks where necessary.';?></p>
 <?php if ($editable): ?>
 <form class="kh-daily-form" data-action="save_counts">
     <input type="hidden" name="action" value="save_counts">
@@ -25,11 +25,11 @@ foreach ($lines as $line) {
 <tbody>
 <?php foreach($lines as $line):
     $qty=$line['counted_qty'];
-    $diff=$reviewer && $qty!==null ? (float)$qty-(float)$line['expected_qty'] : null;
+    $diff=$reviewer && $qty!==null && $line['expected_qty']!==null ? (float)$qty-(float)$line['expected_qty'] : null;
 ?>
 <tr>
     <td><strong><?=dsEsc($line['name']);?></strong><small class="d-block text-muted"><?=dsEsc($line['units']);?></small></td>
-    <?php if($reviewer): ?><td class="text-right"><?=number_format((float)$line['expected_qty'],3);?></td><?php endif; ?>
+    <?php if($reviewer): ?><td class="text-right"><?=$line['expected_qty']===null?'Not available':number_format((float)$line['expected_qty'],3);?></td><?php endif; ?>
     <td><?php if($editable): ?><input class="form-control form-control-sm" type="number" min="0" step="0.001" name="qty[<?=(int)$line['id'];?>]" value="<?=dsEsc($qty);?>" placeholder="Not counted"><?php else: ?><?=$qty===null?'—':number_format((float)$qty,3);?><?php endif; ?></td>
     <?php if($reviewer): ?><td class="text-right <?=$diff!==null&&$diff<0?'text-danger':'text-success';?>"><?=$diff===null?'—':number_format($diff,3);?></td><?php endif; ?>
     <td><?php if($editable): ?><input class="form-control form-control-sm" maxlength="255" name="remarks[<?=(int)$line['id'];?>]" value="<?=dsEsc($line['remarks']);?>" placeholder="Optional remarks"><?php else: ?><?=dsEsc($line['remarks']);?><?php endif; ?></td>

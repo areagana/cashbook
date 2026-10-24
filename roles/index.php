@@ -71,16 +71,47 @@ pageHeader('Roles & Access');
     <?php if ($isAdmin): ?>
     <div class="card shadow-sm mb-4" id="role-permissions">
         <div class="card-header"><strong><i class="fa fa-lock mr-1"></i> Role Permission Definitions</strong></div>
+        
         <div class="card-body">
             <div class="alert alert-info">These permission definitions are shared across all businesses. Only system administrators can edit them.</div>
-            <form method="get" class="form-inline mb-3"><input type="hidden" name="business_id" value="<?=$businessId?>"><label for="roleSelect" class="mr-2">Role</label><select class="form-control mr-2" id="roleSelect" name="role_id" onchange="this.form.submit()">
-                <?php foreach($permissionRoles as $role): ?><option value="<?=(int)$role['id']?>" <?=(int)$role['id']===$selectedRole?'selected':''?>><?=krHtml(ucwords(str_replace('_',' ',$role['name'])))?></option><?php endforeach; ?>
-            </select><noscript><button class="btn btn-secondary btn-flat">Load</button></noscript></form>
-            <?php if (!$permissions): ?><div class="alert alert-warning">Permission definitions are missing. Initialize the RBAC tables before editing permissions.</div><?php endif; ?>
+            <form method="get" class="form-inline mb-3">
+                <input type="hidden" name="business_id" value="<?=$businessId?>">
+                <label for="roleSelect" class="mr-2">Role</label>
+                <select class="form-control mr-2" id="roleSelect" name="role_id" onchange="this.form.submit()">
+                    <?php foreach($permissionRoles as $role): ?>
+                        <option value="<?=(int)$role['id']?>" <?=(int)$role['id']===$selectedRole?'selected':''?>><?=krHtml(ucwords(str_replace('_',' ',$role['name'])))?></option>
+                        <?php endforeach; ?>
+                </select>
+                <noscript>
+                    <button class="btn btn-secondary btn-flat">Load</button>
+                </noscript>
+            </form>
+            <hr>
+            
+            <?php if (!$permissions): ?>
+                <div class="alert alert-warning">Permission definitions are missing. Initialize the RBAC tables before editing permissions.</div>
+            <?php endif; ?>
+
             <form method="post" action="save/index.php">
-                <input type="hidden" name="csrf" value="<?=krHtml($csrf)?>"><input type="hidden" name="action" value="permissions"><input type="hidden" name="business_id" value="<?=$businessId?>"><input type="hidden" name="role_id" value="<?=$selectedRole?>">
-                <div class="row"><?php foreach($permissions as $permission): ?><div class="col-lg-4 col-md-6 mb-3"><label class="d-flex align-items-start"><input class="mt-1 mr-2" type="checkbox" name="permission_ids[]" value="<?=(int)$permission['id']?>" <?=isset($checked[(int)$permission['id']])?'checked':''?>><span><strong><?=krHtml($permission['description'])?></strong><small class="text-muted d-block"><?=krHtml($permission['permission_key'])?></small></span></label></div><?php endforeach; ?></div>
-                <div class="text-right"><button type="submit" class="btn btn-success btn-flat" <?=(!$selectedRole || !$permissions)?'disabled':''?>><i class="fa fa-save mr-1"></i> Save Role Permissions</button></div>
+                <input type="hidden" name="csrf" value="<?=krHtml($csrf)?>">
+                <input type="hidden" name="action" value="permissions">
+                <input type="hidden" name="business_id" value="<?=$businessId?>">
+                <input type="hidden" name="role_id" value="<?=$selectedRole?>">
+                <div class="row">
+                    <?php foreach($permissions as $permission): ?>
+                        <div class="col-lg-3 col-md-5 mb-3 form-check border mx-1 mt-0">
+                            <label class="d-flex align-items-start form-check-label">
+                                <input class="mt-1 mr-2" type="checkbox" name="permission_ids[]" value="<?=(int)$permission['id']?>" <?=isset($checked[(int)$permission['id']])?'checked':''?>>
+                                <span><strong><?=krHtml($permission['description'])?></strong>
+                                    <small class="text-muted d-block"><?=krHtml($permission['permission_key'])?></small>
+                                </span>
+                            </label>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="text-right">
+                    <button type="submit" class="btn btn-success btn-flat" <?=(!$selectedRole || !$permissions)?'disabled':''?>><i class="fa fa-save mr-1"></i> Save Role Permissions</button>
+                </div>
             </form>
         </div>
     </div>

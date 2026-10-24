@@ -10,7 +10,6 @@ if (isVerified())
         $business = businessFindId(auth()->business_id);
     }
 
-
     /*
     |--------------------------------------------------------------------------
     | VALIDATE BUSINESS
@@ -56,8 +55,36 @@ if (isVerified())
     $totalBalance = 0;
 
 
-    $stmt = "SELECT * FROM cashbook_books WHERE business_id = ? ORDER BY id DESC";
-    $bookResult = prepared_statements($stmt,'i', [$business->id]);
+    /*
+    |--------------------------------------------------------------------------
+    | BOOK VISIBILITY — ENFORCED IN SQL
+    |--------------------------------------------------------------------------
+    | Owners, partners and superadministrators may see business books.
+    | Other members may see only books explicitly mapped to their user ID.
+    | An EXISTS clause avoids duplicate books when mappings are repeated.
+    | Never use business membership alone as permission to list all books.
+    */
+    $canViewAllBusinessBooks = hasRole(['owner', 'partner', 'superadministrator']);
+    $currentUserId = (int)auth()->id;
+    $businessId = (int)$business->id;
+
+    if ($canViewAllBusinessBooks)
+    {
+        $stmt = "SELECT b.* FROM cashbook_books b
+                 WHERE b.business_id = ? ORDER BY b.id DESC";
+        $bookResult = prepared_statements($stmt, 'i', [$businessId]);
+    }
+    else
+    {
+        $stmt = "SELECT b.* FROM cashbook_books b
+                 WHERE b.business_id = ?
+                   AND EXISTS (
+                       SELECT 1 FROM cashbook_book_users bu
+                       WHERE bu.book_id = b.id AND bu.user_id = ?
+                   )
+                 ORDER BY b.id DESC";
+        $bookResult = prepared_statements($stmt, 'ii', [$businessId, $currentUserId]);
+    }
 
     $cashins = "SELECT COALESCE(SUM(amount),0) AS credits FROM cashbook_cashins WHERE book_id = ?";
     $cashouts = "SELECT COALESCE(SUM(amount),0) AS debits FROM cashbook_cashouts WHERE book_id = ?";
@@ -995,7 +1022,7 @@ if (isVerified())
 
                 <div class="summary-description">
 
-                    Active books attached to this business
+                    Business books available to your account
 
                 </div>
 
@@ -1048,7 +1075,7 @@ if (isVerified())
 
                 <div class="summary-description">
 
-                    Cash in less cash out across all books
+                    Cash in less cash out across accessible books
 
                 </div>
 

@@ -27,16 +27,26 @@ try {
             if (!dsCanStartSession($bookId)) throw new RuntimeException('Stock management or stocktaking permission is required to open a daily session.');
             $date=(string)($_POST['count_date']??'');
             $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
-            if (!$parsed || $parsed->format('Y-m-d')!==$date || $date!==date('Y-m-d')) {
-                throw new RuntimeException('Daily sessions must be opened for today. Past dates require a historical stock reconstruction.');
+            $today=date('Y-m-d');
+            if (!$parsed || $parsed->format('Y-m-d')!==$date || $date>$today) {
+                throw new RuntimeException('Choose a valid count date that is not in the future.');
             }
-            if (dsRows('SELECT id FROM cashbook_daily_stocktakes WHERE book_id=? AND count_date=?','is',[$bookId,$date])) throw new RuntimeException('A session already exists for this date.');
+            if (dsRows('SELECT id FROM cashbook_daily_stocktakes WHERE book_id=? AND count_date=?','is',[$bookId,$date])) {
+                throw new RuntimeException('A session already exists for this date. Open that session instead.');
+            }
+            $isHistorical=$date<$today;
+            // Current stock balances MUST NOT be represented as historical expected balances.
+            // Historical sessions capture the operator's physical count without fabricated variances.
             $items=dsExpected($bookId);
             if (!$items) throw new RuntimeException('No stock items exist in this book.');
             dsQuery('INSERT INTO cashbook_daily_stocktakes(book_id,count_date,created_by) VALUES(?,?,?)','isi',[$bookId,$date,$userId]);
             $dailyId=(int)$server->insert_id;
-            foreach ($items as $item) dsQuery('INSERT INTO cashbook_daily_stocktake_items(daily_id,book_id,item_id,expected_qty) VALUES(?,?,?,?)','iiid',[$dailyId,$bookId,(int)$item['id'],(float)$item['expected_qty']]);
-            $message='Daily session opened with a snapshot of current stock balances.';
+            foreach ($items as $item) {
+                $expected=$isHistorical?null:(float)$item['expected_qty'];
+                dsQuery('INSERT INTO cashbook_daily_stocktake_items(daily_id,book_id,item_id,expected_qty) VALUES(?,?,?,?)',
+                    'iiid',[$dailyId,$bookId,(int)$item['id'],$expected]);
+            }
+            $message=$isHistorical ? 'Previous-date session created. Historical expected balances are unavailable; physical counts will be recorded without calculated variances.' : 'Daily session opened with a snapshot of current stock balances.';
             break;
         case 'save_counts':
             $session=dsSession($dailyId,$bookId,true);
