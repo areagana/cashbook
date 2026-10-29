@@ -13,6 +13,12 @@ pageHeaderLevel2('Daily Stock Tracking');
 ?>
 <style>
 .kh-daily{background:#f5f7fa;padding:18px;min-height:75vh;color:#243244}.kh-daily .panel{background:white;border:1px solid #dce4e8;margin-bottom:15px}.kh-daily .panel-head{padding:15px 18px;border-bottom:1px solid #e4e8ed;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.kh-daily .panel-body{padding:17px}.kh-daily h2{font-size:21px;font-weight:800;margin:0}.kh-daily .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:15px}.kh-daily .metric{background:white;border:1px solid #dce4e8;border-top:3px solid #176b51;padding:15px}.kh-daily .metric strong{display:block;font-size:25px}.kh-daily .btn{border-radius:2px!important}.kh-daily .table-responsive{overflow-x:auto}.kh-daily .kh-daily-table{min-width:560px}.kh-daily .kh-daily-table th{background:#f0f5f3;font-size:11px;text-transform:uppercase}.kh-daily-modal{position:fixed;inset:0;z-index:1085;background:rgba(16,24,40,.65);display:none;align-items:center;justify-content:center;padding:14px}.kh-daily-modal.open{display:flex}.kh-daily-dialog{background:#fff;width:min(1150px,100%);max-height:92vh;display:flex;flex-direction:column}.kh-daily-modal-head{padding:14px 18px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center}.kh-daily-modal-body{padding:17px;overflow:auto}@media(max-width:650px){.kh-daily{padding:10px}.kh-daily .metrics{gap:7px}.kh-daily .metric{padding:10px}.kh-daily .metric strong{font-size:19px}}
+/* Search bar stays visible while the stock count scrolls. */
+.kh-daily-search{position:sticky;top:0;z-index:3;background:#fff;border:1px solid #dce4e8;padding:12px;margin-bottom:12px;box-shadow:0 2px 6px rgba(0,0,0,.04)}
+.kh-daily-search .kh-search-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kh-daily-search input{flex:1;min-width:190px}
+.kh-daily-search .kh-search-count{font-size:12px;color:#667085;margin-top:6px}
+.kh-daily-no-results{padding:16px;text-align:center;color:#667085}
 </style>
 <div class="container-fluid kh-daily">
 <section class="panel"><div class="panel-head"><div><small><a href="../?bkid=<?=urlencode($encryptedBookId);?>">Stock Management</a> / Daily Tracking</small><h2><i class="fa fa-calendar-check"></i> <?=dsEsc($book->name);?> — Daily Stock Tracker</h2><small class="text-muted">Blind physical counts and daily variance investigations</small></div><a class="btn btn-outline-secondary btn-flat" href="../?bkid=<?=urlencode($encryptedBookId);?>">Back to stock</a></div></section>
@@ -36,7 +42,45 @@ document.addEventListener('DOMContentLoaded',function(){
         function esc(s){return $('<div>').text(String(s??'')).html();}
         function msg(s,error){$('#kh-daily-message').html('<div class="alert '+(error?'alert-danger':'alert-success')+'">'+esc(s)+'</div>');}
         function close(){modal.removeClass('open').attr('aria-hidden','true');$('body').css('overflow','');}
-        function open(id){modal.addClass('open').attr('aria-hidden','false');$('body').css('overflow','hidden');$('#kh-daily-content').html('<p class="p-3 text-muted">Loading count...</p>');$.get(backend,{action:'details',bkid:bookId,daily_id:id}).done(html=>$('#kh-daily-content').html(html)).fail(xhr=>$('#kh-daily-content').html('<div class="alert alert-danger">'+esc(xhr.responseText||'Unable to load count.')+'</div>'));}
+        // Add a searchable toolbar after the AJAX-loaded count details arrive.
+        function setupItemSearch(){
+            const content=$('#kh-daily-content');
+            const form=content.find('form.kh-daily-form').first();
+            if(!form.length)return;
+            const table=form.find('table').filter(function(){
+                return $(this).find('tbody tr').filter(function(){return $(this).find('input').length>0;}).length>0;
+            }).first();
+            if(!table.length)return;
+            const rows=table.find('tbody tr').filter(function(){return $(this).find('input').length>0;});
+            if(!rows.length)return;
+            const toolbar=$('<div class="kh-daily-search"><label for="kh-daily-item-search" class="font-weight-bold mb-2">Find an item</label><div class="kh-search-controls"><input id="kh-daily-item-search" type="search" class="form-control" placeholder="Search item name or code..." autocomplete="off" aria-label="Search daily stock items"><button type="button" class="btn btn-outline-secondary kh-daily-clear-search">Clear</button></div><div class="kh-search-count" role="status" aria-live="polite"></div><div class="kh-daily-no-results" hidden>No matching items found.</div></div>');
+            // Keep the search inside the form, so its placement does not interfere with saving.
+            table.before(toolbar);
+            const input=toolbar.find('input');
+            const count=toolbar.find('.kh-search-count');
+            const noResults=toolbar.find('.kh-daily-no-results');
+            const normalized=value=>String(value||'').normalize('NFKD').toLowerCase().trim();
+            function filterRows(){
+                const term=normalized(input.val());
+                let visible=0;
+                rows.each(function(){
+                    const row=$(this);
+                    // Exclude editable input values: search should match item labels, not quantities.
+                    const searchable=row.find('td').map(function(){
+                        return $(this).clone().find('input,select,textarea,button').remove().end().text();
+                    }).get().join(' ');
+                    const match=!term||normalized(searchable).includes(term);
+                    row.toggle(match);
+                    if(match)visible++;
+                });
+                count.text('Showing '+visible+' of '+rows.length+' items');
+                noResults.prop('hidden',visible!==0);
+            }
+            input.on('input',filterRows);
+            toolbar.find('.kh-daily-clear-search').on('click',function(){input.val('');filterRows();input.trigger('focus');});
+            filterRows();
+        }
+        function open(id){modal.addClass('open').attr('aria-hidden','false');$('body').css('overflow','hidden');$('#kh-daily-content').html('<p class="p-3 text-muted">Loading count...</p>');$.get(backend,{action:'details',bkid:bookId,daily_id:id}).done(function(html){$('#kh-daily-content').html(html);setupItemSearch();}).fail(xhr=>$('#kh-daily-content').html('<div class="alert alert-danger">'+esc(xhr.responseText||'Unable to load count.')+'</div>'));}
         $(document).on('click','.kh-open-daily',function(){open($(this).data('id'));});
         $('#kh-daily-close').on('click',close);modal.on('click',function(e){if(e.target===this)close();});
         $(document).on('keydown',function(e){if(e.key==='Escape')close();});

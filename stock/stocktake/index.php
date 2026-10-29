@@ -47,6 +47,10 @@ pageHeaderLevel2('Stock Taking & Reconciliation');
 .kh-take .kh-modal-summary strong{display:block;font-size:16px}
 .kh-take .kh-count-table{min-width:850px;font-size:12px}
 .kh-take .kh-count-table input{min-width:100px}
+/* Search controls for dynamically loaded stock-count items */
+.kh-item-search{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;background:#edf3f1;border:1px solid #dce4e8;margin-bottom:12px}
+.kh-item-search .kh-search-field{flex:1;min-width:180px}
+.kh-item-search .kh-search-count{font-size:12px;color:#526071}
 @media(max-width:750px){.kh-take{padding:10px}.kh-take .kh-metrics{grid-template-columns:repeat(2,1fr)}.kh-take .kh-modal-summary{grid-template-columns:repeat(2,1fr)}.kh-take .kh-modal-content{padding:10px}}
 </style>
 <div class="container-fluid kh-take" id="kh-stocktake-page">
@@ -159,7 +163,41 @@ document.addEventListener('DOMContentLoaded', function () {
         modal.addClass('is-open').attr('aria-hidden','false');
         $('body').css('overflow','hidden');
         $('#kh-close-modal').trigger('focus');
-        $.get(backend,{action:'details',bkid:bookId,take_id:id}).done(html=>$('#kh-modal-body').html(html)).fail(xhr=>$('#kh-modal-body').html('<div class="alert alert-danger">'+escapeHtml(xhr.responseText||'Unable to load session.')+'</div>'));
+        $.get(backend,{action:'details',bkid:bookId,take_id:id}).done(function(html){$('#kh-modal-body').html(html);initializeItemSearch();}).fail(xhr=>$('#kh-modal-body').html('<div class="alert alert-danger">'+escapeHtml(xhr.responseText||'Unable to load session.')+'</div>'));
+    }
+    // Item search works on the existing rows returned by save/index.php.
+    // Filtering hides rows only; all quantity inputs remain in the form for submission.
+    function initializeItemSearch(){
+        const body=$('#kh-modal-body');
+        const table=body.find('table.kh-count-table').first();
+        if(!table.length)return;
+        const rows=table.find('tbody tr').filter(function(){return $(this).find('td').length>1;});
+        if(!rows.length)return;
+        const controls=$('<div class="kh-item-search"></div>');
+        controls.append('<label for="kh-item-search-input" class="mb-0 font-weight-bold"><i class="fa fa-search"></i> Find item</label>');
+        controls.append('<input type="search" id="kh-item-search-input" class="form-control kh-search-field" placeholder="Type item name to filter..." autocomplete="off" aria-label="Search stock items">');
+        controls.append('<button type="button" class="btn btn-outline-secondary btn-sm kh-clear-item-search">Clear</button>');
+        controls.append('<span class="kh-search-count" role="status" aria-live="polite"></span>');
+        table.closest('.kh-table-scroll').length ? table.closest('.kh-table-scroll').before(controls) : table.before(controls);
+        const input=controls.find('input');
+        const counter=controls.find('.kh-search-count');
+        function filterItems(){
+            const query=input.val().trim().toLocaleLowerCase();
+            let visible=0;
+            rows.each(function(){
+                const row=$(this);
+                const cells=row.children('td');
+                // Search textual cells; exclude editable quantity fields and action buttons.
+                const text=cells.map(function(){return $(this).clone().find('input,select,textarea,button').remove().end().text();}).get().join(' ').toLocaleLowerCase();
+                const matches=!query||text.includes(query);
+                row.toggle(matches);
+                if(matches)visible++;
+            });
+            counter.text(visible+' of '+rows.length+' items');
+        }
+        input.on('input',filterItems);
+        controls.find('.kh-clear-item-search').on('click',function(){input.val('');filterItems();input.trigger('focus');});
+        filterItems();
     }
     $(document).on('click','.kh-open-session',function(){openSession($(this).data('id'),this);});
     $('#kh-close-modal').on('click',closeModal);
