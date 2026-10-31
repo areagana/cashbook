@@ -1,5 +1,6 @@
 <?php
-    require_once(__dir__.'/../../assets/functions.php');
+    require_once(__DIR__ . '/../../assets/functions.php');
+    require_once(__DIR__ . '/../../assets/document_identity.php');
     if(isVerified() && hasRole(['owner','partner','staff','superadministrator']))
     {
         if(isset($_REQUEST['action']) && !empty($_REQUEST['action']))
@@ -15,6 +16,21 @@
                         break;
                     }
                     $book_id=(int)$customer->book_id;
+                    if (function_exists('khCanAccessBook') && !khCanAccessBook($book_id)) {
+                        http_response_code(403);
+                        echo '<div class="alert alert-danger m-3">Access to this business book is denied.</div>';
+                        break;
+                    }
+                    $documentIdentity = khDocumentIdentity($book_id);
+                    $documentLogo = khDocumentLogoDataUri($documentIdentity);
+                    $documentCompanyLines = khDocumentCompanyLines($documentIdentity);
+                    if (empty($_SESSION['kh_transfer_csrf'])) $_SESSION['kh_transfer_csrf']=bin2hex(random_bytes(32));
+                    $canTransfer=hasRole(['owner','partner','superadministrator']);
+                    $otherCustomers=[];
+                    if($canTransfer){
+                        $options=prepared_statements('SELECT id,name FROM cashbook_customers WHERE book_id=? AND id<>? ORDER BY name','ii',[$book_id,$id]);
+                        while($option=$options->fetch_assoc()) $otherCustomers[]=$option;
+                    }
                     // IMPORTANT: enforce your existing authenticated user's book-access check here.
                     $esc=static function($v){return htmlspecialchars((string)($v??''),ENT_QUOTES,'UTF-8');};
                     $money=static function($v){
@@ -53,7 +69,7 @@
                     .kh-statement{--kh-ink:#182230;--kh-muted:#667085;--kh-border:#d0d5dd;color:var(--kh-ink);font-family:Arial,Helvetica,sans-serif;background:#fff;font-size:13px}
                     .kh-statement *{box-sizing:border-box}.kh-statement .kh-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;background:#f8fafc;border-bottom:1px solid var(--kh-border)}
                     .kh-statement .kh-sheet{padding:22px 26px}.kh-statement .kh-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;border-bottom:3px solid #176b51;padding-bottom:17px}
-                    .kh-statement .kh-brand{font-size:22px;font-weight:800;letter-spacing:.2px}.kh-statement .kh-subtitle{color:var(--kh-muted);font-size:11px;margin-top:5px;line-height:1.5}
+                    .kh-statement .kh-brand{font-size:22px;font-weight:800;letter-spacing:.2px}.kh-statement .kh-logo{max-height:62px;max-width:90px;object-fit:contain;margin-right:13px}.kh-statement .kh-company{display:flex;align-items:flex-start;gap:10px}.kh-statement .kh-company-line{font-size:10px;line-height:1.55;color:#667085}.kh-statement .kh-subtitle{color:var(--kh-muted);font-size:11px;margin-top:5px;line-height:1.5}
                     .kh-statement .kh-doc{text-align:right}.kh-statement .kh-doc h2{font-size:17px;letter-spacing:1px;margin:0 0 8px;font-weight:800}.kh-statement .kh-doc p{margin:3px 0;color:var(--kh-muted);font-size:11px}
                     .kh-statement .kh-details{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(200px,1fr);gap:18px;margin:20px 0}
                     .kh-statement .kh-panel{border:1px solid var(--kh-border);padding:14px 16px}.kh-statement .kh-panel-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--kh-muted);font-weight:800;margin-bottom:9px}
@@ -79,10 +95,15 @@
                     </style>
                     <div class="kh-statement" id="<?=$esc($printId);?>">
                         <div class="kh-toolbar"><strong><i class="fa fa-file-text-o"></i> Customer Account Statement</strong>
-                            <button type="button" class="btn btn-sm btn-outline-danger btn-flat" onclick="window.print()"><i class="fa fa-print"></i> Print A4 Statement</button>
+                            <div class="d-flex" style="gap:8px"><a class="btn btn-sm btn-success btn-flat" href="pdf.php?customer_id=<?=$id;?>" target="_blank" rel="noopener"><i class="fa fa-file-pdf-o"></i> Download PDF</a><button type="button" class="btn btn-sm btn-outline-danger btn-flat" onclick="khPrintCustomerStatement(<?= (int)$id; ?>)"><i class="fa fa-print"></i> Print A4 Statement</button></div>
                         </div>
                         <div class="kh-sheet" id="printable-div">
-                            <div class="kh-head"><div><div class="kh-brand">KASHHUB</div><div class="kh-subtitle">Customer account statement<br>Financial records &amp; outstanding balances</div></div>
+                            <div class="kh-head"><div class="kh-company">
+                                <?php if ($documentLogo): ?><img class="kh-logo" src="<?=$esc($documentLogo);?>" alt="Company logo"><?php endif; ?>
+                                <div><div class="kh-brand"><?=$esc($documentIdentity['company_name']);?></div>
+                                <?php foreach ($documentCompanyLines as $companyLine): ?><div class="kh-company-line"><?=$esc($companyLine);?></div><?php endforeach; ?>
+                                <div class="kh-company-line"><strong>Book:</strong> <?=$esc($documentIdentity['book_name']);?></div>
+                                <div class="kh-subtitle">Customer account statement<br>Financial records &amp; outstanding balances</div></div></div>
                             <div class="kh-doc"><h2>ACCOUNT STATEMENT</h2><p>Generated: <?=date('d M Y, h:i A');?></p><p>Period: <?=$esc($period);?></p><p>Customer ID: <?=$id;?></p></div>
                             </div>
                             <div class="kh-details">
@@ -105,7 +126,7 @@
                                             <th>Mode</th>
                                             <th data-sort="debit">Debit ↕</th>
                                             <th data-sort="credit">Credit ↕</th>
-                                            <th data-sort="balance">Balance ↕</th>
+                                            <th data-sort="balance">Balance ↕</th><?php if($canTransfer):?><th class="no-print">Action</th><?php endif;?>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -127,22 +148,71 @@
                                         <td class="kh-num"><?=((float)($r['debit_amount']??0)!=0)?$money($r['debit_amount']):'—';?></td>
                                         <td class="kh-num"><?=((float)($r['credit_amount']??0)!=0)?$money($r['credit_amount']):'—';?></td>
                                         <td class="kh-num"><strong><?=$money($r['statement_balance']);?></strong></td>
+                                        <?php if($canTransfer):?><td class="no-print"><button type="button" class="btn btn-sm btn-outline-primary kh-transfer-open" data-transaction="<?=(int)($r['transaction_id']??0);?>" data-description="<?=$esc(($r['item_name']??'')?:($r['details']??''));?>">Transfer</button></td><?php endif;?>
                                     </tr>
-                                    <?php endforeach;else:?><tr><td colspan="9" class="kh-empty">No ledger transactions recorded for this customer.</td></tr><?php endif;?>
+                                    <?php endforeach;else:?><tr><td colspan="<?=$canTransfer?10:9;?>" class="kh-empty">No ledger transactions recorded for this customer.</td></tr><?php endif;?>
                                     </tbody>
                                     <tfoot>
                                         <tr>
                                             <th colspan="6" style="text-align:right">CLOSING TOTAL</th>
                                             <td class="kh-num"><?=$money($totalDebit);?></td>
                                             <td class="kh-num"><?=$money($totalCredit);?></td>
-                                            <td class="kh-num"><?=$money($running);?></td>
+                                            <td class="kh-num"><?=$money($running);?></td><?php if($canTransfer):?><td class="no-print"></td><?php endif;?>
                                         </tr>
                                     </tfoot>
                                 </table>
                             </div>
-                            <div class="kh-foot"><div><strong>Balance guide:</strong> Positive = customer owes the business. Negative = customer has credit. Figures are in Uganda shillings (UGX).</div><div style="text-align:right">Generated through KashHub<br>Computer-generated statement</div></div>
+                            <div class="kh-foot"><div><strong>Balance guide:</strong> Positive = customer owes the business. Negative = customer has credit. Figures are in Uganda shillings (UGX).</div><div style="text-align:right">Prepared for <?=$esc($documentIdentity['company_name']);?><br>Generated by KashHub · Computer-generated statement</div></div>
                         </div>
                     </div>
+                    <?php if($canTransfer): ?>
+                    <div class="modal fade" id="khTransferModal" tabindex="-1" role="dialog" aria-hidden="true">
+                      <div class="modal-dialog" role="document"><div class="modal-content">
+                        <div class="modal-header"><h5 class="modal-title">Transfer customer transaction</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
+                        <form id="khTransferForm"><div class="modal-body">
+                          <p id="khTransferDescription"></p>
+                          <input type="hidden" name="transaction_id" id="khTransferTransaction">
+                          <input type="hidden" name="from_customer_id" value="<?=$id;?>">
+                          <input type="hidden" name="csrf_token" value="<?=$esc($_SESSION['kh_transfer_csrf']);?>">
+                          <label for="khTransferDestination">Destination customer</label>
+                          <select name="to_customer_id" id="khTransferDestination" class="form-control" required><option value="">Select customer</option>
+                          <?php foreach($otherCustomers as $option):?><option value="<?=(int)$option['id'];?>"><?=$esc($option['name']);?></option><?php endforeach;?></select>
+                          <label for="khTransferReason" class="mt-3">Reason for transfer</label>
+                          <textarea name="reason" id="khTransferReason" class="form-control" minlength="5" maxlength="500" required></textarea>
+                          <div id="khTransferFeedback" class="mt-2" role="alert"></div>
+                        </div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-success">Confirm transfer</button></div></form>
+                      </div></div>
+                    </div>
+                    <script>
+                    $(document).off('click.khTransfer','.kh-transfer-open').on('click.khTransfer','.kh-transfer-open',function(){
+                        $('#khTransferTransaction').val(this.dataset.transaction);
+                        $('#khTransferDescription').text('Transaction #'+this.dataset.transaction+' — '+this.dataset.description);
+                        $('#khTransferFeedback').text(''); $('#khTransferModal').modal('show');
+                    });
+                    $(document).off('submit.khTransfer','#khTransferForm').on('submit.khTransfer','#khTransferForm',function(event){
+                        event.preventDefault(); var form=this, button=$(form).find('[type=submit]'); button.prop('disabled',true);
+                        $.ajax({url:'transfer.php',method:'POST',data:$(form).serialize(),dataType:'json'})
+                        .done(function(response){$('#khTransferFeedback').text(response.message);if(response.success){$('#khTransferModal').modal('hide');location.reload();}})
+                        .fail(function(xhr){
+                            var message = xhr.responseJSON && xhr.responseJSON.message;
+                            if (!message) {
+                                var raw = (xhr.responseText || '').replace(/<[^>]*>/g, ' ').trim();
+                                message = raw ? raw.substring(0, 350) : 'Transfer request failed (HTTP ' + xhr.status + '). Check the transfer.php URL and PHP error log.';
+                            }
+                            $('#khTransferFeedback').text(message);
+                            console.error('KashHub transfer error', xhr.status, xhr.responseText);
+                        })
+                        .always(function(){button.prop('disabled',false);});
+                    });
+                    </script>
+                    <?php endif; ?>
+                    <script>
+                    if (typeof window.khPrintCustomerStatement !== 'function') {
+                        window.khPrintCustomerStatement = function (customerId) {
+                            window.open('pdf.php?customer_id=' + encodeURIComponent(customerId) + '&mode=inline', '_blank', 'noopener');
+                        };
+                    }
+                    </script>
                     <?php
                 break;
                 case 'deleteCustomer':

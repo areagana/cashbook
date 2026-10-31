@@ -88,7 +88,7 @@ pageHeaderLevel2('Stock Taking & Reconciliation');
                 <input id="kh-date" class="form-control mr-3 mb-2" type="date" name="count_date" value="<?=date('Y-m-d');?>" required>
                 <button type="submit" class="btn btn-success btn-flat mb-2"><i class="fa fa-plus"></i> Create session</button>
             </form>
-            <p class="kh-muted mb-0">Expected balances are captured at creation time. Historical month-end balances require dated stock movement reconstruction.</p>
+            <p class="kh-muted mb-0">Expected balances use the current stock snapshot when each item is added. Historical month-end balances require dated stock movement reconstruction.</p>
         </div>
     </section>
 

@@ -1,5 +1,7 @@
 <?php
     require_once(__dir__.'/../../assets/functions.php');
+    require_once(__DIR__.'/../statement_data.php');
+    require_once(__DIR__.'/../../assets/document_identity.php');
     if(isVerified() && hasRole(['owner','partner','staff','superadministrator']))
     {
         if(isset($_REQUEST['action']) && !empty($_REQUEST['action']))
@@ -24,84 +26,31 @@
                         return number_format((float)$value, 2);
                     };
 
-                    $sql = "SELECT ccl.*, ci.name AS item_name, ci.units, pm.name AS paymode_name
-                            FROM cashbook_creditor_ledger ccl
-                            LEFT JOIN cashbook_items ci ON ci.id=ccl.item_id AND ci.book_id=ccl.book_id
-                            LEFT JOIN cashbook_paymodes pm ON pm.id=ccl.paymode_id AND pm.book_id=ccl.book_id
-                            WHERE ccl.creditor_id=? AND ccl.book_id=?
-                            ORDER BY ccl.created_at ASC, ccl.id ASC";
-                    $res = prepared_statements($sql, 'ii', [$id, $book_id]);
-                    $rawRows = [];
-                    if ($res) {
-                        while ($record = $res->fetch_assoc()) {
-                            $rawRows[] = $record;
-                        }
-                    }
-
-                    /* 2. Opening balance and statement movements
-                       A zero-movement first entry may represent the original B/F.
-                       Otherwise derive B/F from the first stored ledger balance.
-                       This changes presentation only; no database updates occur. */
-                    $openingBalance = 0.0;
-                    $startIndex = 0;
-                    $hasOpening = false;
-                    if ($rawRows) {
-                        $first = $rawRows[0];
-                        $firstCredit = (float)($first['credit_amount'] ?? 0);
-                        $firstDebit = (float)($first['debit_amount'] ?? 0);
-                        $openingBalance = round((float)($first['balance'] ?? 0) - $firstCredit + $firstDebit, 2);
-                        if (abs($firstCredit) < 0.005 && abs($firstDebit) < 0.005) {
-                            $openingBalance = round((float)($first['balance'] ?? 0), 2);
-                            $startIndex = 1;
-                        }
-                        $hasOpening = true;
-                    }
-                    $rows = [];
-                    $running = $openingBalance;
-                    $totalCredit = 0.0;
-                    $totalDebit = 0.0;
-                    $firstDate = '';
-                    $lastDate = '';
-                    $storedBalanceDifferences = 0;
-                    for ($i = $startIndex; $i < count($rawRows); $i++) {
-                        $r = $rawRows[$i];
-                        $credit = (float)($r['credit_amount'] ?? 0);
-                        $debit = (float)($r['debit_amount'] ?? 0);
-                        $totalCredit += $credit;
-                        $totalDebit += $debit;
-                        $running = round($running + $credit - $debit, 2);
-                        $r['statement_balance'] = $running;
-                        if (abs($running - (float)($r['balance'] ?? 0)) > 0.01) {
-                            $storedBalanceDifferences++;
-                        }
-                        $type = strtolower(trim((string)($r['type'] ?? '')));
-                        $description = trim((string)(($r['details'] ?? '') ?: ($r['item_name'] ?? '')));
-                        if ($description === '' || is_numeric($description)) {
-                            $description = $credit > 0 ? 'Additional amount owed to creditor' : ($debit > 0 ? 'Payment to creditor' : 'Account adjustment');
-                        }
-                        $r['statement_description'] = $description;
-                        $r['statement_activity'] = $credit > 0 && $debit == 0 ? 'Amount added' : ($debit > 0 && $credit == 0 ? 'Payment made' : ($credit != 0 || $debit != 0 ? 'Adjustment' : 'Note'));
-                        $rows[] = $r;
-                        if (!empty($r['created_at'])) {
-                            if ($firstDate === '') $firstDate = $r['created_at'];
-                            $lastDate = $r['created_at'];
-                        }
-                    }
-                    if (!$firstDate && !empty($rawRows[0]['created_at'])) {
-                        $firstDate = $lastDate = $rawRows[0]['created_at'];
-                    }
+                    // One calculation source shared with the downloadable PDF.
+                    $statement = khCreditorStatement($id, $book_id);
+                    $rows = $statement['rows'];
+                    $openingBalance = $statement['opening'];
+                    $running = $statement['running'];
+                    $totalCredit = $statement['totalCredit'];
+                    $totalDebit = $statement['totalDebit'];
+                    $firstDate = $statement['firstDate'];
+                    $period = $statement['period'];
+                    $hasOpening = $statement['hasOpening'];
+                    $storedBalanceDifferences = $statement['differences'];
+                    $identity = khDocumentIdentity($book_id);
+                    $logo = khDocumentLogoDataUri($identity);
+                    $companyLines = khDocumentCompanyLines($identity);
 
                     /* 3. Compare against register balance, without replacing statement figures */
                     $registerResult = prepared_statements(
-                        'SELECT balance FROM cashbook_creditor_balances WHERE creditor_id=? LIMIT 1',
-                        'i', [$id]
+                        'SELECT balance FROM cashbook_creditor_balances WHERE creditor_id=? AND book_id=? LIMIT 1',
+                        'ii', [$id, $book_id]
                     );
                     $registerRow = $registerResult ? $registerResult->fetch_assoc() : null;
                     $registerBalance = $registerRow ? (float)$registerRow['balance'] : null;
                     $hasDifference = $registerBalance !== null && abs($registerBalance - $running) > 0.01;
                     $status = $running > 0.005 ? 'AMOUNT OWED TO CREDITOR' : ($running < -0.005 ? 'ADVANCE / OVERPAYMENT' : 'ACCOUNT SETTLED');
                     $statusColor = $running > 0.005 ? '#b42318' : ($running < -0.005 ? '#067647' : '#175cd3');
-                    $period = $firstDate ? date('d M Y', strtotime($firstDate)).' — '.date('d M Y', strtotime($lastDate)) : 'No transactions';
                     $printId = 'kh-creditor-print-'.$id;
                     ?>
                     <style>
@@ -145,7 +94,7 @@
                     <div class="kh-statement" id="<?=$esc($printId);?>">
                         <div class="kh-toolbar">
                             <strong><i class="fa fa-file-text-o"></i> Creditor Account Statement</strong>
-                            <button type="button" class="btn btn-sm btn-outline-danger btn-flat" onclick="window.print()"><i class="fa fa-print"></i> Print A4 Statement</button>
+                            <a class="btn btn-sm btn-success btn-flat" target="_blank" href="../creditors/pdf.php?creditor_id=<?=$id;?>"><i class="fa fa-file-pdf-o"></i> Download PDF</a> <button type="button" class="btn btn-sm btn-outline-danger btn-flat" onclick="window.print()"><i class="fa fa-print"></i> Print A4 Statement</button>
                         </div>
                         <?php if ($hasDifference || $storedBalanceDifferences): ?>
                         <div class="kh-warning">
@@ -162,7 +111,7 @@
                         <?php endif; ?>
                         <div class="kh-sheet" id="printable-div">
                             <div class="kh-head">
-                                <div><div class="kh-brand">KASHHUB</div><div class="kh-subtitle">Creditor account statement<br>Borrowings, repayments &amp; outstanding balance</div></div>
+                                <div><div class="kh-brand"><?php if ($logo): ?><img src="<?=$esc($logo);?>" alt="" style="max-height:52px;max-width:95px;vertical-align:middle;margin-right:10px"><?php endif; ?><?=$esc($identity['company_name']);?></div><div class="kh-subtitle"><?php foreach ($companyLines as $line): ?><?=$esc($line);?><br><?php endforeach; ?><strong>Book: <?=$esc($identity['book_name']);?></strong></div></div>
                                 <div class="kh-doc"><h2>ACCOUNT STATEMENT</h2><p>Generated: <?=date('d M Y, h:i A');?></p><p>Period: <?=$esc($period);?></p><p>Creditor ID: <?=$id;?></p></div>
                             </div>
                             <div class="kh-details">

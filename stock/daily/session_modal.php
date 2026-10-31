@@ -13,6 +13,18 @@ foreach ($lines as $line) {
 </div>
 <p class="small text-muted"><?= $reviewer ? 'Variance = physical count − expected stock, where a verified expected snapshot exists. Backdated counts without a historical snapshot have no calculated variance.' : 'Enter physical quantities without reference to system balances. Leave uncounted items blank and add remarks where necessary.';?></p>
 <?php if ($editable): ?>
+<!-- Synchronise only when the operator requests it; never alter saved counts. -->
+<form class="kh-daily-form mb-3" data-action="sync_items" method="post"
+      data-confirm="Add newly registered items to this session? Save any unsaved physical counts first.">
+    <input type="hidden" name="action" value="sync_items">
+    <input type="hidden" name="bkid" value="<?=dsEsc($encryptedBookId);?>">
+    <input type="hidden" name="daily_id" value="<?=(int)$session['id'];?>">
+    <input type="hidden" name="csrf" value="<?=dsEsc($csrf);?>">
+    <button type="submit" class="btn btn-outline-success btn-flat">
+        <i class="fa fa-plus-circle"></i> Add Missing Items
+    </button>
+    <small class="d-block text-muted mt-1">Includes new book items without changing existing quantities or remarks. Save unsaved entries before synchronising.</small>
+</form>
 <form class="kh-daily-form" data-action="save_counts">
     <input type="hidden" name="action" value="save_counts">
     <input type="hidden" name="bkid" value="<?=dsEsc($encryptedBookId);?>">

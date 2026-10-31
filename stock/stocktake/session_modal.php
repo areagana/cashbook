@@ -30,6 +30,22 @@ $takeId = (int)($take['id'] ?? 0);
 <?php endif; ?>
 
 <?php if ($editable): ?>
+<div class="mb-3 d-flex flex-wrap align-items-center" style="gap:10px;">
+    <form class="kh-stocktake-form" data-action="sync_items" method="post"
+          data-confirm="Add newly registered items to this session? Save any unsaved quantities first.">
+        <input type="hidden" name="action" value="sync_items">
+        <input type="hidden" name="bkid" value="<?=stEscape($encryptedBookId);?>">
+        <input type="hidden" name="take_id" value="<?=$takeId;?>">
+        <input type="hidden" name="csrf" value="<?=stEscape($csrf);?>">
+        <button type="submit" class="btn btn-outline-success btn-flat">
+            <i class="fa fa-sync-alt"></i> Add Missing Items
+        </button>
+    </form>
+    <small class="text-muted">Save current edits before refreshing the item list.</small>
+</div>
+<?php endif; ?>
+
+<?php if ($editable): ?>
 <form class="kh-stocktake-form" data-action="save_counts" method="post">
     <input type="hidden" name="action" value="save_counts">
     <input type="hidden" name="bkid" value="<?=stEscape($encryptedBookId);?>">
@@ -109,6 +125,35 @@ $takeId = (int)($take['id'] ?? 0);
         </tr>
         <?php endforeach; ?>
         </tbody>
+        <?php if ($canReview):
+            // Valuation uses only counted rows with a recorded unit cost.
+            // Missing costs must never be silently treated as zero-valued stock.
+            $totalCountedValue = 0.0;
+            $unvaluedCount = 0;
+            foreach ($lines as $valuationLine) {
+                if ($valuationLine['counted_qty'] === null) {
+                    continue;
+                }
+                if ($valuationLine['unit_cost'] === null) {
+                    $unvaluedCount++;
+                    continue;
+                }
+                $totalCountedValue += (float)$valuationLine['counted_qty'] * (float)$valuationLine['unit_cost'];
+            }
+        ?>
+        <tfoot>
+            <tr class="font-weight-bold" style="background:#edf3f1;">
+                <td colspan="5" class="text-right">TOTAL COUNTED STOCK VALUE (UGX)</td>
+                <td class="text-right">UGX <?=number_format($totalCountedValue, 2);?></td>
+                <td></td>
+            </tr>
+        </tfoot>
+        <?php if ($unvaluedCount > 0): ?>
+            <caption style="caption-side:bottom;color:#a45b00;">
+                <?= (int)$unvaluedCount; ?> counted item(s) have no unit cost; the total is incomplete.
+            </caption>
+        <?php endif; ?>
+        <?php endif; ?>
     </table>
 </div>
 

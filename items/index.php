@@ -1,4 +1,288 @@
 <?php
+/* =============================================================
+   ITEM STATEMENT - AJAX MODAL CONTENT
+   The statement stays within items/index.php.
+============================================================= */
+if (isset($_GET['item_statement']) && $_GET['item_statement'] === '1') {
+    require_once __DIR__ . '/item_helpers.php';
+    require_once __DIR__ . '/../assets/document_identity.php';
+
+    $documentIdentity = khDocumentIdentity($bookId);
+    $documentLogo = khDocumentLogoDataUri($documentIdentity);
+    $documentCompanyLines = khDocumentCompanyLines($documentIdentity);
+
+    $transactions = itemQuery(
+        'SELECT id, created_at, details, credit_amount, debit_amount, quantity, rate, type, customer_id, category_id
+         FROM cashbook_transactions WHERE book_id = ? AND item_id = ? ORDER BY created_at DESC, id DESC',
+        'ii', [$bookId, $itemId]
+    );
+
+    $stocks = itemQuery(
+        'SELECT id, created_at, transaction_type, quantity_in, quantity_out, balance, unit_cost, total_cost, reference
+         FROM cashbook_stocks WHERE book_id = ? AND item_id = ? ORDER BY created_at DESC, id DESC',
+        'ii', [$bookId, $itemId]
+    );
+
+    $references = itemReferences($itemId);
+    $otherItems = itemQuery(
+        'SELECT id, name, units FROM cashbook_items WHERE book_id = ? AND id <> ? ORDER BY name',
+        'ii', [$bookId, $itemId]
+    );
+
+    $transactionRows = $transactions->fetch_all(MYSQLI_ASSOC);
+    $stockRows = $stocks->fetch_all(MYSQLI_ASSOC);
+    $totalCredits = array_sum(array_map(fn($r) => (float)$r['credit_amount'], $transactionRows));
+    $totalDebits = array_sum(array_map(fn($r) => (float)$r['debit_amount'], $transactionRows));
+    $totalStockIn = array_sum(array_map(fn($r) => (float)$r['quantity_in'], $stockRows));
+    $totalStockOut = array_sum(array_map(fn($r) => (float)$r['quantity_out'], $stockRows));
+    ?>
+    <style>
+        /* KashHub statement styling, aligned with customer PDF */
+        .item-statement { color: #182230; font-size: 13px; }
+        .item-statement .statement-header { border-bottom: 3px solid #176b51; padding-bottom: 14px; margin-bottom: 16px; }
+        .item-statement .statement-brand { font-size: 22px; font-weight: 800; letter-spacing: .2px; }
+        .item-statement .statement-logo { max-height: 64px; max-width: 90px; object-fit: contain; margin-right: 12px; }
+        .item-statement .statement-company-line { font-size: 11px; line-height: 1.55; color: #667085; }
+        .item-statement .statement-document { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
+        .item-statement .statement-muted, .item-statement .statement-label { color: #667085; }
+        .item-statement .statement-label { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; }
+        .item-statement .statement-info { border: 1px solid #d0d5dd; border-radius: 4px; padding: 15px; height: 100%; }
+        .item-statement .statement-highlight { background: #f8fafc; border-left: 4px solid #176b51; }
+        .item-statement .statement-item-name { font-size: 20px; font-weight: 700; margin: 6px 0; }
+        .item-statement .statement-stat { border: 1px solid #d0d5dd; padding: 12px; height: 100%; }
+        .item-statement .statement-stat strong { display: block; font-size: 16px; margin-top: 7px; }
+        .item-statement .card-header { background: #edf2f5 !important; color: #344054; }
+        .item-statement table thead th { background: #edf2f5; color: #344054; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
+        .item-statement table tfoot td { background: #e8f3ee; border-top: 2px solid #176b51; }
+        .item-statement .statement-footer { border-top: 1px solid #d0d5dd; padding-top: 12px; color: #667085; font-size: 12px; }
+        @media print {
+            body * { visibility: hidden !important; }
+            #itemStatementContent, #itemStatementContent * { visibility: visible !important; }
+            #itemStatementContent { position: absolute; left: 0; top: 0; width: 100%; }
+            .item-statement .no-print, .item-statement .transfer-btn { display: none !important; }
+            .item-statement .table-responsive { overflow: visible !important; }
+        }
+    </style>
+    <div class="item-statement px-2 py-2">
+        <!-- Brand and document heading: customer-statement format -->
+        <div class="statement-header d-flex justify-content-between align-items-start flex-wrap">
+            <div class="d-flex align-items-start">
+                <?php if ($documentLogo): ?>
+                    <img class="statement-logo" src="<?= itemEsc($documentLogo); ?>" alt="Company logo">
+                <?php endif; ?>
+                <div>
+                    <div class="statement-brand"><?= itemEsc($documentIdentity['company_name']); ?></div>
+                    <?php foreach ($documentCompanyLines as $companyLine): ?>
+                        <div class="statement-company-line"><?= itemEsc($companyLine); ?></div>
+                    <?php endforeach; ?>
+                    <div class="statement-company-line"><strong>Book:</strong> <?= itemEsc($documentIdentity['book_name']); ?></div>
+                    <div class="statement-muted">Item transaction statement · Inventory movements &amp; transaction records</div>
+                </div>
+            </div>
+            <div class="text-right">
+                <div class="statement-document">ITEM STATEMENT</div>
+                <div class="statement-muted">Generated: <?= date('d M Y, h:i A'); ?></div>
+                <div class="statement-muted">Item ID: <?= (int)$itemId; ?></div>
+                <a class="btn btn-sm btn-success mt-2 no-print" target="_blank" rel="noopener"
+                   href="pdf.php?<?= http_build_query(['bsid' => $bsid, 'item_id' => $itemId]); ?>">
+                    <i class="fa fa-file-pdf-o"></i> Download PDF
+                </a>
+                <button type="button" class="btn btn-sm btn-outline-secondary mt-2 no-print" onclick="window.print()">
+                    <i class="fa fa-print"></i> Print Statement
+                </button>
+            </div>
+        </div>
+
+        <!-- Item details and closing position -->
+        <div class="row mb-3">
+            <div class="col-md-6 mb-2">
+                <div class="statement-info">
+                    <div class="statement-label">Statement for</div>
+                    <div class="statement-item-name"><?= itemEsc($item['name']); ?></div>
+                    <div class="statement-muted"><strong>Business:</strong> <?= itemEsc($book->name); ?></div>
+                    <div class="statement-muted"><strong>Units:</strong> <?= itemEsc($item['units'] ?? '-'); ?></div>
+                    <div class="statement-muted"><strong>Details:</strong> <?= itemEsc($item['details'] ?? '-'); ?></div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-2">
+                <div class="statement-info statement-highlight text-right">
+                    <div class="statement-label">Net recorded stock movement</div>
+                    <div class="statement-item-name" style="color:#176b51;">
+                        <?= number_format($totalStockIn - $totalStockOut, 2); ?> <?= itemEsc($item['units'] ?? ''); ?>
+                    </div>
+                    <div class="statement-muted"><?= count($transactionRows); ?> transactions · <?= count($stockRows); ?> stock movements</div>
+                    <div class="statement-muted">Movement total, not necessarily current stock on hand</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary tiles -->
+        <div class="row mb-3">
+            <?php foreach ([
+                'Transaction credits' => $totalCredits,
+                'Transaction debits' => $totalDebits,
+                'Stock in' => $totalStockIn,
+                'Stock out' => $totalStockOut
+            ] as $label => $value): ?>
+                <div class="col-lg-3 col-sm-6 mb-2">
+                    <div class="statement-stat">
+                        <div class="statement-label"><?= itemEsc($label); ?></div>
+                        <strong><?= number_format((float)$value, 2); ?></strong>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <div class="alert alert-info small">
+            Transaction credits and debits are accounting entries, not necessarily cash received or paid.
+            Stock movements are reported separately to prevent double counting.
+        </div>
+
+        <!-- Transaction statement -->
+        <div class="card mb-3">
+            <div class="card-header bg-white"><strong>Transaction Statement</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-bordered mb-0">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Date</th><th>Details</th><th>Type</th>
+                            <th class="text-right">Quantity</th>
+                            <th class="text-right">Credit</th>
+                            <th class="text-right">Debit</th><th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($transactionRows as $row): ?>
+                            <tr>
+                                <td><?= itemEsc($row['created_at']); ?></td>
+                                <td><?= itemEsc($row['details']); ?></td>
+                                <td><?= itemEsc($row['type']); ?></td>
+                                <td class="text-right"><?= number_format((float)$row['quantity'], 2); ?></td>
+                                <td class="text-right"><?= number_format((float)$row['credit_amount'], 2); ?></td>
+                                <td class="text-right"><?= number_format((float)$row['debit_amount'], 2); ?></td>
+                                <td>
+                                    <?php if (isItemManager()): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-primary transfer-btn"
+                                                data-id="<?= (int)$row['id']; ?>">Transfer</button>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (!$transactionRows): ?>
+                            <tr><td colspan="7" class="text-center text-muted p-3">No transactions recorded.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                    <tfoot class="font-weight-bold bg-light">
+                        <tr>
+                            <td colspan="4">TOTAL</td>
+                            <td class="text-right"><?= number_format($totalCredits, 2); ?></td>
+                            <td class="text-right"><?= number_format($totalDebits, 2); ?></td><td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- Stock movement statement -->
+        <div class="card mb-3">
+            <div class="card-header bg-white"><strong>Stock Movement Statement</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-bordered mb-0">
+                    <thead class="thead-light">
+                        <tr><th>Date</th><th>Movement</th><th>Reference</th>
+                            <th class="text-right">In</th><th class="text-right">Out</th>
+                            <th class="text-right">Recorded Balance</th><th class="text-right">Cost</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($stockRows as $row): ?>
+                            <tr>
+                                <td><?= itemEsc($row['created_at']); ?></td>
+                                <td><?= itemEsc($row['transaction_type']); ?></td>
+                                <td><?= itemEsc($row['reference']); ?></td>
+                                <td class="text-right"><?= number_format((float)$row['quantity_in'], 2); ?></td>
+                                <td class="text-right"><?= number_format((float)$row['quantity_out'], 2); ?></td>
+                                <td class="text-right"><?= number_format((float)$row['balance'], 2); ?></td>
+                                <td class="text-right"><?= number_format((float)$row['total_cost'], 2); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (!$stockRows): ?>
+                            <tr><td colspan="7" class="text-center text-muted p-3">No stock movements.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                    <tfoot class="font-weight-bold bg-light">
+                        <tr><td colspan="3">TOTAL MOVEMENT</td>
+                            <td class="text-right"><?= number_format($totalStockIn, 2); ?></td>
+                            <td class="text-right"><?= number_format($totalStockOut, 2); ?></td><td colspan="2"></td></tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- Item deletion eligibility -->
+        <div class="card mb-3">
+            <div class="card-header bg-white"><strong>Related Records / Deletion Eligibility</strong></div>
+            <div class="card-body">
+                <?php if (!$references): ?>
+                    <span class="badge badge-success">No related records — item may be deleted</span>
+                <?php else: ?>
+                    <p class="text-warning mb-2">This item cannot be deleted until all references are resolved.</p>
+                    <?php foreach ($references as $table => $count): ?>
+                        <span class="badge badge-secondary mr-2 mb-2"><?= itemEsc($table); ?>: <?= (int)$count; ?></span>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="statement-footer mb-3">
+            <strong>Statement guide:</strong> Stock in increases recorded movement; stock out decreases it.
+            Monetary credits and debits are shown as recorded and are not a profit calculation.
+            <span class="float-right">Prepared for <?= itemEsc($documentIdentity['company_name']); ?> · Generated by KashHub</span>
+        </div>
+
+        <!-- Transfer transaction (existing safe transfer endpoint) -->
+        <?php if (isItemManager()): ?>
+            <div class="card mb-3">
+                <div class="card-header bg-white"><strong>Transfer Transaction to Another Item</strong></div>
+                <div class="card-body">
+                    <p class="text-muted small">
+                        Related cash and ledger references transfer together. Stock-linked transactions remain blocked
+                        until their stock balances can be reconciled safely.
+                    </p>
+                    <form id="transferForm" class="form-row align-items-end">
+                        <input type="hidden" name="action" value="transfer">
+                        <input type="hidden" name="bsid" value="<?= itemEsc($bsid); ?>">
+                        <input type="hidden" name="item_id" value="<?= (int)$itemId; ?>">
+                        <div class="col-md-3 mb-2">
+                            <label>Transaction ID</label>
+                            <input class="form-control" id="transactionId" type="number" min="1" name="transaction_id" required>
+                        </div>
+                        <div class="col-md-5 mb-2">
+                            <label>Move to Item</label>
+                            <select class="form-control" name="target_item_id" required>
+                                <option value="">Select target item</option>
+                                <?php while ($other = $otherItems->fetch_assoc()): ?>
+                                    <option value="<?= (int)$other['id']; ?>">
+                                        <?= itemEsc($other['name'].' ('.($other['units'] ?? '').')'); ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <button class="btn btn-primary btn-block" type="submit">Transfer Transaction</button>
+                        </div>
+                    </form>
+                    <div id="actionMessage" class="mt-2"></div>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php
+    exit;
+}
+
+/* =============================================================
+   ITEMS REGISTER - EXISTING PAGE
+============================================================= */
     require_once(__dir__.'/../assets/functions.php');
     if(isVerified())
     {
@@ -116,7 +400,6 @@
                 }
             </style>
 
-
             <div class="container-fluid">
 
                 <!-- BREADCRUMB -->
@@ -142,7 +425,6 @@
 
                 <hr>
 
-
                 <!-- PAGE HEADER -->
                 <div class="row mx-1 align-items-center">
 
@@ -157,7 +439,6 @@
                         </small>
 
                     </div>
-
 
                     <?php if(hasRole(['owner','partner','superadministrator'])):?>
 
@@ -180,7 +461,6 @@
                 </div>
 
                 <hr>
-
 
                 <!-- SUMMARY CARDS -->
                 <div class="row mx-1">
@@ -221,7 +501,6 @@
 
                     </div>
 
-
                     <div class="col-xl-3 col-md-6 p-2">
 
                         <div class="card item-summary-card shadow-sm border-left border-success">
@@ -258,7 +537,6 @@
 
                     </div>
 
-
                     <div class="col-xl-3 col-md-6 p-2">
 
                         <div class="card item-summary-card shadow-sm border-left border-primary">
@@ -294,7 +572,6 @@
                         </div>
 
                     </div>
-
 
                     <div class="col-xl-3 col-md-6 p-2">
 
@@ -333,7 +610,6 @@
                     </div>
 
                 </div>
-
 
                 <!-- UNIT DISTRIBUTION -->
                 <?php if(!empty($unitTypes)):?>
@@ -395,7 +671,6 @@
 
                 <?php endif;?>
 
-
                 <!-- ITEMS REGISTER -->
                 <div class="row mx-1">
 
@@ -422,7 +697,6 @@
 
                                     </div>
 
-
                                     <div class="col-md-5 mt-2 mt-md-0">
 
                                         <input
@@ -436,7 +710,6 @@
                                 </div>
 
                             </div>
-
 
                             <div class="table-responsive">
 
@@ -453,7 +726,6 @@
                                         </tr>
 
                                     </thead>
-
 
                                     <tbody id="itemTableBody">
 
@@ -483,7 +755,6 @@
                                                     <?=$count++;?>
                                                 </td>
 
-
                                                 <td>
 
                                                     <strong>
@@ -491,7 +762,6 @@
                                                     </strong>
 
                                                 </td>
-
 
                                                 <td>
 
@@ -511,11 +781,9 @@
 
                                                 </td>
 
-
                                                 <td class="text-muted">
                                                     <?=htmlspecialchars($r['details'] ?? '');?>
                                                 </td>
-
 
                                                 <td class="text-right">
 
@@ -523,7 +791,9 @@
 
                                                         <span class="hover-display text-sms">
 
-                                                            <button
+                                                                                                                         <a href="#" data-item-id="<?= (int)$r['id']; ?>" class="btn btn-sm btn-outline-primary view-item-statement" title="View Item Statement"><i class="fa fa-list-alt"></i> Statement</a>
+
+<button
                                                                 class="btn btn-sm btn-outline-info edit-item text-muted btn-click"
                                                                 data-title="Item Edit"
                                                                 data-section="item-edit"
@@ -533,7 +803,6 @@
                                                                 <i class="fa fa-edit"></i>
 
                                                             </button>
-
 
                                                             <button
                                                                 class="btn btn-sm btn-outline-danger delete-item"
@@ -569,6 +838,14 @@
                 </div>
 
             </div>
+             <!-- ITEM STATEMENT - KASHHUB CUSTOM CENTRAL MODAL -->
+             <div class="p-0 bg-white central-modal absolute border shadow" id="itemStatementModal" style="display:none;">
+                 <div class="central-modal-header bg-success">
+                     <h3 class="central-modal-title text-white" id="itemStatementTitle">Item Transaction Statement</h3>
+                     <button type="button" class="central-modal-close" aria-label="Close item statement">&times;</button>
+                 </div>
+                 <div class="central-modal-content" id="itemStatementContent"></div>
+             </div>
              <!-- side modal for a cash in -->
             <div class="p-0 bg-white side-modal-tall absolute border shadow" id='side-modal-cashin'>
                 <div class="side-modal-header bg-success">
@@ -660,11 +937,74 @@
                     });
                 }
 
-                /*
-                |--------------------------------------------------------------------------
-                | ITEM SEARCH
-                |--------------------------------------------------------------------------
-                */
+                /* =========================================================
+                   ITEM STATEMENT MODAL AND SAFE ITEM DELETION
+                ========================================================= */
+                const itemBookToken = <?=json_encode($bsid);?>;
+                let activeStatementItem = null;
+
+                function openItemStatement(itemId) {
+                    activeStatementItem = itemId;
+                    $('#itemStatementModal').show();
+                    $('#itemStatementContent').html('<div class="p-5 text-center"><i class="fa fa-spinner fa-spin"></i> Loading item statement...</div>');
+                    $.ajax({
+                        url: 'index.php', method: 'GET',
+                        data: {item_statement: 1, item_id: itemId, bsid: itemBookToken},
+                        success: function (html) { $('#itemStatementContent').html(html); },
+                        error: function (xhr) {
+                            $('#itemStatementContent').text(xhr.responseText || 'Unable to load item statement.');
+                        }
+                    });
+                }
+
+                $(document).on('click', '#itemStatementModal .central-modal-close', function () {
+                    $('#itemStatementModal').hide();
+                });
+
+                $(document).on('click', '.view-item-statement', function (event) {
+                    event.preventDefault();
+                    openItemStatement($(this).data('item-id'));
+                });
+
+                $(document).on('click', '#itemStatementModal .transfer-btn', function () {
+                    $('#itemStatementModal #transactionId').val($(this).data('id'));
+                    $('#itemStatementModal #transactionId').trigger('focus');
+                });
+
+                $(document).on('submit', '#itemStatementModal #transferForm', function (event) {
+                    event.preventDefault();
+                    if (!confirm('Transfer this transaction to the selected item?')) return;
+                    $.ajax({
+                        url: 'action.php', method: 'POST', dataType: 'json', data: $(this).serialize(),
+                        success: function (response) {
+                            alert(response.message);
+                            if (response.ok) openItemStatement(activeStatementItem);
+                        },
+                        error: function (xhr) {
+                            alert(xhr.responseJSON?.message || 'Transfer failed.');
+                        }
+                    });
+                });
+
+                $(document).on('click', '.delete-item', function () {
+                    const itemId = $(this).data('id');
+                    if (!confirm('Delete this unused item? Referenced items cannot be deleted.')) return;
+                    $.ajax({
+                        url: 'action.php', method: 'POST', dataType: 'json',
+                        data: {action: 'delete', item_id: itemId, bsid: itemBookToken},
+                        success: function (response) {
+                            alert(response.message);
+                            if (response.ok) window.location.reload();
+                        },
+                        error: function (xhr) {
+                            alert(xhr.responseJSON?.message || 'Unable to delete item.');
+                        }
+                    });
+                });
+
+                /* =========================================================
+                   ITEM SEARCH
+                ========================================================= */
                 $(document).on('keyup','#itemSearch',function(){
 
                     var value = $(this).val().toLowerCase();

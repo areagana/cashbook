@@ -20,6 +20,41 @@ function stRequireReview(int $bookId): void
 }
 
 
+/**
+ * Add newly registered book items to an editable stocktaking session.
+ * Existing session lines are never updated or overwritten.
+ * Expected quantity uses the same live-balance snapshot as session creation.
+ * Historical reconstruction requires a separate dated movement calculation.
+ * Caller must hold a transaction and lock the parent session row.
+ */
+function stSyncMissingItems(int $takeId, int $bookId): int
+{
+    $missing = stRows(
+        'SELECT i.id, COALESCE(sb.balance,0) expected_qty
+         FROM cashbook_items i
+         LEFT JOIN (
+             SELECT book_id,item_id,MAX(balance) balance
+             FROM cashbook_item_stock_balances
+             GROUP BY book_id,item_id
+         ) sb ON sb.book_id=i.book_id AND sb.item_id=i.id
+         WHERE i.book_id=?
+           AND NOT EXISTS (
+               SELECT 1 FROM cashbook_stocktake_items li
+               WHERE li.stocktake_id=? AND li.book_id=i.book_id AND li.item_id=i.id
+           )',
+        'ii', [$bookId,$takeId]
+    );
+
+    foreach ($missing as $item) {
+        stQuery(
+            'INSERT INTO cashbook_stocktake_items(stocktake_id,book_id,item_id,expected_qty)
+             VALUES(?,?,?,?)',
+            'iiid', [$takeId,$bookId,(int)$item['id'],(float)$item['expected_qty']]
+        );
+    }
+    return count($missing);
+}
+
 // Only the modal detail view is a GET operation. All mutations require POST + CSRF.
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'details') {
     try {
@@ -60,6 +95,20 @@ try {
     $transactionStarted=true;
 
     switch ($action) {
+        case 'sync_items':
+            $takeId = (int)($_POST['take_id'] ?? 0);
+            $take = stSession($takeId, $bookId, true);
+            if (!in_array($take['status'], ['draft','counting'], true)) {
+                throw new RuntimeException('Only draft or counting sessions can receive new items.');
+            }
+            // stContext has already established the user's permitted book.
+            $added = stSyncMissingItems($takeId, $bookId);
+            $message = $added > 0
+                ? $added.' missing item(s) added. Existing counts were preserved.'
+                : 'This session already contains all current book items.';
+            break;
+
+
         case 'create':
             stRequireReview($bookId);
             $period=trim((string)($_POST['period'] ?? ''));
@@ -87,6 +136,8 @@ try {
             if (!is_array($quantities)||!is_array($costs)||!is_array($reasons)) throw new RuntimeException('Invalid stock count data.');
             foreach (stLines($takeId,$bookId) as $line) {
                 $key=(string)$line['id'];
+                // A stale form must not erase a line introduced by another operator.
+                if (!array_key_exists($key, $quantities)) continue;
                 $rawQty=trim((string)($quantities[$key] ?? ''));
                 $rawCost=$canEditCost ? trim((string)($costs[$key] ?? '')) : ''; 
                 if ($rawQty!=='' && (!is_numeric($rawQty)||!is_finite((float)$rawQty)||(float)$rawQty<0||(float)$rawQty>999999999999999)) throw new RuntimeException('Invalid quantity: '.$line['name']);
@@ -117,6 +168,8 @@ try {
             $takeId=(int)($_POST['take_id'] ?? 0);
             $take=stSession($takeId,$bookId,true);
             if (!in_array($take['status'],['draft','counting'],true)) throw new RuntimeException('This session cannot be submitted.');
+            $missing = stRows('SELECT i.id FROM cashbook_items i WHERE i.book_id=? AND NOT EXISTS (SELECT 1 FROM cashbook_stocktake_items li WHERE li.stocktake_id=? AND li.book_id=i.book_id AND li.item_id=i.id) LIMIT 1', 'ii', [$bookId,$takeId]);
+            if ($missing) throw new RuntimeException('New inventory items exist. Use Add Missing Items before submitting for review.');
             $lines=stLines($takeId,$bookId);
             if (!$lines) throw new RuntimeException('No items to review.');
             foreach ($lines as $line) if ($line['counted_qty']===null) throw new RuntimeException('Count every item before review.');

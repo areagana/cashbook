@@ -942,6 +942,92 @@ function cashbook_role_audit()
         $statement->close();
     }
 
+    /*
+|--------------------------------------------------------------------------
+| CREATE CUSTOMER TRANSACTION TRANSFERS TABLE
+|--------------------------------------------------------------------------
+| Stores the history of transactions transferred between customers.
+|--------------------------------------------------------------------------
+*/
+
+/*
+|--------------------------------------------------------------------------
+| CREATE CUSTOMER TRANSACTION TRANSFERS TABLE
+|--------------------------------------------------------------------------
+| Records transfers of transactions between customers.
+| Maintains an audit trail for accountability.
+|--------------------------------------------------------------------------
+*/
+
+function createCustomerTransfersTable()
+{
+    global $server;
+
+    $table = "cashbook_customer_transfers";
+
+    $columns = [
+        'book_id'          => 'INT NOT NULL',
+        'transaction_id'   => 'INT NOT NULL',
+        'from_customer_id' => 'INT NOT NULL',
+        'to_customer_id'   => 'INT NOT NULL',
+        'transferred_by'   => 'INT NOT NULL',
+        'reason'           => 'VARCHAR(500) NOT NULL'
+    ];
+
+    // Create table or update missing columns.
+    create_Table($table, $columns);
+
+    /*
+    |--------------------------------------------------------------------------
+    | CREATE INDEXES IF THEY DO NOT EXIST
+    |--------------------------------------------------------------------------
+    */
+
+    $indexes = [
+        'idx_transaction' => ['transaction_id'],
+        'idx_book_date'   => ['book_id', 'created_at']
+    ];
+
+    foreach ($indexes as $indexName => $indexColumns)
+    {
+        $check = prepared_statements(
+            "SELECT INDEX_NAME
+             FROM information_schema.statistics
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = ?
+               AND INDEX_NAME = ?
+             LIMIT 1",
+            'ss',
+            [$table, $indexName]
+        );
+
+        if ($check->num_rows > 0) {
+            continue;
+        }
+
+        $columnsSql = implode(
+            ', ',
+            array_map(
+                static function ($column) {
+                    return "`{$column}`";
+                },
+                $indexColumns
+            )
+        );
+
+        $sql = "ALTER TABLE `{$table}`
+                ADD INDEX `{$indexName}` ({$columnsSql})";
+
+        if (!$server->query($sql)) {
+            throw new RuntimeException(
+                "Failed to create index {$indexName}: " . $server->error
+            );
+        }
+    }
+
+    return true;
+}
+
     /** Run parent tables before child tables. */
     function createCashbookStocktakeTables()
     {
@@ -954,6 +1040,7 @@ function cashbook_role_audit()
         cashbook_role_user();
     }
 
+    createCustomerTransfersTable();
     createCashbookStocktakeTables();
     cashbook_creditor_ledger();
     cashbook_creditor_balances();

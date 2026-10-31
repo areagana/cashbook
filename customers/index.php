@@ -1,5 +1,6 @@
 <?php
-    require_once(__dir__.'/../assets/functions.php');
+    require_once(__DIR__ . '/../assets/functions.php');
+    require_once(__DIR__ . '/../assets/document_identity.php');
 
     if(isVerified())
     {
@@ -7,6 +8,7 @@
 
         $bsid = request('bsid');
         $book = bookFind(encryptor('decrypt',$bsid));
+        $customerDocumentIdentity = khDocumentIdentity((int)$book->id);
 
         /*
         |--------------------------------------------------------------------------
@@ -429,11 +431,11 @@
 
         <div class="col-md-8 p-2">
             <h3 class="mb-1">
-                <?=strToUpper($book->name);?> - CUSTOMERS
+                <?=htmlspecialchars(strtoupper($customerDocumentIdentity['company_name']), ENT_QUOTES, 'UTF-8');?> - CUSTOMERS
             </h3>
 
             <small class="text-muted">
-                Customer accounts, balances and transaction overview
+                Book: <?=htmlspecialchars($customerDocumentIdentity['book_name'], ENT_QUOTES, 'UTF-8');?> · Customer accounts, balances and transaction overview
             </small>
         </div>
 

@@ -3,6 +3,40 @@
 require_once __DIR__ . '/../bootstrap.php';
 [$encryptedBookId,$bookId,$book,$userId]=dsContext();
 $action=(string)($_REQUEST['action'] ?? '');
+
+/**
+ * Add inventory items introduced after the daily session was opened.
+ * Caller must hold the session row lock inside a transaction.
+ * Existing count lines are never updated or reset.
+ *
+ * For backdated sessions, expected_qty remains NULL because a verified
+ * historical balance is not available in the current module.
+ */
+function dsSyncMissingItems(int $dailyId, int $bookId, string $countDate): int
+{
+    $isHistorical = $countDate < date('Y-m-d');
+    $items = dsExpected($bookId);
+    $added = 0;
+
+    foreach ($items as $item) {
+        $itemId = (int)$item['id'];
+        $existing = dsRows(
+            'SELECT id FROM cashbook_daily_stocktake_items WHERE daily_id=? AND book_id=? AND item_id=? LIMIT 1',
+            'iii', [$dailyId, $bookId, $itemId]
+        );
+        if ($existing) continue;
+
+        $expected = $isHistorical ? null : (float)$item['expected_qty'];
+        dsQuery(
+            'INSERT INTO cashbook_daily_stocktake_items(daily_id,book_id,item_id,expected_qty) VALUES(?,?,?,?)',
+            'iiid', [$dailyId, $bookId, $itemId, $expected]
+        );
+        $added++;
+    }
+
+    return $added;
+}
+
 if ($_SERVER['REQUEST_METHOD']==='GET' && $action==='details') {
     try {
         $session=dsSession((int)($_GET['daily_id']??0),$bookId);
@@ -48,6 +82,17 @@ try {
             }
             $message=$isHistorical ? 'Previous-date session created. Historical expected balances are unavailable; physical counts will be recorded without calculated variances.' : 'Daily session opened with a snapshot of current stock balances.';
             break;
+         case 'sync_items':
+             $session = dsSession($dailyId, $bookId, true);
+             if (!in_array($session['status'], ['draft', 'counting'], true)) {
+                 throw new RuntimeException('This session is locked. A reviewer must return it for corrections before adding items.');
+             }
+             $added = dsSyncMissingItems($dailyId, $bookId, (string)$session['count_date']);
+             $message = $added > 0
+                 ? $added.' missing item(s) added. Existing physical counts and remarks were preserved.'
+                 : 'All current book items are already included in this daily session.';
+             break;
+
         case 'save_counts':
             $session=dsSession($dailyId,$bookId,true);
             if (!in_array($session['status'],['draft','counting'],true)) throw new RuntimeException('This count is locked.');
@@ -73,6 +118,11 @@ try {
         case 'submit_review':
             $session=dsSession($dailyId,$bookId,true);
             if (!in_array($session['status'],['draft','counting'],true)) throw new RuntimeException('This session cannot be submitted.');
+             // Prevent review of a session that silently excludes newly registered items.
+             $added = dsSyncMissingItems($dailyId, $bookId, (string)$session['count_date']);
+             if ($added > 0) {
+                 throw new RuntimeException($added.' new item(s) were detected. Use Add Missing Items, count them where applicable, then submit again.');
+             }
             $counted=dsRows('SELECT COUNT(*) total, SUM(counted_qty IS NOT NULL) counted FROM cashbook_daily_stocktake_items WHERE daily_id=? AND book_id=?','ii',[$dailyId,$bookId])[0];
             if (!(int)$counted['counted']) throw new RuntimeException('Count at least one item before submitting.');
             dsQuery("UPDATE cashbook_daily_stocktakes SET status='review',submitted_by=?,submitted_at=NOW() WHERE id=? AND book_id=?",'iii',[$userId,$dailyId,$bookId]);
@@ -89,6 +139,15 @@ try {
             if (!dsCanReview($bookId)) throw new RuntimeException('Reviewer permission required.');
             $session=dsSession($dailyId,$bookId,true);
             if ($session['status']!=='review') throw new RuntimeException('Only submitted counts can be approved.');
+             // Approved records must represent all items currently in the book.
+             foreach (dsExpected($bookId) as $item) {
+                 if (!dsRows(
+                     'SELECT id FROM cashbook_daily_stocktake_items WHERE daily_id=? AND book_id=? AND item_id=? LIMIT 1',
+                     'iii', [$dailyId, $bookId, (int)$item['id']]
+                 )) {
+                     throw new RuntimeException('New inventory items were registered during review. Return this session for corrections and synchronise missing items.');
+                 }
+             }
             $notes=mb_substr(trim((string)($_POST['review_notes']??'')),0,2000);
             dsQuery("UPDATE cashbook_daily_stocktakes SET status='approved',reviewed_by=?,reviewed_at=NOW(),review_notes=? WHERE id=? AND book_id=?",'isii',[$userId,$notes,$dailyId,$bookId]);
             $message='Daily reconciliation approved. No stock ledger adjustments were posted.';

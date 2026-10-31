@@ -180,6 +180,41 @@ if (isVerified()) {
 
 
     <!-- =========================================================
+         PERIOD PERFORMANCE & PROFITABILITY REPORT
+         Keep this separate from the existing transaction report.
+    ========================================================== -->
+    <?php if (hasRole(['owner', 'partner', 'superadministrator'])): ?>
+    <div class="row mx-1 mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm border-left-primary">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-lg-8 mb-3 mb-lg-0">
+                            <h5 class="font-weight-bold mb-2">
+                                <i class="fa fa-line-chart text-primary mr-2"></i>
+                                Period Performance &amp; Profitability
+                            </h5>
+                            <p class="text-muted mb-0">
+                                Analyse category and item cash movement, stock purchases,
+                                stock quantities, and customer opening and closing balances.
+                                Export a multi-sheet Excel report with a chart.
+                            </p>
+                        </div>
+                        <div class="col-lg-4 text-lg-right">
+                            <a class="btn btn-primary btn-flat"
+                               href="../report/period-performance/?bkid=<?= urlencode((string) $bsid); ?>">
+                                <i class="fa fa-bar-chart mr-1"></i>
+                                Open Period Report
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- =========================================================
          MAIN REPORT AREA
     ========================================================== -->
 
