@@ -11,11 +11,39 @@ try {
         // Lock the source item during all reference checks and updates.
         $source = itemOne('SELECT id FROM cashbook_items WHERE id = ? AND book_id = ? FOR UPDATE','ii',[$itemId,$bookId]);
         if (!$source) throw new RuntimeException('Source item no longer exists.');
-        if ($action === 'delete') {
+        if ($action === 'preview_delete') {
+            if (!isItemDeleteAdmin()) throw new RuntimeException('Only an owner or superadministrator can delete items.');
             $references = itemReferences($itemId);
-            if ($references) throw new RuntimeException('Deletion blocked: item is referenced by '.implode(', ',array_keys($references)).'.');
-            prepared_statements('DELETE FROM cashbook_items WHERE id = ? AND book_id = ?', 'ii', [$itemId,$bookId]);
-            $message = 'Unused item deleted successfully.';
+            $stockCount = (int)(itemOne('SELECT COUNT(*) AS n FROM cashbook_stocks WHERE book_id = ? AND item_id = ?', 'ii', [$bookId, $itemId])['n'] ?? 0);
+            $db->commit();
+            echo json_encode(['ok'=>true, 'references'=>$references, 'stock_movements'=>$stockCount,
+                'mode'=>$references ? 'archive' : 'delete',
+                'message'=>$references ? 'This item has related records. It will be archived, not erased; historical records remain intact.' : 'No related records found. This item can be permanently deleted.']);
+            exit;
+        } elseif ($action === 'delete') {
+            if (!isItemDeleteAdmin()) throw new RuntimeException('Only an owner or superadministrator can delete items.');
+            if (!isset($_SESSION['kh_item_csrf']) || !hash_equals($_SESSION['kh_item_csrf'], (string)($_POST['csrf'] ?? ''))) {
+                throw new RuntimeException('Security token expired. Refresh and try again.');
+            }
+            $password = (string)($_POST['password'] ?? '');
+            if ($password === '') throw new RuntimeException('Enter your account password.');
+            $user = itemOne('SELECT password FROM cashbook_users WHERE id = ? LIMIT 1', 'i', [(int)auth()->id]);
+            if (!$user || !password_verify($password, (string)$user['password'])) {
+                throw new RuntimeException('Incorrect account password.');
+            }
+            $references = itemReferences($itemId);
+            if ($references) {
+                if (!itemColumn('cashbook_items', 'archived_at')) {
+                    throw new RuntimeException('Archive support is not installed. Run the included migration before deleting referenced items.');
+                }
+                $saved = prepared_statements('UPDATE cashbook_items SET archived_at = NOW() WHERE id = ? AND book_id = ? AND archived_at IS NULL', 'ii', [$itemId,$bookId]);
+                if (!$saved) throw new RuntimeException('Unable to archive item.');
+                $message = 'Item archived. Related stock and financial history was preserved.';
+            } else {
+                $saved = prepared_statements('DELETE FROM cashbook_items WHERE id = ? AND book_id = ?', 'ii', [$itemId,$bookId]);
+                if (!$saved) throw new RuntimeException('Unable to delete item.');
+                $message = 'Unused item permanently deleted.';
+            }
         } elseif ($action === 'transfer') {
             $targetId = filter_var($_POST['target_item_id'] ?? null,FILTER_VALIDATE_INT);
             $transactionId = filter_var($_POST['transaction_id'] ?? null,FILTER_VALIDATE_INT);

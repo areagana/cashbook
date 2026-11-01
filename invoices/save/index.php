@@ -143,161 +143,55 @@
                     <?php
                     break;
                 case 'view-invoice':
-                        $id = request('invoice_id');
-                        $invoice = invoiceFind($id);
-                        ?>
-                        <div class="row mx-1">
-                            <div class="col p-2">
-                                <h3><?=bookFind($invoice->book_id)->name;?></h3>
-                            </div>
-                            <div class="col p-2">
-                                <button class="btn btn-flat btn-outline-info invoice-return" data-id ='<?=$id;?>'>RECEIVE RETURN</button>
-                            </div>
-                            <div class="p-2">
-                                <button class="btn btn-outline-danger btn-flat right" onclick="printMe('invoicePrintable')"><i class="fa fa-print"></i> PRINT</button>
-                            </div>
+                    $invoiceId = (int)request('invoice_id');
+                    $bookId = (int)encryptor('decrypt', $_SESSION['book_id'] ?? '');
+                    require_once __DIR__ . '/../invoice_document.php';
+                    if (!khInvoiceCanAccessBook($bookId)) {
+                        http_response_code(403);
+                        echo '<div class="alert alert-danger">Access denied.</div>';
+                        break;
+                    }
+                    $invoiceData = khInvoiceLoad($invoiceId, $bookId);
+                    if (!$invoiceData) {
+                        echo '<div class="alert alert-warning">Invoice not found.</div>';
+                        break;
+                    }
+                    $invoice = $invoiceData['invoice'];
+                    $invoiceId = (int)$invoice['id'];
+                    ?>
+                    <div class="p-3 bg-light border-bottom d-flex flex-wrap align-items-center justify-content-between" style="gap:8px">
+                        <strong><i class="fa fa-file-text-o"></i> Invoice preview</strong>
+                        <div class="d-flex flex-wrap" style="gap:6px">
+                            <a class="btn btn-sm btn-success" target="_blank" rel="noopener" href="pdf.php?invoice_id=<?=$invoiceId;?>&amp;type=invoice">Invoice PDF</a>
+                            <a class="btn btn-sm btn-outline-success" target="_blank" rel="noopener" href="pdf.php?invoice_id=<?=$invoiceId;?>&amp;type=returns">With Returns</a>
+                            <a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="pdf.php?invoice_id=<?=$invoiceId;?>&amp;type=payments">With Payments</a>
+                            <button type="button" class="btn btn-sm btn-outline-success kh-share-whatsapp" data-invoice-id="<?=$invoiceId;?>"><i class="fa fa-whatsapp"></i> WhatsApp</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary kh-share-copy" data-invoice-id="<?=$invoiceId;?>"><i class="fa fa-link"></i> Copy link</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger kh-share-revoke" data-invoice-id="<?=$invoiceId;?>"><i class="fa fa-ban"></i> Revoke link</button>
+                            <button type="button" class="btn btn-sm btn-outline-dark" onclick="printMe('invoicePrintable')"><i class="fa fa-print"></i> Print</button>
                         </div>
-                        <hr>
-                        <div class="p-2" id='invoicePrintable'>
-                            <table class="table table-bordered invoice-info-table">
-                                <tr>
-                                    <th colspan='2'><center><h3><?=strToUpper(bookFind($invoice->book_id)->name);?> - INVOICE</h3></center></th>
-                                </tr>
-                                <tr>
-                                    <td width="50%" valign="top">
-                                        <h3 class="pb-2">
-                                            CUSTOMER DETAILS
-                                        </h3>
-                                        <hr>
-
-                                        <div><strong>CUSTOMER:</strong> <?=$invoice->customer;?></div>
-                                        <div><strong>DATE:</strong> <?=$invoice->invoice_date;?></div>
-                                        <div><strong>CONTACT:</strong> <?=$invoice->contact;?></div>
-                                    </td>
-
-                                    <td width="50%" valign="top">
-                                        <h3 class="pb-2">
-                                            INVOICE DETAILS
-                                        </h3>
-                                        <hr>
-
-                                        <div><strong>INVOICE NO:</strong> <?=$invoice->invoice_no;?></div>
-                                        <div><strong>INVOICE DATE:</strong> <?=$invoice->invoice_date;?></div>
-                                        <div><strong>AMOUNT:</strong> <?=number_format($invoice->total);?></div>
-
-                                    </td>
-                                </tr>
-                            </table>
-                            <hr>
-                            <div class="p-2 h3">
-                                <center>  <strong>BALANCE: <?=number_format($invoice->balance,0);?></strong></center>
-                            </div>
-                            <hr>
-                            <div class="row mx-1">
-                                <div class="col p-2 table-responsive">
-                                    <?php
-                                        $stmt = "SELECT cii.*,ci.name as item,ci.units FROM cashbook_invoice_items cii 
-                                                    INNER JOIN cashbook_items ci ON ci.id = cii.item_id
-                                                    WHERE cii.invoice_id = ? ORDER BY id ASC";
-                                        $res = prepared_statements($stmt,'i',[$id]);
-                                        
-                                        $amounts = [];
-                                        $s = 1;
-                                    ?>
-                                    <table class="table table-striped table-bordered table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>S/NO</th>
-                                                <th>Item name</th>
-                                                <th>Qty</th>
-                                                <th>Rate</th>
-                                                <th>Amount</th>
-                                                <th></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class='invoiceItemsTbody'>                            
-                                        </tbody>
-                                        <?php while($r = $res->fetch_assoc()): $amounts[] = $r['total'];?>
-                                            <tr class='invoice-item-row'>
-                                                <td><?=$s++;?></td>
-                                                <td><?=$r['item'];?></td>
-                                                <td><?=$r['quantity'];?> <?=$r['units'];?></td>
-                                                <td><?=number_format($r['unit_price'],0);?></td>
-                                                <td class='trTotal'><?=number_format($r['total'],0);?></td>
-                                                <td>
-                                                    <button class="btn btn-outline-danger btn-flat btn-sm remove-invoice-item" data-id ="<?=$r['id'];?>"><i class="fa fa-minus"></i></button>
-                                                </td>
-                                            </tr>
-                                        <?php endwhile;?>
-                                        <tr class='h5'>
-                                            <td colspan='4'>TOTAL</td>
-                                            <td id='invoice_total'><?=number_format(array_sum($amounts),0);?></td>
-                                            <td></td>
-                                        </tr>
-                                    </table>
-                                    <hr>
-                                    <div class="p-2 h5">
-                                        <center> <h5 class="p-2 text-center">INVOICE RETURN</h5></center>
-                                    </div>
-                                    <hr>
-                                    <div class="p-2">
-                                        <?php
-                                        $stmtr = "SELECT cii.*,ci.name as item,ci.units FROM cashbook_invoice_return_items cii 
-                                                    INNER JOIN cashbook_items ci ON ci.id = cii.item_id
-                                                    WHERE cii.invoice_id = ? ORDER BY id ASC";
-                                        $res = prepared_statements($stmtr,'i',[$id]);
-                                        
-                                        $returnAmounts = [];
-                                        $s = 1;
-                                    ?>
-                                        <table class="table table-striped table-bordered table-sm">
-                                            <thead>
-                                                <tr>
-                                                    <th>S/NO</th>
-                                                    <th>Item name</th>
-                                                    <th>Qty Returned</th>
-                                                    <th>Rate</th>
-                                                    <th>Amount</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class='invoiceItemsTbody'>                            
-                                            </tbody>
-                                            <?php while($rr = $res->fetch_assoc()): $returnAmounts[] = $rr['total'];?>
-                                                <tr class='invoice-item-row'>
-                                                    <td><?=$s++;?></td>
-                                                    <td><?=$rr['item'];?></td>
-                                                    <td><?=$rr['qty_returned'];?> <?=$rr['units'];?></td>
-                                                    <td><?=number_format($rr['unit_price'],0);?></td>
-                                                    <td><?=number_format($rr['total'],0);?></td>
-                                                </tr>
-                                            <?php endwhile;?>
-                                            <tr class='h5'>
-                                                <td colspan='4'>TOTAL</td>
-                                                <td id='invoice_total'><?=number_format(array_sum($returnAmounts),0);?></td>
-                                            </tr>
-                                        </table>
-                                    </div>
-                                    <?php
-                                        // fetch invoice payments
-                                    ?>
-                                    <table class="table table-bordered table-striped table-sm">
-                                        <tr class='h5'>
-                                            <td colspan='4'>INVOICE BALANCE</td>
-                                            <td id='invoice_total'><?=number_format((array_sum($amounts)-array_sum($returnAmounts)),2);?></td>
-                                        </tr>
-                                    </table>
-                                    <hr>
-                                    <footer>
-                                        Print Date: <?=date('d-m-Y  H:i');?>  <center><i>Printed By : <?=auth()->name;?></i></center>
-                                    </footer>
-                                </div>
-                            </div>
-                        </div>
-                        <?php
+                    </div>
+                    <div id="invoicePrintable" class="p-3" style="background:#fff; overflow-x:auto">
+                        <?=khInvoiceHtml($invoiceData, 'invoice', false);?>
+                    </div>
+                    <?php
                     break;
                 case 'view-returns':
-                        $id = request('invoice_id');
-                        $invoice = invoiceFind($id);
+                        $id = (int)request('invoice_id');
+                        $book_id = (int)encryptor('decrypt', $_SESSION['book_id'] ?? '');
+                        $invoiceQuery = prepared_statements(
+                            'SELECT ci.*, cc.name AS customer, NULL AS contact
+                             FROM cashbook_invoices ci
+                             LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id AND cc.book_id = ci.book_id
+                             WHERE ci.id = ? AND ci.book_id = ? LIMIT 1',
+                            'ii', [$id, $book_id]
+                        );
+                        $invoiceRow = $invoiceQuery ? $invoiceQuery->fetch_assoc() : null;
+                        if (!$invoiceRow) {
+                            echo '<div class="alert alert-danger">Invoice not found in this book.</div>';
+                            break;
+                        }
+                        $invoice = (object)$invoiceRow;
                         ?>
                             <form id='invoiceReturnsForm' method="post">
                                 <input type="hidden" name="form" value='newInvoiceReturnSave'>

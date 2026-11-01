@@ -223,9 +223,9 @@ if (isset($_GET['item_statement']) && $_GET['item_statement'] === '1') {
             <div class="card-header bg-white"><strong>Related Records / Deletion Eligibility</strong></div>
             <div class="card-body">
                 <?php if (!$references): ?>
-                    <span class="badge badge-success">No related records — item may be deleted</span>
+                    <span class="badge badge-success">No related records — owner can permanently delete after password confirmation</span>
                 <?php else: ?>
-                    <p class="text-warning mb-2">This item cannot be deleted until all references are resolved.</p>
+                    <p class="text-warning mb-2">This item has related records. Administrative deletion will archive it while preserving history.</p>
                     <?php foreach ($references as $table => $count): ?>
                         <span class="badge badge-secondary mr-2 mb-2"><?= itemEsc($table); ?>: <?= (int)$count; ?></span>
                     <?php endforeach; ?>
@@ -284,6 +284,7 @@ if (isset($_GET['item_statement']) && $_GET['item_statement'] === '1') {
    ITEMS REGISTER - EXISTING PAGE
 ============================================================= */
     require_once(__dir__.'/../assets/functions.php');
+    require_once(__dir__.'/item_helpers_bootstrap.php');
     if(isVerified())
     {
         pageHeader('Items');
@@ -300,6 +301,7 @@ if (isset($_GET['item_statement']) && $_GET['item_statement'] === '1') {
                     SELECT *
                     FROM cashbook_items
                     WHERE book_id = ?
+                      AND archived_at IS NULL
                     ORDER BY name ASC
                 ";
 
@@ -804,6 +806,7 @@ if (isset($_GET['item_statement']) && $_GET['item_statement'] === '1') {
 
                                                             </button>
 
+                                                            <?php if (isItemDeleteAdmin()): ?>
                                                             <button
                                                                 class="btn btn-sm btn-outline-danger delete-item"
                                                                 data-id="<?=$r['id'];?>"
@@ -812,6 +815,7 @@ if (isset($_GET['item_statement']) && $_GET['item_statement'] === '1') {
                                                                 <i class="fa fa-trash"></i>
 
                                                             </button>
+                                                            <?php endif; ?>
 
                                                         </span>
 
@@ -837,6 +841,31 @@ if (isset($_GET['item_statement']) && $_GET['item_statement'] === '1') {
 
                 </div>
 
+            </div>
+
+            <!-- Password confirmation: masked field, never browser prompt() -->
+            <div id="itemDeleteConfirm" class="modal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="itemDeleteHeading" style="display:none;background:rgba(0,0,0,.55);z-index:1080;">
+                <div class="modal-dialog modal-dialog-centered" role="document">
+                    <div class="modal-content">
+                        <form id="itemDeleteConfirmForm" autocomplete="off">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="itemDeleteHeading">Confirm item removal</h5>
+                                <button type="button" class="close item-delete-cancel" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="itemDeleteWarning" class="alert alert-warning" style="white-space:pre-line;"></div>
+                                <label for="itemDeletePassword">Your KashHub account password</label>
+                                <input type="password" id="itemDeletePassword" class="form-control" autocomplete="current-password" required>
+                                <small class="text-muted">Your password is masked and is checked by the server. Archived items remain in the database to protect financial history.</small>
+                                <div id="itemDeleteError" class="text-danger mt-2" role="alert"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary item-delete-cancel">Cancel</button>
+                                <button type="submit" id="itemDeleteSubmit" class="btn btn-danger">Confirm removal</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </div>
              <!-- ITEM STATEMENT - KASHHUB CUSTOM CENTRAL MODAL -->
              <div class="p-0 bg-white central-modal absolute border shadow" id="itemStatementModal" style="display:none;">
@@ -977,27 +1006,84 @@ if (isset($_GET['item_statement']) && $_GET['item_statement'] === '1') {
                     $.ajax({
                         url: 'action.php', method: 'POST', dataType: 'json', data: $(this).serialize(),
                         success: function (response) {
-                            alert(response.message);
+                            xdialog.alert(response.message);
                             if (response.ok) openItemStatement(activeStatementItem);
                         },
                         error: function (xhr) {
-                            alert(xhr.responseJSON?.message || 'Transfer failed.');
+                            xdialog.alert(xhr.responseJSON?.message || 'Transfer failed.');
                         }
                     });
                 });
 
+                /* =========================================================
+                   PASSWORD-CONFIRMED ADMINISTRATIVE ITEM DELETION
+                ========================================================= */
+                const itemDeleteCsrf = <?= json_encode($_SESSION['kh_item_csrf'] ?? ''); ?>;
+
+                let itemPendingDeletion = null;
+
+                function closeItemDeleteDialog() {
+                    $('#itemDeletePassword').val('');
+                    $('#itemDeleteError').text('');
+                    $('#itemDeleteConfirm').hide();
+                    itemPendingDeletion = null;
+                }
+
+                $(document).on('click', '.item-delete-cancel', closeItemDeleteDialog);
+
                 $(document).on('click', '.delete-item', function () {
-                    const itemId = $(this).data('id');
-                    if (!confirm('Delete this unused item? Referenced items cannot be deleted.')) return;
+                    const itemId = Number($(this).data('id'));
                     $.ajax({
                         url: 'action.php', method: 'POST', dataType: 'json',
-                        data: {action: 'delete', item_id: itemId, bsid: itemBookToken},
+                        data: {action: 'preview_delete', item_id: itemId, bsid: itemBookToken},
                         success: function (response) {
-                            alert(response.message);
-                            if (response.ok) window.location.reload();
+                            if (!response.ok) { alert(response.message); return; }
+                            itemPendingDeletion = itemId;
+                            const references = Object.entries(response.references || {})
+                                .map(([table, count]) => table + ': ' + count).join('\n');
+                            const explanation = response.mode === 'archive'
+                                ? 'This item has related records and will be ARCHIVED, not physically erased.'
+                                : 'This item has no references and will be PERMANENTLY DELETED.';
+                            const warning = 'Stock movements: ' + Number(response.stock_movements || 0)
+                                + '\n' + (references ? 'Related records:\n' + references + '\n' : '')
+                                + '\n' + explanation;
+                            $('#itemDeleteWarning').text(warning);
+                            $('#itemDeleteError').text('');
+                            $('#itemDeletePassword').val('');
+                            $('#itemDeleteConfirm').show();
+                            $('#itemDeletePassword').trigger('focus');
                         },
                         error: function (xhr) {
-                            alert(xhr.responseJSON?.message || 'Unable to delete item.');
+                            alert(xhr.responseJSON?.message || 'Unable to check item references.');
+                        }
+                    });
+                });
+
+                $(document).on('submit', '#itemDeleteConfirmForm', function (event) {
+                    event.preventDefault();
+                    if (!itemPendingDeletion) return;
+                    const password = $('#itemDeletePassword').val();
+                    if (!password) return;
+                    const submit = $('#itemDeleteSubmit').prop('disabled', true);
+                    $.ajax({
+                        url: 'action.php', method: 'POST', dataType: 'json',
+                        data: {action: 'delete', item_id: itemPendingDeletion,
+                               bsid: itemBookToken, password: password, csrf: itemDeleteCsrf},
+                        success: function (response) {
+                            if (response.ok) {
+                                closeItemDeleteDialog();
+                                alert(response.message);
+                                window.location.reload();
+                            } else {
+                                $('#itemDeleteError').text(response.message || 'Removal failed.');
+                            }
+                        },
+                        error: function (xhr) {
+                            $('#itemDeleteError').text(xhr.responseJSON?.message || 'Unable to remove item.');
+                        },
+                        complete: function () {
+                            $('#itemDeletePassword').val('');
+                            submit.prop('disabled', false);
                         }
                     });
                 });

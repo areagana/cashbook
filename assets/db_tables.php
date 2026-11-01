@@ -368,16 +368,73 @@
 
     function cashbook_items()
     {
-        $table ='cashbook_items';
-        $columns =[
-            'name'=>'varchar(255) null',
-            'book_id'=>'int(11) null',
-            'Details'=>'varchar(255) null',
-            'units'=>'varchar(255) null',
-            'user_id'=>'int(11) null'
+        global $server;
+
+        $table = 'cashbook_items';
+
+        $columns = [
+            'name'        => 'varchar(255) null',
+            'book_id'     => 'int(11) null',
+            'Details'     => 'varchar(255) null',
+            'units'       => 'varchar(255) null',
+            'user_id'     => 'int(11) null',
+            'archived_at' => 'DATETIME NULL DEFAULT NULL'
         ];
-        create_table($table,$columns);
+
+        // Create table or add missing columns.
+        create_table($table, $columns);
+
+        /*
+        |--------------------------------------------------------------------------
+        | INDEX FOR ACTIVE AND ARCHIVED ITEMS
+        |--------------------------------------------------------------------------
+        */
+        $indexName = 'ix_cashbook_items_active';
+        $check = $server->prepare("
+            SELECT COUNT(*) AS total
+            FROM information_schema.statistics
+            WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+            AND INDEX_NAME = ?
+        ");
+
+        $check->bind_param('ss', $table, $indexName);
+        $check->execute();
+
+        $exists = $check->get_result()->fetch_assoc();
+        $check->close();
+
+        if ((int)$exists['total'] === 0) {
+            $server->query("
+                CREATE INDEX ix_cashbook_items_active
+                ON cashbook_items (book_id, archived_at)
+            ");
+        }
     }
+
+    function cashbook_stocktake_excluded_items()
+{
+    create_Table('cashbook_stocktake_excluded_items', [
+        'book_id'      => 'INT(11) NOT NULL',
+        'stocktake_id' => 'INT(11) NOT NULL',
+        'item_id'      => 'INT(11) NOT NULL',
+        'excluded_by'  => 'INT(11) NOT NULL',
+        'excluded_at'  => 'DATETIME NOT NULL'
+    ]);
+
+    // Required for ON DUPLICATE KEY UPDATE; run separately if your
+    // create_Table helper does not support composite unique indexes.
+    global $server;
+    $exists = $server->query("SELECT 1 FROM information_schema.statistics
+        WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cashbook_stocktake_excluded_items'
+          AND INDEX_NAME='ux_stocktake_excluded_item' LIMIT 1");
+    if ($exists && $exists->num_rows === 0) {
+        $server->query('ALTER TABLE cashbook_stocktake_excluded_items
+            ADD UNIQUE KEY ux_stocktake_excluded_item (book_id,stocktake_id,item_id)');
+    }
+}
+
+cashbook_stocktake_excluded_items();
 
     function cashbook_paymodes()
     {
@@ -1028,6 +1085,29 @@ function createCustomerTransfersTable()
     return true;
 }
 
+/*
+|--------------------------------------------------------------------------
+| KASHHUB - INVOICE SHARING
+|--------------------------------------------------------------------------
+| Stores secure invoice-sharing tokens for WhatsApp and other sharing
+| methods. Links can expire or be revoked.
+|--------------------------------------------------------------------------
+*/
+function cashbook_invoice_shares()
+{
+    $table = 'cashbook_invoice_shares';
+    $columns = [
+        'invoice_id' => 'INT(11) NOT NULL',
+        'book_id' => 'INT(11) NOT NULL',
+        'token_hash' => 'CHAR(64) NOT NULL',
+        'created_by' => 'INT(11) NOT NULL',
+        'expires_at' => 'DATETIME NOT NULL',
+        'revoked_at' => 'DATETIME NULL'
+    ];
+
+    create_Table($table, $columns);
+}
+
     /** Run parent tables before child tables. */
     function createCashbookStocktakeTables()
     {
@@ -1040,6 +1120,7 @@ function createCustomerTransfersTable()
         cashbook_role_user();
     }
 
+    cashbook_invoice_shares();
     createCustomerTransfersTable();
     createCashbookStocktakeTables();
     cashbook_creditor_ledger();

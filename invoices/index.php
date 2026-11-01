@@ -11,8 +11,24 @@
             </script>
             <style>
                 .invoice-summary-card {
-                    border-radius: 8px;
+                    border-radius: 12px;
                     min-height: 125px;
+                    border: 1px solid #e6edf2;
+                    box-shadow: 0 4px 16px rgba(15, 23, 42, .05) !important;
+                }
+                .invoice-table thead th {
+                    background: #edf7f3;
+                    color: #173c37;
+                    border-bottom: 2px solid #d2e8df;
+                    white-space: nowrap;
+                }
+                .invoice-table tbody tr:hover { background: #f5faf8; }
+                .invoice-table .dropdown-menu { min-width: 220px; }
+                .invoice-table .dropdown-item { font-size: 18px; padding: 9px 14px; }
+                .invoice-table .btn { margin: 2px; }
+                @media (max-width: 767px) {
+                    .invoice-table td, .invoice-table th { white-space: nowrap; }
+                    .invoice-summary-card { margin-bottom: 4px; }
                 }
 
                 .invoice-summary-card .summary-icon {
@@ -47,14 +63,13 @@
                 $sql = "SELECT
                         ci.*,
                         cc.name AS customer,
-                        COALESCE(SUM(cir.total),0) AS returned,
+                        COALESCE(cir.returned_total,0) AS returned,
                         COALESCE(ci.balance,0) AS newBalance
                     FROM cashbook_invoices ci
-                    LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id
-                    LEFT JOIN cashbook_invoice_returns cir ON cir.invoice_id = ci.id
+                    LEFT JOIN cashbook_customers cc ON cc.id = ci.customer_id AND cc.book_id = ci.book_id
+                    LEFT JOIN (SELECT invoice_id, SUM(total) AS returned_total FROM cashbook_invoice_returns GROUP BY invoice_id) cir ON cir.invoice_id = ci.id
                     WHERE ci.book_id = ?
-                    GROUP BY ci.id
-                    ORDER BY ci.invoice_date DESC
+                                        ORDER BY ci.invoice_date DESC
                 ";
 
                 $res = prepared_statements(
@@ -543,7 +558,7 @@
 
                                                 <td class="text-right">
 
-                                                    <?php if(hasRole(['owner','partner','staff','superadministrator'])):?>
+                                                    <?php if(true):?>
 
                                                         <span class="hover-display text-sms">
 
@@ -1233,3 +1248,53 @@
     }
 
 ?>
+<script>
+/* Invoice sharing: open WhatsApp with a prefilled message or copy the private link. */
+(function ($) {
+    'use strict';
+    function shareInvoice(invoiceId, action, callback) {
+        $.ajax({
+            url: 'share.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {invoice_id: invoiceId, action: action},
+            success: function (response) {
+                if (!response.success) {
+                    alert(response.message || 'Unable to share invoice.');
+                    return;
+                }
+                callback(response);
+            },
+            error: function (xhr) {
+                var response = xhr.responseJSON;
+                alert((response && response.message) || 'Sharing failed. Check that the sharing table is installed.');
+            }
+        });
+    }
+    $(document).on('click', '.kh-share-whatsapp', function () {
+        var id = $(this).data('invoice-id');
+        // Open immediately on the user gesture to avoid popup blockers.
+        var tab = window.open('about:blank', '_blank');
+        shareInvoice(id, 'create', function (response) {
+            var target = 'https://wa.me/?text=' + encodeURIComponent(response.message);
+            if (tab) tab.location.href = target;
+            else window.location.href = target;
+        });
+    });
+    $(document).on('click', '.kh-share-copy', function () {
+        shareInvoice($(this).data('invoice-id'), 'create', function (response) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(response.url).then(function () { alert('Invoice link copied. Expires after 30 days.'); });
+            } else {
+                window.prompt('Copy this invoice link:', response.url);
+            }
+        });
+    });
+    $(document).on('click', '.kh-share-revoke', function () {
+        if (!window.confirm('Revoke all active sharing links for this invoice?')) return;
+        shareInvoice($(this).data('invoice-id'), 'revoke', function () {
+            alert('Invoice sharing links revoked.');
+        });
+    });
+})(window.jQuery);
+</script>

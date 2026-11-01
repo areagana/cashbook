@@ -121,6 +121,14 @@ if (isVerified())
     }
 
     $totalBooks = count($books);
+    $canCreateBooks = hasRole(['owner', 'partner', 'superadministrator']);
+    $firstBookUrl = $totalBooks > 0
+        ? '../books/?bkid=' . urlencode(encryptor('encrypt', $books[0]['id']))
+        : null;
+    $firstDashboardUrl = $totalBooks > 0
+        ? '../dashboard/?bkid=' . urlencode(encryptor('encrypt', $books[0]['id']))
+        : null;
+    $onboardingKey = 'kashhub-onboarding-' . $businessId . '-' . $currentUserId;
 ?>
 
 <style>
@@ -868,6 +876,40 @@ if (isVerified())
     }
 
 
+
+    /* ---------------------------------------------------------------
+       KASHHUB GETTING STARTED / ONBOARDING
+       --------------------------------------------------------------- */
+    .kh-start { margin-bottom:24px; border:1px solid #dcece6; border-radius:12px; background:#fff; overflow:hidden; box-shadow:0 6px 20px rgba(15,23,42,.045); }
+    .kh-start-head { padding:22px 24px; background:linear-gradient(110deg,#effbf5,#f5f9ff); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; }
+    .kh-start-eyebrow { font-size:11px; font-weight:800; letter-spacing:1.1px; text-transform:uppercase; color:#087f5b; }
+    .kh-start-head h2 { margin:6px 0; font-size:22px; font-weight:750; color:#142d3b; }
+    .kh-start-head p { margin:0; max-width:660px; font-size:13px; line-height:1.6; color:#5b6e7b; }
+    .kh-start-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .kh-start-body { padding:20px 24px 24px; }
+    .kh-start-progress { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; font-weight:700; color:#536575; margin-bottom:8px; }
+    .kh-progress-track { height:8px; background:#e7efec; border-radius:10px; overflow:hidden; margin-bottom:18px; }
+    .kh-progress-fill { height:100%; width:0; background:#0a966a; transition:width .2s; }
+    .kh-start-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .kh-start-step { padding:16px; border:1px solid #e5ebef; border-radius:9px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+    .kh-start-step-top { display:flex; justify-content:space-between; align-items:center; }
+    .kh-start-icon { width:37px; height:37px; display:grid; place-items:center; border-radius:9px; background:#e9f8f1; color:#087f5b; }
+    .kh-start-step h3 { font-size:14px; font-weight:750; margin:0; color:#172b3a; }
+    .kh-start-step p { margin:0; color:#6c7c89; font-size:12px; line-height:1.55; flex:1; }
+    .kh-start-step .btn { align-self:flex-start; font-size:12px; }
+    .kh-step-check { display:flex; gap:5px; align-items:center; margin:0; font-size:11px; color:#667b85; cursor:pointer; }
+    .kh-step-check input { accent-color:#087f5b; }
+    .kh-tour-modal { display:none; }
+    .kh-tour-body { padding:24px; }
+    .kh-tour-page { display:none; }
+    .kh-tour-page.active { display:block; }
+    .kh-tour-count { color:#087f5b; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; }
+    .kh-tour-page h3 { font-size:22px; margin:10px 0; color:#172b3a; }
+    .kh-tour-page p { font-size:14px; line-height:1.75; color:#5b6e7b; }
+    .kh-tour-footer { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:24px; }
+    @media(max-width:991px) { .kh-start-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media(max-width:575px) { .kh-start-head,.kh-start-body { padding:17px; } .kh-start-grid { grid-template-columns:1fr; } .kh-start-head h2 { font-size:20px; } }
+
     /* BUSINESS PROFILE / BRAND IDENTITY */
     .profile-brand-card { background:#f7fafc; border:1px solid #e3eaf0; padding:18px; margin-bottom:18px; }
     .profile-section { border:1px solid #e8edf2; background:#fff; padding:18px; margin-bottom:16px; }
@@ -981,6 +1023,58 @@ if (isVerified())
     </div>
 
 
+
+
+    <!-- ============================================================
+         NEW USER QUICK START - ROLE AWARE, NO EXTRA DATABASE TABLES
+    ============================================================= -->
+    <section class="kh-start" id="kashhubGettingStarted" data-storage-key="<?=htmlspecialchars($onboardingKey, ENT_QUOTES);?>">
+        <div class="kh-start-head">
+            <div>
+                <div class="kh-start-eyebrow"><i class="fa fa-rocket mr-1"></i> Your KashHub journey starts here</div>
+                <h2>Set up today. Stay in control every day.</h2>
+                <p>From your first book to your first transaction and report, follow these simple steps to get value from KashHub right away.</p>
+            </div>
+            <div class="kh-start-actions">
+                <button type="button" class="btn btn-success btn-flat" id="khStartTour"><i class="fa fa-play-circle mr-1"></i> Take a quick tour</button>
+                <button type="button" class="btn btn-outline-secondary btn-flat" id="khToggleGuide" aria-expanded="true">Hide guide</button>
+            </div>
+        </div>
+        <div class="kh-start-body" id="khGuideBody">
+            <div class="kh-start-progress"><span>Your getting-started progress</span><span id="khProgressText">0 of 3 steps</span></div>
+            <div class="kh-progress-track"><div class="kh-progress-fill" id="khProgressFill"></div></div>
+            <div class="kh-start-grid">
+                <?php if ($canCreateBooks): ?>
+                <article class="kh-start-step">
+                    <div class="kh-start-step-top"><div class="kh-start-icon"><i class="fa fa-book"></i></div><label class="kh-step-check"><input type="checkbox" class="kh-onboarding-check" data-step="book"> Done</label></div>
+                    <h3>1. Create your business book</h3>
+                    <p>Give your business activities a home. Use a separate book for each operation you want to manage independently.</p>
+                    <button type="button" class="btn btn-sm btn-outline-success btn-flat new-book"><i class="fa fa-plus mr-1"></i> Add a book</button>
+                </article>
+                <?php else: ?>
+                <article class="kh-start-step">
+                    <div class="kh-start-step-top"><div class="kh-start-icon"><i class="fa fa-book"></i></div><label class="kh-step-check"><input type="checkbox" class="kh-onboarding-check" data-step="book"> Done</label></div>
+                    <h3>1. Open your assigned book</h3>
+                    <p>Your manager controls book access. Open an assigned book to work with the records you are authorized to manage.</p>
+                    <?php if ($firstBookUrl): ?><a class="btn btn-sm btn-outline-success btn-flat" href="<?=htmlspecialchars($firstBookUrl, ENT_QUOTES);?>">Open book</a><?php else: ?><span class="small text-muted">Ask your manager to assign you a book.</span><?php endif; ?>
+                </article>
+                <?php endif; ?>
+                <article class="kh-start-step">
+                    <div class="kh-start-step-top"><div class="kh-start-icon"><i class="fa fa-exchange"></i></div><label class="kh-step-check"><input type="checkbox" class="kh-onboarding-check" data-step="transactions"> Done</label></div>
+                    <h3>2. Record your daily activity</h3>
+                    <p>Inside your book, record money received and spent. Use the available customer, item and stock tools as your role permits.</p>
+                    <?php if ($firstBookUrl): ?><a class="btn btn-sm btn-outline-success btn-flat" href="<?=htmlspecialchars($firstBookUrl, ENT_QUOTES);?>">Go to book</a><?php else: ?><span class="small text-muted">Start after a book is available.</span><?php endif; ?>
+                </article>
+                <article class="kh-start-step">
+                    <div class="kh-start-step-top"><div class="kh-start-icon"><i class="fa fa-line-chart"></i></div><label class="kh-step-check"><input type="checkbox" class="kh-onboarding-check" data-step="insights"> Done</label></div>
+                    <h3>3. Follow your business performance</h3>
+                    <p>Review the dashboard and available reports to understand cash movement, outstanding balances and trends.</p>
+                    <?php if ($firstDashboardUrl): ?><a class="btn btn-sm btn-outline-success btn-flat" href="<?=htmlspecialchars($firstDashboardUrl, ENT_QUOTES);?>">View dashboard</a><?php else: ?><span class="small text-muted">Your dashboard is available after setup.</span><?php endif; ?>
+                </article>
+            </div>
+            <div class="small text-muted mt-3"><i class="fa fa-lightbulb-o text-warning mr-1"></i> Tip: Mark each step complete as you go. Progress is saved in this browser, not in your business records.</div>
+        </div>
+    </section>
 
     <!-- ============================================================
          SUMMARY
@@ -1641,6 +1735,26 @@ if (isVerified())
 
 
 
+
+<!-- ================================================================
+     QUICK START TOUR - KASHHUB CUSTOM CENTRAL MODAL
+================================================================ -->
+<div class="p-0 bg-white central-modal absolute border shadow kh-tour-modal" id="khOnboardingTour" role="dialog" aria-modal="true" aria-labelledby="khTourTitle">
+    <div class="central-modal-header bg-success">
+        <h3 class="central-modal-title text-white" id="khTourTitle">Welcome to KashHub</h3>
+        <button type="button" class="central-modal-close" id="khCloseTour" aria-label="Close guide">&times;</button>
+    </div>
+    <div class="central-modal-content kh-tour-body">
+        <div class="kh-tour-page active" data-tour-page="0"><div class="kh-tour-count">Step 1 of 3</div><h3>Give every transaction a home</h3><p>A business book is your workspace for daily operations. Owners can create books; team members work only in books assigned to them.</p></div>
+        <div class="kh-tour-page" data-tour-page="1"><div class="kh-tour-count">Step 2 of 3</div><h3>Capture what happens each day</h3><p>Record cash in and cash out as they happen. Where your book uses stock, customers and creditors, link records correctly so statements are easier to follow.</p></div>
+        <div class="kh-tour-page" data-tour-page="2"><div class="kh-tour-count">Step 3 of 3</div><h3>Make informed decisions</h3><p>Use dashboards and statements to follow cash flow, customers, creditors and stock. Remember: a cash balance is not the same as profit.</p></div>
+        <div class="kh-tour-footer">
+            <button type="button" class="btn btn-outline-secondary btn-flat" id="khTourPrevious">Back</button>
+            <button type="button" class="btn btn-success btn-flat" id="khTourNext">Next <i class="fa fa-arrow-right ml-1"></i></button>
+        </div>
+    </div>
+</div>
+
 <!-- ================================================================
      CREATE BUSINESS BOOK MODAL
 ================================================================ -->
@@ -1910,6 +2024,69 @@ document.addEventListener(
     function ()
     {
 
+
+
+        /* -----------------------------------------------------------
+           ONBOARDING: BROWSER-LOCAL CHECKLIST + GUIDED TOUR
+           ----------------------------------------------------------- */
+        const gettingStarted = document.getElementById('kashhubGettingStarted');
+        if (gettingStarted)
+        {
+            const key = gettingStarted.dataset.storageKey;
+            const checks = Array.from(gettingStarted.querySelectorAll('.kh-onboarding-check'));
+            let completed = [];
+            try { completed = JSON.parse(localStorage.getItem(key) || '[]'); }
+            catch (error) { completed = []; }
+            if (!Array.isArray(completed)) completed = [];
+
+            function updateOnboardingProgress()
+            {
+                const count = checks.filter(check => check.checked).length;
+                document.getElementById('khProgressText').textContent = count + ' of ' + checks.length + ' steps';
+                document.getElementById('khProgressFill').style.width = (count / checks.length * 100) + '%';
+                try { localStorage.setItem(key, JSON.stringify(checks.filter(check => check.checked).map(check => check.dataset.step))); }
+                catch (error) { /* Browser storage may be unavailable. */ }
+            }
+            checks.forEach(check => {
+                check.checked = completed.includes(check.dataset.step);
+                check.addEventListener('change', updateOnboardingProgress);
+            });
+            updateOnboardingProgress();
+
+            const guideBody = document.getElementById('khGuideBody');
+            const guideToggle = document.getElementById('khToggleGuide');
+            guideToggle.addEventListener('click', function () {
+                const hidden = guideBody.hidden = !guideBody.hidden;
+                guideToggle.textContent = hidden ? 'Show guide' : 'Hide guide';
+                guideToggle.setAttribute('aria-expanded', String(!hidden));
+            });
+
+            const tour = document.getElementById('khOnboardingTour');
+            const pages = Array.from(tour.querySelectorAll('.kh-tour-page'));
+            const back = document.getElementById('khTourPrevious');
+            const next = document.getElementById('khTourNext');
+            let page = 0;
+            function renderTour()
+            {
+                pages.forEach((element, index) => element.classList.toggle('active', index === page));
+                back.disabled = page === 0;
+                next.textContent = page === pages.length - 1 ? 'Finish' : 'Next →';
+            }
+            document.getElementById('khStartTour').addEventListener('click', function () {
+                page = 0;
+                renderTour();
+                tour.style.display = 'block';
+            });
+            document.getElementById('khCloseTour').addEventListener('click', function () {
+                tour.style.display = 'none';
+            });
+            back.addEventListener('click', function () { if (page > 0) { page--; renderTour(); } });
+            next.addEventListener('click', function () {
+                if (page < pages.length - 1) { page++; renderTour(); }
+                else { tour.style.display = 'none'; }
+            });
+            renderTour();
+        }
 
         /*
         |--------------------------------------------------------------------------

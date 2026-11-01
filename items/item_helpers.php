@@ -9,6 +9,7 @@ $bookId = (int)$book->id;
 $itemId = filter_var($_REQUEST['item_id'] ?? null, FILTER_VALIDATE_INT);
 if (!$itemId || $itemId < 1) { http_response_code(400); exit('Invalid item.'); }
 function isItemManager(): bool { return hasRole(['owner','partner','superadministrator']); }
+function isItemDeleteAdmin(): bool { return hasRole(['owner','superadministrator']); }
 function itemDb(): mysqli { global $server; return $server; }
 function itemQuery(string $sql, string $types = '', array $args = []): mysqli_result {
     return prepared_statements($sql, $types, $args);
@@ -36,5 +37,6 @@ function itemReferences(int $itemId): array {
     }
     return $counts;
 }
+if (session_status() === PHP_SESSION_ACTIVE && empty($_SESSION['kh_item_csrf'])) { $_SESSION['kh_item_csrf'] = bin2hex(random_bytes(32)); }
 $item = itemOne('SELECT * FROM cashbook_items WHERE id = ? AND book_id = ?', 'ii', [$itemId, $bookId]);
 if (!$item) { http_response_code(404); exit('Item not found in this book.'); }

@@ -199,6 +199,28 @@ document.addEventListener('DOMContentLoaded', function () {
         controls.find('.kh-clear-item-search').on('click',function(){input.val('');filterItems();input.trigger('focus');});
         filterItems();
     }
+    // Remove a single session line. The main item register and stock movements remain untouched.
+    $(document).on('click', '.kh-remove-session-item', function () {
+        if (!activeSession) return;
+        const button = $(this);
+        const lineId = Number(button.attr('data-line-id'));
+        const itemName = button.attr('data-item-name') || 'this item';
+        if (!Number.isInteger(lineId) || lineId <= 0) return;
+        if (!window.confirm('Remove "' + itemName + '" from this stock-taking session?\n\nThis does not delete the inventory item or its stock history. Save any unsaved counts first.')) return;
+        button.prop('disabled', true);
+        $.ajax({
+            url: backend, type: 'POST', dataType: 'json',
+            data: { action: 'remove_item', bkid: bookId, take_id: activeSession,
+                    line_id: lineId, csrf: <?=json_encode($csrf);?> }
+        }).done(function (result) {
+            if (!result.status) { message(result.message || 'Removal failed.', true); return; }
+            message(result.message || 'Item removed from this session.');
+            openSession(activeSession, lastTrigger);
+        }).fail(function (xhr) {
+            message(xhr.responseJSON?.message || 'Unable to remove session item.', true);
+        }).always(function () { button.prop('disabled', false); });
+    });
+
     $(document).on('click','.kh-open-session',function(){openSession($(this).data('id'),this);});
     $('#kh-close-modal').on('click',closeModal);
     modal.on('click',function(event){if(event.target===this)closeModal();});

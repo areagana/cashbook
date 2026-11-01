@@ -66,6 +66,7 @@ $takeId = (int)($take['id'] ?? 0);
                 <th class="text-right">Counted value</th>
             <?php endif; ?>
             <th>Remarks</th>
+            <?php if ($editable && (khCan('stocktake.manage', $bookId) || $canReview)): ?><th class="text-center">Action</th><?php endif; ?>
         </tr>
         </thead>
         <tbody>
@@ -122,6 +123,15 @@ $takeId = (int)($take['id'] ?? 0);
                     <?=stEscape($reason);?>
                 <?php endif; ?>
             </td>
+            <?php if ($editable && (khCan('stocktake.manage', $bookId) || $canReview)): ?>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-danger kh-remove-session-item"
+                        data-line-id="<?=$lineId;?>" data-item-name="<?=stEscape($line['name'] ?? 'item');?>"
+                        title="Remove from this stock-taking session only">
+                    <i class="fa fa-times"></i> Remove
+                </button>
+            </td>
+            <?php endif; ?>
         </tr>
         <?php endforeach; ?>
         </tbody>
@@ -146,6 +156,7 @@ $takeId = (int)($take['id'] ?? 0);
                 <td colspan="5" class="text-right">TOTAL COUNTED STOCK VALUE (UGX)</td>
                 <td class="text-right">UGX <?=number_format($totalCountedValue, 2);?></td>
                 <td></td>
+                <?php if ($editable && (khCan('stocktake.manage', $bookId) || $canReview)): ?><td></td><?php endif; ?>
             </tr>
         </tfoot>
         <?php if ($unvaluedCount > 0): ?>

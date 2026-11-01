@@ -37,12 +37,12 @@ function stSyncMissingItems(int $takeId, int $bookId): int
              FROM cashbook_item_stock_balances
              GROUP BY book_id,item_id
          ) sb ON sb.book_id=i.book_id AND sb.item_id=i.id
-         WHERE i.book_id=?
+         WHERE i.book_id=? AND i.archived_at IS NULL
            AND NOT EXISTS (
                SELECT 1 FROM cashbook_stocktake_items li
                WHERE li.stocktake_id=? AND li.book_id=i.book_id AND li.item_id=i.id
            )',
-        'ii', [$bookId,$takeId]
+        'iii', [$bookId,$takeId,$takeId]
     );
 
     foreach ($missing as $item) {
@@ -95,6 +95,40 @@ try {
     $transactionStarted=true;
 
     switch ($action) {
+        case 'remove_item':
+            // Remove a line from this session only, retaining the inventory item.
+            // Exclusions prevent Add Missing Items and review validation from undoing removal.
+            $takeId = (int)($_POST['take_id'] ?? 0);
+            $lineId = (int)($_POST['line_id'] ?? 0);
+            if ($lineId <= 0) throw new RuntimeException('Invalid session item.');
+            $take = stSession($takeId, $bookId, true);
+            if (!in_array($take['status'], ['draft', 'counting'], true)) {
+                throw new RuntimeException('Items cannot be removed from a locked session.');
+            }
+            // Require book-scoped stock management permission (not just view).
+            if (!khCan('stocktake.manage', $bookId) && !stCanReview($bookId)) {
+                throw new RuntimeException('You are not authorised to remove session items.');
+            }
+            $rows = stRows(
+                'SELECT li.id, li.item_id, i.name FROM cashbook_stocktake_items li
+                 INNER JOIN cashbook_items i ON i.id=li.item_id AND i.book_id=li.book_id
+                 WHERE li.id=? AND li.stocktake_id=? AND li.book_id=? FOR UPDATE',
+                'iii', [$lineId, $takeId, $bookId]
+            );
+            if (!$rows) throw new RuntimeException('The item is no longer in this session.');
+            $line = $rows[0];
+            stQuery(
+                'INSERT INTO cashbook_stocktake_excluded_items
+                 (book_id,stocktake_id,item_id,excluded_by,excluded_at)
+                 VALUES (?,?,?,?,NOW())
+                 ON DUPLICATE KEY UPDATE excluded_by=VALUES(excluded_by), excluded_at=NOW()',
+                'iiii', [$bookId, $takeId, (int)$line['item_id'], $userId]
+            );
+            stQuery('DELETE FROM cashbook_stocktake_items WHERE id=? AND stocktake_id=? AND book_id=?',
+                'iii', [$lineId, $takeId, $bookId]);
+            $message = 'Item removed from this session only: '.$line['name'].'.';
+            break;
+
         case 'sync_items':
             $takeId = (int)($_POST['take_id'] ?? 0);
             $take = stSession($takeId, $bookId, true);
@@ -117,7 +151,7 @@ try {
             $date=DateTimeImmutable::createFromFormat('!Y-m-d',$countDate);
             if (!$date || $date->format('Y-m-d')!==$countDate || substr($countDate,0,7)!==$period) throw new RuntimeException('Count date must be within the selected month.');
             if (stRows('SELECT id FROM cashbook_stocktakes WHERE book_id=? AND period_month=? LIMIT 1','is',[$bookId,$period])) throw new RuntimeException('A session already exists for this month.');
-            $items=stRows('SELECT i.id,COALESCE(sb.balance,0) expected_qty FROM cashbook_items i LEFT JOIN (SELECT book_id,item_id,MAX(balance) balance FROM cashbook_item_stock_balances GROUP BY book_id,item_id) sb ON sb.book_id=i.book_id AND sb.item_id=i.id WHERE i.book_id=?','i',[$bookId]);
+            $items=stRows('SELECT i.id,COALESCE(sb.balance,0) expected_qty FROM cashbook_items i LEFT JOIN (SELECT book_id,item_id,MAX(balance) balance FROM cashbook_item_stock_balances GROUP BY book_id,item_id) sb ON sb.book_id=i.book_id AND sb.item_id=i.id WHERE i.book_id=? AND i.archived_at IS NULL','i',[$bookId]);
             if (!$items) throw new RuntimeException('Add inventory items before starting a count.');
             stQuery('INSERT INTO cashbook_stocktakes(book_id,period_month,count_date,created_by) VALUES(?,?,?,?)','issi',[$bookId,$period,$countDate,$userId]);
             $takeId=(int)$server->insert_id;
@@ -168,7 +202,7 @@ try {
             $takeId=(int)($_POST['take_id'] ?? 0);
             $take=stSession($takeId,$bookId,true);
             if (!in_array($take['status'],['draft','counting'],true)) throw new RuntimeException('This session cannot be submitted.');
-            $missing = stRows('SELECT i.id FROM cashbook_items i WHERE i.book_id=? AND NOT EXISTS (SELECT 1 FROM cashbook_stocktake_items li WHERE li.stocktake_id=? AND li.book_id=i.book_id AND li.item_id=i.id) LIMIT 1', 'ii', [$bookId,$takeId]);
+            $missing = stRows('SELECT i.id FROM cashbook_items i WHERE i.book_id=? AND i.archived_at IS NULL AND NOT EXISTS (SELECT 1 FROM cashbook_stocktake_excluded_items ex WHERE ex.stocktake_id=? AND ex.book_id=i.book_id AND ex.item_id=i.id) AND NOT EXISTS (SELECT 1 FROM cashbook_stocktake_items li WHERE li.stocktake_id=? AND li.book_id=i.book_id AND li.item_id=i.id) LIMIT 1', 'iii', [$bookId,$takeId,$takeId]);
             if ($missing) throw new RuntimeException('New inventory items exist. Use Add Missing Items before submitting for review.');
             $lines=stLines($takeId,$bookId);
             if (!$lines) throw new RuntimeException('No items to review.');
@@ -232,6 +266,7 @@ try {
                 'INSERT INTO cashbook_stocktake_deletion_audit (book_id, stocktake_id, period_month, original_status, deleted_by, reason, snapshot_json, deleted_at) VALUES (?,?,?,?,?,?,?,NOW())',
                 'iississ', [$bookId, $takeId, $take['period_month'], $take['status'], $userId, $reason, $snapshot]
             );
+            stQuery('DELETE FROM cashbook_stocktake_excluded_items WHERE stocktake_id=? AND book_id=?', 'ii', [$takeId, $bookId]);
             stQuery('DELETE FROM cashbook_stocktake_items WHERE stocktake_id=? AND book_id=?', 'ii', [$takeId, $bookId]);
             stQuery('DELETE FROM cashbook_stocktakes WHERE id=? AND book_id=?', 'ii', [$takeId, $bookId]);
             $message = 'Stock-taking session deleted and archived. You can now create a new count for the same month.';
