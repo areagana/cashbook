@@ -346,37 +346,6 @@
     //     return false;
     // }
     
-
-/**
- * Confirm ownership against the authoritative business profile record.
- * Do not infer ownership from the user's global role_id or business_id.
- */
-function khIsRegisteredBusinessOwner($businessId = null)
-{
-    if (!isVerified() || empty($_SESSION['auth']->id)) {
-        return false;
-    }
-
-    $userId = (int) $_SESSION['auth']->id;
-    $businessId = $businessId !== null ? (int) $businessId : 0;
-
-    if ($businessId > 0) {
-        $result = prepared_statements(
-            'SELECT id FROM cashbook_business_profile WHERE id = ? AND user_id = ? LIMIT 1',
-            'ii',
-            [$businessId, $userId]
-        );
-    } else {
-        $result = prepared_statements(
-            'SELECT id FROM cashbook_business_profile WHERE user_id = ? LIMIT 1',
-            'i',
-            [$userId]
-        );
-    }
-
-    return $result && $result->num_rows > 0;
-}
-
 function hasRole($roles, $permission = null, $bookId = null, $businessId = null)
 {
     // ---------------------------------------------------------
@@ -414,16 +383,6 @@ function hasRole($roles, $permission = null, $bookId = null, $businessId = null)
     }
 
     $assignedRoles = khRoleNames();
-
-    // A verified profile owner remains an owner even if the RBAC session
-    // has not yet been populated. This does not confer superadmin rights.
-    $requestedBusinessId = $businessId !== null ? (int) $businessId : 0;
-    foreach ($roles as $requestedRole) {
-        if (strtolower(trim((string) $requestedRole)) === 'owner'
-            && khIsRegisteredBusinessOwner($requestedBusinessId ?: null)) {
-            return true;
-        }
-    }
 
     foreach ($roles as $role) {
 
