@@ -1214,15 +1214,10 @@
                 <!-- SETTINGS -->
 
                 <li class="sidebar-item">
-
-                    <a href="#" class="sidebar-link new-settings">
-
+                    <a href="../settings/" class="sidebar-link new-settings">
                         <i class="fa fa-cog"></i>
-
                         <span>Settings</span>
-
                     </a>
-
                 </li>
 
                 <?php endif; ?>

@@ -30,7 +30,15 @@ function khPermissionCatalog() { return [
         'reports.export' => 'Export reports',
         'system.admin' => 'System administration',
     ]; }
-function khRoleNames() { return array_values(array_unique(array_map('strtolower', array_map('trim', $_SESSION['role_names'] ?? [])))); }
+function khRoleNames() {
+    $names = array_map('strtolower', array_map('trim', $_SESSION['role_names'] ?? []));
+    // A business profile is the authoritative ownership record. A newly
+    // registered owner may not yet have a cashbook_role_user mapping.
+    if (!empty($_SESSION['owned_businesses'])) {
+        $names[] = 'owner';
+    }
+    return array_values(array_unique($names));
+}
 
 /** Only system-scoped assignments (business_id=0) confer superadmin privileges. */
 function khIsSuperAdmin() {
@@ -55,7 +63,7 @@ function khOwnsBusiness($businessId) {
 
 /** A staff member must belong to the business or be explicitly linked to its book. */
 function khBelongsToBook($userId, $bookId, $businessId) {
-    $res = prepared_statements('SELECT id FROM cashbook_book_users WHERE user_id=? AND book_id=? LIMIT 1', 'ii', [(int)$userId,(int)$bookId]);
+    $res = prepared_statements('SELECT bu.book_id FROM cashbook_book_users bu JOIN cashbook_books b ON b.id=bu.book_id WHERE bu.user_id=? AND bu.book_id=? AND b.business_id=? LIMIT 1', 'iii', [(int)$userId,(int)$bookId,(int)$businessId]);
     return (bool)($res && $res->num_rows);
 }
 
@@ -131,6 +139,10 @@ function khLoadAccessSession($userId) {
     if ($res) while ($row=$res->fetch_assoc()) $_SESSION['permissions'][] = $row['permission_key'];
     $res = prepared_statements('SELECT id FROM cashbook_business_profile WHERE user_id=?', 'i', [$userId]);
     if ($res) while ($row=$res->fetch_assoc()) $_SESSION['owned_businesses'][] = (int)$row['id'];
+    if (!empty($_SESSION['owned_businesses'])) {
+        $_SESSION['role_names'][] = 'owner';
+        $_SESSION['role_names'] = array_values(array_unique($_SESSION['role_names']));
+    }
     $_SESSION['permissions_loaded_at'] = time();
 }
 function khCreatePermissionTables() {

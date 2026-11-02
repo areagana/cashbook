@@ -14,41 +14,80 @@
         switch($action)
         {
             case 'RegisterUser':
-                $name = request('name');
-                $email = request('email');
-                $password1 = request('password1');
-                $password2 = request('password2');
-                $role_id = 1;
+                // Registration must be POST-only; normalize emails consistently.
+                if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                    http_response_code(405);
+                    $response = ['message' => 'Invalid registration request.', 'link' => '', 'access' => 0];
+                } else {
+                    $name = trim((string)request('name', ''));
+                    $email = strtolower(trim((string)request('email', '')));
+                    $password1 = (string)request('password1', '');
+                    $password2 = (string)request('password2', '');
+                    $role_id = 1; // Existing registration convention; verify owner-role mapping separately.
 
-                    if($password1 == $password2)
-                    {
-                        $password = password_hash($password1,PASSWORD_DEFAULT);
-                        // check if a file has been submitted and upload it
-                        $sql = "INSERT INTO cashbook_users SET name = ?, email=?, password = ?,role_id =?";
-                        prepared_statements($sql,'sssi',[$name,$email,$password,$role_id]);
+                    try {
+                        if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                            $response = ['message' => 'Enter your name and a valid email address.', 'link' => '', 'access' => 0];
+                        } elseif ($password1 === '' || $password1 !== $password2) {
+                            $response = ['message' => 'Passwords are empty or do not match.', 'link' => '', 'access' => 0];
+                        } else {
+                            // Case-insensitive lookup, including older mixed-case addresses.
+                            $existing = prepared_statements(
+                                'SELECT id FROM cashbook_users WHERE LOWER(email) = ? LIMIT 1',
+                                's',
+                                [$email]
+                            );
 
-                        $response = [
-                            'message'=>'Registration successful',
-                            'link'=>'../',
-                            'access'=>1
-                        ];
-                    }else{
-                        $response = [
-                            'message'=>'Passwords should be Similar',
-                            'link'=>'../signup.php',
-                            'access'=>0
-                        ];
+                            if ($existing->num_rows > 0) {
+                                $response = [
+                                    'message' => 'This email is already registered. Please log in.',
+                                    'link' => '../', // Existing login entry point; adjust if your login URL differs.
+                                    'access' => 0,
+                                    'existing_account' => true
+                                ];
+                            } else {
+                                $passwordHash = password_hash($password1, PASSWORD_DEFAULT);
+                                prepared_statements(
+                                    'INSERT INTO cashbook_users (name, email, password, role_id) VALUES (?, ?, ?, ?)',
+                                    'sssi',
+                                    [$name, $email, $passwordHash, $role_id]
+                                );
+                                $response = [
+                                    'message' => 'Registration successful. Please log in.',
+                                    'link' => '../',
+                                    'access' => 1
+                                ];
+                            }
+                        }
+                    } catch (mysqli_sql_exception $error) {
+                        // A database UNIQUE index also protects concurrent registrations.
+                        if ((int)$error->getCode() === 1062) {
+                            $response = [
+                                'message' => 'This email is already registered. Please log in.',
+                                'link' => '../',
+                                'access' => 0,
+                                'existing_account' => true
+                            ];
+                        } else {
+                            error_log('KashHub registration error: ' . $error->getMessage());
+                            $response = ['message' => 'Registration could not be completed. Please try again.', 'link' => '', 'access' => 0];
+                        }
+                    } catch (Throwable $error) {
+                        error_log('KashHub registration error: ' . $error->getMessage());
+                        $response = ['message' => 'Registration could not be completed. Please try again.', 'link' => '', 'access' => 0];
                     }
-                    echo json_encode($response);
-                    exit;
-                break;
+                }
+
+                if (ob_get_length()) ob_clean();
+                echo json_encode($response);
+                exit;
 
             case 'LoginUser':
-                $email = request('email');
+                $email = strtolower(trim((string)request('email')));
                 $password = request('password');
                 
                 // check details from the table and continue
-                $sql = "SELECT id,name,email,contact,business_id,password,role_id FROM cashbook_users WHERE email = ?";
+                $sql = "SELECT id,name,email,contact,business_id,password,role_id FROM cashbook_users WHERE LOWER(email) = ? LIMIT 1";
                 $res = prepared_statements($sql,'s',[$email]);
                 $dat = $res->fetch_assoc();
                

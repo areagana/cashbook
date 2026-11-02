@@ -15,22 +15,219 @@
     if(isVerified())
     {
         
-        if(isset($_POST['saveNewBook']))
+        /* =============================================================
+           CREATE BOOK — VERIFIED BUSINESS OWNER / AUTHORIZED PARTNER
+           ============================================================= */
+        if (isset($_POST['saveNewBook']))
         {
-            $name = request('book_title');
-            $details = request('book_details');
-            $business_id = request('business_id');
-            $user_id = auth()->id;
+            $returnToBusinessHome = '../../business/';
 
-            $stmt = "INSERT INTO cashbook_books SET name = ?, details = ?,business_id = ?,user_id = ?";
-            prepared_statements($stmt,'ssii',[$name,$details,$business_id,$user_id]);
-            $book_id = $server->insert_id;
+            $name       = trim((string) request('book_title', ''));
+            $details    = trim((string) request('book_details', ''));
+            $businessId = (int) request('business_id', 0);
+            $userId     = (int) auth()->id;
 
-            //LINK BOOK TO user
-            $sql = "INSERT INTO cashbook_book_users SET user_id = ?, book_id = ?";
-            prepared_statements($sql,'ii',[$user_id,$book_id]);
-            $_SESSION['success'] ='Book Saved';
-            redirect(back());
+            // Never trust the business_id submitted by the browser.
+            $businessResult = prepared_statements(
+                'SELECT id FROM cashbook_business_profile WHERE id = ? LIMIT 1',
+                'i',
+                [$businessId]
+            );
+
+            if ($businessId <= 0 || !$businessResult || $businessResult->num_rows === 0) {
+                $_SESSION['error'] = 'Business profile not found. Please return to your business home and try again.';
+                redirect($returnToBusinessHome);
+                exit;
+            }
+
+            $isOwner = khIsRegisteredBusinessOwner($businessId);
+            $canCreate = $isOwner
+                || (function_exists('khCan') && khCan('books.create', 0, $businessId));
+
+            if (!$canCreate) {
+                $_SESSION['error'] = 'You do not have permission to create a book for this business.';
+                redirect($returnToBusinessHome);
+                exit;
+            }
+
+            if ($name === '' || mb_strlen($name) > 190) {
+                $_SESSION['error'] = 'Enter a valid book title (up to 190 characters).';
+                redirect($returnToBusinessHome);
+                exit;
+            }
+
+            try {
+                $server->begin_transaction();
+
+                $bookId = prepared_statements(
+                    'INSERT INTO cashbook_books (name, details, business_id, user_id) VALUES (?, ?, ?, ?)',
+                    'ssii',
+                    [$name, $details, $businessId, $userId]
+                );
+
+                if ((int) $bookId <= 0) {
+                    throw new RuntimeException('Unable to create business book.');
+                }
+
+                prepared_statements(
+                    'INSERT INTO cashbook_book_users (user_id, book_id) VALUES (?, ?)',
+                    'ii',
+                    [$userId, (int) $bookId]
+                );
+
+                $server->commit();
+                $_SESSION['success'] = 'Your new book has been created successfully. You can now open it from the business home page.';
+            } catch (Throwable $error) {
+                $server->rollback();
+                error_log('KashHub create book: ' . $error->getMessage());
+                $_SESSION['error'] = 'The book could not be saved. Please try again or contact support if the problem continues.';
+            }
+
+            redirect($returnToBusinessHome);
+            exit;
+        }
+
+        /* =============================================================
+           BOOK CONTENT CHECK — FAIL CLOSED ON UNKNOWN DEPENDENCIES
+           ============================================================= */
+        function khBookHasStoredData($bookId)
+        {
+            $tables = prepared_statements(
+                "SELECT DISTINCT TABLE_NAME FROM information_schema.COLUMNS " .
+                "WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME='book_id' " .
+                "AND TABLE_NAME LIKE 'cashbook\\_%'"
+            );
+
+            while ($row = $tables->fetch_assoc()) {
+                $table = $row['TABLE_NAME'];
+                if (in_array($table, ['cashbook_books', 'cashbook_book_users'], true)) continue;
+                if (!preg_match('/^[a-zA-Z0-9_]+$/', $table)) {
+                    throw new RuntimeException('Invalid database table metadata.');
+                }
+                $records = prepared_statements(
+                    "SELECT 1 FROM `{$table}` WHERE book_id=? LIMIT 1", 'i', [$bookId]
+                );
+                if ($records && $records->num_rows > 0) return true;
+            }
+
+            $relations = prepared_statements(
+                "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE " .
+                "WHERE TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_SCHEMA=DATABASE() " .
+                "AND REFERENCED_TABLE_NAME='cashbook_books' AND REFERENCED_COLUMN_NAME='id'"
+            );
+            while ($row = $relations->fetch_assoc()) {
+                $table = $row['TABLE_NAME'];
+                $column = $row['COLUMN_NAME'];
+                if ($table === 'cashbook_book_users') continue;
+                if (!preg_match('/^[a-zA-Z0-9_]+$/', $table) ||
+                    !preg_match('/^[a-zA-Z0-9_]+$/', $column)) {
+                    throw new RuntimeException('Invalid foreign key metadata.');
+                }
+                $records = prepared_statements(
+                    "SELECT 1 FROM `{$table}` WHERE `{$column}`=? LIMIT 1", 'i', [$bookId]
+                );
+                if ($records && $records->num_rows > 0) return true;
+            }
+            return false;
+        }
+
+        /* =============================================================
+           EDIT / DELETE BOOK — OWNER ONLY, CSRF PROTECTED
+           ============================================================= */
+        if (isset($_POST['manageBusinessBook']))
+        {
+            $returnUrl = '../../business/';
+            $bookId = (int) request('book_id', 0);
+            $businessId = (int) request('business_id', 0);
+            $operation = (string) request('manageBusinessBook', '');
+            $token = (string) request('book_csrf', '');
+
+            if (!isset($_SESSION['kh_book_csrf']) ||
+                !hash_equals((string) $_SESSION['kh_book_csrf'], $token)) {
+                $_SESSION['error'] = 'Your session has expired. Refresh the page and try again.';
+                redirect($returnUrl);
+                exit;
+            }
+
+            if ($bookId <= 0 || $businessId <= 0 ||
+                !function_exists('khOwnsBusiness') || !khOwnsBusiness($businessId)) {
+                $_SESSION['error'] = 'Only the verified business owner can change or delete books.';
+                redirect($returnUrl);
+                exit;
+            }
+
+            try {
+                $server->begin_transaction();
+                $bookResult = prepared_statements(
+                    'SELECT id, name FROM cashbook_books WHERE id=? AND business_id=? FOR UPDATE',
+                    'ii', [$bookId, $businessId]
+                );
+                $book = $bookResult ? $bookResult->fetch_assoc() : null;
+                if (!$book) throw new RuntimeException('Book not found in your business.');
+
+                if ($operation === 'edit') {
+                    $name = trim((string) request('book_title', ''));
+                    $details = trim((string) request('book_details', ''));
+                    if ($name === '' || mb_strlen($name) > 190) {
+                        throw new InvalidArgumentException('Enter a book name of up to 190 characters.');
+                    }
+                    // Once a book has business data, the owner must re-enter
+                    // their own login password before changing its details.
+                    if (khBookHasStoredData($bookId)) {
+                        $password = (string) request('owner_password', '');
+                        $attempts = $_SESSION['kh_book_edit_password_attempts'] ?? [];
+                        $attempts = array_values(array_filter($attempts, function ($time) {
+                            return (int)$time > time() - 900;
+                        }));
+                        if (count($attempts) >= 5) {
+                            $_SESSION['kh_book_edit_password_attempts'] = $attempts;
+                            throw new DomainException('Too many password attempts. Try again in 15 minutes.');
+                        }
+
+                        $passwordResult = prepared_statements(
+                            'SELECT password FROM cashbook_users WHERE id=? LIMIT 1',
+                            'i', [(int) auth()->id]
+                        );
+                        $passwordRow = $passwordResult ? $passwordResult->fetch_assoc() : null;
+                        if ($password === '' || !$passwordRow ||
+                            !password_verify($password, (string)$passwordRow['password'])) {
+                            $attempts[] = time();
+                            $_SESSION['kh_book_edit_password_attempts'] = $attempts;
+                            throw new DomainException('Incorrect owner password. Book details were not changed.');
+                        }
+                        unset($_SESSION['kh_book_edit_password_attempts']);
+                    }
+
+                    prepared_statements(
+                        'UPDATE cashbook_books SET name=?, details=? WHERE id=? AND business_id=?',
+                        'ssii', [$name, $details, $bookId, $businessId]
+                    );
+                    $success = 'Book details updated successfully.';
+                } elseif ($operation === 'delete') {
+                    // Books with any linked business data cannot be deleted.
+                    if (khBookHasStoredData($bookId)) {
+                        throw new DomainException('This book contains records and cannot be deleted. You can edit its details instead.');
+                    }
+                    prepared_statements('DELETE FROM cashbook_book_users WHERE book_id=?', 'i', [$bookId]);
+                    prepared_statements('DELETE FROM cashbook_books WHERE id=? AND business_id=?', 'ii', [$bookId, $businessId]);
+                    $success = 'Empty book deleted successfully.';
+                } else {
+                    throw new InvalidArgumentException('Unknown book action.');
+                }
+
+                $server->commit();
+                $_SESSION['success'] = $success;
+            } catch (Throwable $error) {
+                $server->rollback();
+                error_log('KashHub book management: ' . $error->getMessage());
+                $_SESSION['error'] = $error instanceof DomainException ||
+                    $error instanceof InvalidArgumentException ||
+                    $error->getMessage() === 'Book not found in your business.'
+                    ? $error->getMessage()
+                    : 'Unable to complete this book action. Please contact support if it continues.';
+            }
+            redirect($returnUrl);
+            exit;
         }
 
         if(isset($_REQUEST['action']) && !empty($_REQUEST['action']))

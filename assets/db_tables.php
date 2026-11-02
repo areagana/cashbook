@@ -1,228 +1,70 @@
 <?php
-    session_start();
-    require(__dir__.'/functions.php');
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    require_once(__DIR__ . '/functions.php');
     
-    // function create_Table($table, array $columns)
-    // {
-    //         global $server, $db_name,$foreignKeys;
-    //         $query = $server->prepare("SELECT * 
-    //             FROM information_schema.tables 
-    //             WHERE table_schema = ? 
-    //             AND table_name = ?");
-    //         $query->bind_param('ss', $db_name, $table);
-    //         $query->execute();
-    //         $res = $query->get_result();
-
-    //         $texts = [];
-    //         $edits = [];
-
-    //         if ($res->num_rows == 0) {
-    //             // TABLE DOES NOT EXIST → CREATE IT
-    //             $sql = "CREATE TABLE IF NOT EXISTS `$table` (";
-    //             $texts[] = "`id` INT(11) NOT NULL PRIMARY KEY AUTO_INCREMENT";
-
-    //             foreach ($columns as $k => $v) {
-    //                 $texts[] = "`{$k}` {$v}";
-    //             }
-
-    //             // timestamps
-    //             $texts[] = "`created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
-    //             $texts[] = "`updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP";
-
-    //             // add foreign keys
-    //             if(isset($foreignKeys) && !empty($foreignKeys))
-    //             {
-    //                 foreach ($foreignKeys as $fkName => $fk) {
-    //                     // expected: ['column' => 'survey_id', 'ref_table' => 'options', 'ref_column' => 'option_id']
-    //                     $texts[] = "CONSTRAINT `$fkName` FOREIGN KEY (`{$fk['column']}`) REFERENCES `{$fk['ref_table']}`(`{$fk['ref_column']}`) ON DELETE CASCADE ON UPDATE CASCADE";
-    //                 }
-    //             }
-
-    //             $tableStructure = $sql . implode(', ', $texts) . ") ENGINE=InnoDB DEFAULT CHARSET=utf8;";
-    //             if (!mysqli_query($server, $tableStructure)) {
-    //                 echo mysqli_error($server);
-    //             }
-    //         } else {
-    //             // TABLE EXISTS → check for missing columns & foreign keys
-
-    //             foreach ($columns as $k => $v) {
-    //                 $checkCol = $server->prepare("SELECT * 
-    //                     FROM information_schema.columns 
-    //                     WHERE table_schema = ? AND table_name = ? AND column_name = ?");
-    //                 $checkCol->bind_param('sss', $db_name, $table, $k);
-    //                 $checkCol->execute();
-    //                 $colRes = $checkCol->get_result();
-    //                 if ($colRes->num_rows == 0) {
-    //                     $edits[] = "ADD COLUMN `$k` $v";
-    //                 }
-    //             }
-
-    //             // foreign key checks
-    //             if(isset($foreignKeys) && !empty($foreignKeys))
-    //             {
-    //                 foreach ($foreignKeys as $fkName => $fk) {
-    //                     $checkFk = $server->prepare("SELECT * 
-    //                         FROM information_schema.KEY_COLUMN_USAGE 
-    //                         WHERE table_schema = ? AND table_name = ? AND constraint_name = ?");
-    //                     $checkFk->bind_param('sss', $db_name, $table, $fkName);
-    //                     $checkFk->execute();
-    //                     $fkRes = $checkFk->get_result();
-    //                     if ($fkRes->num_rows == 0) {
-    //                         $edits[] = "ADD CONSTRAINT `$fkName` FOREIGN KEY (`{$fk['column']}`) REFERENCES `{$fk['ref_table']}`(`{$fk['ref_column']}`) ON DELETE CASCADE ON UPDATE CASCADE";
-    //                     }
-    //                 }
-    //             }
-
-    //             if (!empty($edits)) {
-    //                 $tableStructure = "ALTER TABLE `$table` " . implode(', ', $edits);
-    //                 if (!mysqli_query($server, $tableStructure)) {
-    //                     echo mysqli_error($server);
-    //                 }
-    //             }
-    //         }
-    // }
+    /** Safe, additive-only schema helper. Run through an explicit maintenance process. */
     function create_Table($table, array $columns)
     {
-        global $server, $db_name, $foreignKeys;
+        global $server, $db_name;
 
-        /*
-        =====================================
-        CHECK IF TABLE EXISTS
-        =====================================
-        */
-        $query = $server->prepare("
-            SELECT TABLE_NAME 
-            FROM information_schema.tables 
-            WHERE table_schema = ? 
-            AND table_name = ?
-        ");
-
-        $query->bind_param('ss', $db_name, $table);
-        $query->execute();
-        $res = $query->get_result();
-
-        $alter = [];
-
-        /*
-        =====================================
-        CREATE TABLE (IF NOT EXISTS)
-        =====================================
-        */
-        if ($res->num_rows == 0)
-        {
-            $sql = "CREATE TABLE `$table` (
-                `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY";
-
-            foreach ($columns as $k => $v)
-            {
-                $sql .= ", `$k` $v";
-            }
-
-            $sql .= ",
-                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
-
-            if (!mysqli_query($server, $sql))
-            {
-                die("Table creation failed: " . mysqli_error($server));
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $table)) {
+            throw new InvalidArgumentException('Invalid table name');
+        }
+        foreach ($columns as $name => $definition) {
+            if (!preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+                throw new InvalidArgumentException('Invalid column name');
             }
         }
-        else
-        {
-            /*
-            =====================================
-            TABLE EXISTS → CHECK COLUMNS
-            =====================================
-            */
-            foreach ($columns as $k => $v)
-            {
-                $checkCol = $server->prepare("
-                    SELECT COLUMN_TYPE, IS_NULLABLE
-                    FROM information_schema.columns
-                    WHERE table_schema = ?
-                    AND table_name = ?
-                    AND column_name = ?
-                ");
 
-                $checkCol->bind_param('sss', $db_name, $table, $k);
-                $checkCol->execute();
-                $colRes = $checkCol->get_result();
+        $check = $server->prepare('SELECT COUNT(*) AS total FROM information_schema.tables WHERE table_schema=? AND table_name=?');
+        $check->bind_param('ss', $db_name, $table);
+        $check->execute();
+        $exists = (int)$check->get_result()->fetch_assoc()['total'];
+        $check->close();
 
-                if ($colRes->num_rows == 0)
-                {
-                    // COLUMN DOES NOT EXIST
-                    $alter[] = "ADD COLUMN `$k` $v";
-                }
-                else
-                {
-                    // COLUMN EXISTS → CHECK TYPE CHANGE
-                    $existing = $colRes->fetch_assoc();
-
-                    $currentType = strtoupper(trim($existing['COLUMN_TYPE']));
-
-                    // clean definition (remove NULL/NOT NULL/DEFAULT)
-                    $newType = strtoupper(
-                        trim(
-                            preg_replace(
-                                '/\s+NOT NULL|\s+NULL|\s+DEFAULT.+/i',
-                                '',
-                                $v
-                            )
-                        )
-                    );
-
-                    if (strpos($currentType, $newType) === false)
-                    {
-                        $alter[] = "MODIFY COLUMN `$k` $v";
-                    }
-                }
+        if (!$exists) {
+            $definitions = ['`id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY'];
+            foreach ($columns as $name => $definition) {
+                $definitions[] = "`$name` $definition";
             }
-
-            /*
-            =====================================
-            FOREIGN KEYS
-            =====================================
-            */
-            if (isset($foreignKeys) && !empty($foreignKeys))
-            {
-                foreach ($foreignKeys as $fkName => $fk)
-                {
-                    $checkFk = $server->prepare("
-                        SELECT CONSTRAINT_NAME
-                        FROM information_schema.KEY_COLUMN_USAGE
-                        WHERE table_schema = ?
-                        AND table_name = ?
-                        AND constraint_name = ?
-                    ");
-
-                    $checkFk->bind_param('sss', $db_name, $table, $fkName);
-                    $checkFk->execute();
-                    $fkRes = $checkFk->get_result();
-
-                    if ($fkRes->num_rows == 0)
-                    {
-                        $alter[] = "ADD CONSTRAINT `$fkName`
-                            FOREIGN KEY (`{$fk['column']}`)
-                            REFERENCES `{$fk['ref_table']}`(`{$fk['ref_column']}`)
-                            ON DELETE CASCADE ON UPDATE CASCADE";
-                    }
-                }
+            $definitions[] = '`created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
+            $definitions[] = '`updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP';
+            $sql = "CREATE TABLE `$table` (" . implode(', ', $definitions) . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4';
+            if (!$server->query($sql)) {
+                throw new RuntimeException("Could not create table $table; check server logs");
             }
+            return;
+        }
 
-            /*
-            =====================================
-            APPLY ALTER STATEMENTS
-            =====================================
-            */
-            if (!empty($alter))
-            {
-                $sql = "ALTER TABLE `$table` " . implode(", ", $alter);
+        // Existing column types and constraints are NEVER modified automatically.
+        $check = $server->prepare('SELECT column_name FROM information_schema.columns WHERE table_schema=? AND table_name=?');
+        $check->bind_param('ss', $db_name, $table);
+        $check->execute();
+        $result = $check->get_result();
+        $existing = [];
+        while ($row = $result->fetch_assoc()) {
+            $existing[strtolower($row['column_name'])] = true;
+        }
+        $check->close();
 
-                if (!mysqli_query($server, $sql))
-                {
-                    die("ALTER TABLE failed: " . mysqli_error($server));
-                }
+        foreach ($columns as $name => $definition) {
+            if (isset($existing[strtolower($name)])) continue;
+            // Avoid inventing values for existing rows when a new NOT NULL field is requested.
+            if (preg_match('/\bNOT\s+NULL\b/i', $definition) && !preg_match('/\bDEFAULT\b/i', $definition)) {
+                error_log("KashHub migration deferred: $table.$name needs a backfill/default");
+                continue;
+            }
+            // Inline UNIQUE constraints are never added to existing tables automatically.
+            // Define and review unique indexes in an explicit migration instead.
+            if (preg_match('/\bUNIQUE\b/i', $definition)) {
+                error_log("KashHub migration deferred: $table.$name has a UNIQUE constraint");
+                continue;
+            }
+            if (!$server->query("ALTER TABLE `$table` ADD COLUMN `$name` $definition")) {
+                error_log("KashHub migration failed for $table.$name: " . $server->error);
+                throw new RuntimeException('Database schema update failed; see server logs');
             }
         }
     }
@@ -433,8 +275,6 @@
             ADD UNIQUE KEY ux_stocktake_excluded_item (book_id,stocktake_id,item_id)');
     }
 }
-
-cashbook_stocktake_excluded_items();
 
     function cashbook_paymodes()
     {
@@ -1120,43 +960,47 @@ function cashbook_invoice_shares()
         cashbook_role_user();
     }
 
-    cashbook_invoice_shares();
-    createCustomerTransfersTable();
-    createCashbookStocktakeTables();
-    cashbook_creditor_ledger();
-    cashbook_creditor_balances();
-    cashbook_creditors();
-    cashbook_item_stock_balances();
-    cashbook_customer_items();
-    cashbook_purchases();
-    cashbook_supliers();
-    cashbook_customer_balances();
-
-    // functions to create
-    cashbook_books();
-    cashbook_users();
-    cashbook_book_users();
-    cashbook_cashins();
-    cashbook_cashouts();
-    cashbook_categories();
-    transactions();
-    cashbook_items();
-    cashbook_paymodes();
-    cashbook_customers();
-    cashbook_business_profile();
-    cashbook_roles();
-    createCashbookRbacTables();
-    cashbook_stocks();
-    cashbook_transaction_edits();
-    cashbook_customer_ledger();
-    cashbook_invoices();
-    cashbook_invoice_items();
-    cashbook_invoice_returns();
-    cashbook_invoice_return_items();
-    cashbook_route_managers();
-    cashbook_manager_route();
-    cashbook_customer_route();
-    cashbook_routes();
+    // Schema maintenance must be explicitly enabled; never run DDL on login.
+    if (PHP_SAPI === 'cli' && getenv('KASHHUB_SCHEMA_MAINTENANCE') === '1') {
+        cashbook_invoice_shares();
+        createCustomerTransfersTable();
+        createCashbookStocktakeTables();
+        cashbook_creditor_ledger();
+        cashbook_creditor_balances();
+        cashbook_creditors();
+        cashbook_item_stock_balances();
+        cashbook_customer_items();
+        cashbook_purchases();
+        cashbook_supliers();
+        cashbook_customer_balances();
+    
+        // functions to create
+        cashbook_books();
+        cashbook_users();
+        cashbook_book_users();
+        cashbook_cashins();
+        cashbook_cashouts();
+        cashbook_categories();
+        transactions();
+        cashbook_items();
+        cashbook_paymodes();
+        cashbook_customers();
+        cashbook_business_profile();
+        cashbook_roles();
+        createCashbookRbacTables();
+        cashbook_stocks();
+        cashbook_transaction_edits();
+        cashbook_customer_ledger();
+        cashbook_invoices();
+        cashbook_invoice_items();
+        cashbook_invoice_returns();
+        cashbook_invoice_return_items();
+        cashbook_route_managers();
+        cashbook_manager_route();
+        cashbook_customer_route();
+        cashbook_routes();
+        cashbook_stocktake_excluded_items();
+    }
 
 // redirect to the home page after checking table creation functions
 if(isVerified())

@@ -39,6 +39,10 @@ function stSyncMissingItems(int $takeId, int $bookId): int
          ) sb ON sb.book_id=i.book_id AND sb.item_id=i.id
          WHERE i.book_id=? AND i.archived_at IS NULL
            AND NOT EXISTS (
+               SELECT 1 FROM cashbook_stocktake_excluded_items ex
+               WHERE ex.stocktake_id=? AND ex.book_id=i.book_id AND ex.item_id=i.id
+           )
+           AND NOT EXISTS (
                SELECT 1 FROM cashbook_stocktake_items li
                WHERE li.stocktake_id=? AND li.book_id=i.book_id AND li.item_id=i.id
            )',
