@@ -44,3 +44,10 @@ function khFeatureEscape($s): string {return htmlspecialchars((string)$s,ENT_QUO
 function khFeatureAudit(string $action,int $businessId=0,string $detail=''): void {
     prepared_statements('INSERT INTO cashbook_feature_audit (actor_id,business_id,action,details) VALUES (?,?,?,?)','iiss',[khFeatureUserId(),$businessId,$action,$detail]);
 }
+
+/** Check optional feature-suggestions table before querying it. */
+function khFeatureSuggestionReady(): bool {
+    global $server;
+    $r=$server->query("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='cashbook_business_feature_suggestions' LIMIT 1");
+    return $r && $r->num_rows > 0;
+}

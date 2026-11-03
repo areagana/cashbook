@@ -19,6 +19,35 @@
         ======================================================================
         */
 
+        // Period and item filters. All queries remain scoped to the selected book.
+        $from = isset($_GET['from']) ? trim((string)$_GET['from']) : '';
+        $to = isset($_GET['to']) ? trim((string)$_GET['to']) : '';
+        $selectedItem = isset($_GET['item_id']) ? max(0, (int)$_GET['item_id']) : 0;
+        $validDate = static function ($value) {
+            if ($value === '') return true;
+            $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+            return $date && $date->format('Y-m-d') === $value;
+        };
+        if (!$validDate($from) || !$validDate($to) || ($from && $to && $from > $to)) {
+            $from = $to = '';
+        }
+        $periodWhere = '';
+        $periodTypes = 'i';
+        $periodParams = [(int)$book->id];
+        if ($from !== '') { $periodWhere .= ' AND cp.created_at >= ?'; $periodTypes .= 's'; $periodParams[] = $from . ' 00:00:00'; }
+        if ($to !== '') { $periodWhere .= ' AND cp.created_at < DATE_ADD(?, INTERVAL 1 DAY)'; $periodTypes .= 's'; $periodParams[] = $to; }
+        $itemWhere = $selectedItem ? ' AND cp.item_id = ?' : '';
+        $historyTypes = $periodTypes . ($selectedItem ? 'i' : '');
+        $historyParams = $periodParams;
+        if ($selectedItem) $historyParams[] = $selectedItem;
+        $filterQuery = ['bsid' => $bsid];
+        if ($from !== '') $filterQuery['from'] = $from;
+        if ($to !== '') $filterQuery['to'] = $to;
+        $itemNames = [];
+        $itemsResult = prepared_statements('SELECT id,name FROM cashbook_items WHERE book_id = ? ORDER BY name', 'i', [(int)$book->id]);
+        if ($itemsResult) while ($ir = $itemsResult->fetch_assoc()) $itemNames[(int)$ir['id']] = $ir['name'];
+        if ($selectedItem && !isset($itemNames[$selectedItem])) { $selectedItem = 0; $itemWhere = ''; $historyTypes = $periodTypes; $historyParams = $periodParams; }
+
         $purchaseCreditColumn = 'creditor_id';
 
         // Detect whether creditor_id exists so the page does not fail on an
@@ -56,10 +85,10 @@
                 COALESCE(SUM(CASE WHEN {$creditCondition} THEN cp.total ELSE 0 END),0) AS credit_purchases,
                 COALESCE(SUM(cp.quantity),0) AS total_quantity
             FROM cashbook_purchases cp
-            WHERE cp.book_id = ?
+            WHERE cp.book_id = ? {$periodWhere}
         ";
 
-        $summaryRes = prepared_statements($summarySql,'i',[$book->id]);
+        $summaryRes = prepared_statements($summarySql,$periodTypes,$periodParams);
         $summary = $summaryRes ? $summaryRes->fetch_assoc() : [];
 
         $totalEntries = (int)($summary['total_entries'] ?? 0);
@@ -92,12 +121,12 @@
                 COALESCE(SUM(CASE WHEN {$creditCondition} THEN cp.total ELSE 0 END),0) AS credit_total
             FROM cashbook_purchases cp
             INNER JOIN cashbook_items ci ON ci.id = cp.item_id
-            WHERE cp.book_id = ?
+            WHERE cp.book_id = ? {$periodWhere}
             GROUP BY ci.id, ci.name, ci.units
             ORDER BY total DESC, ci.name ASC
         ";
 
-        $itemRes = prepared_statements($itemSql,'i',[$book->id]);
+        $itemRes = prepared_statements($itemSql,$periodTypes,$periodParams);
         $itemSummary = [];
         $chartLabels = [];
         $chartCash = [];
@@ -127,12 +156,12 @@
                 COALESCE(SUM(CASE WHEN {$cashCondition} THEN cp.total ELSE 0 END),0) AS cash_total,
                 COALESCE(SUM(CASE WHEN {$creditCondition} THEN cp.total ELSE 0 END),0) AS credit_total
             FROM cashbook_purchases cp
-            WHERE cp.book_id = ?
+            WHERE cp.book_id = ? {$periodWhere}
             GROUP BY DATE_FORMAT(cp.created_at,'%Y-%m'), DATE_FORMAT(cp.created_at,'%b %Y')
             ORDER BY month_key ASC
         ";
 
-        $monthlyRes = prepared_statements($monthlySql,'i',[$book->id]);
+        $monthlyRes = prepared_statements($monthlySql,$periodTypes,$periodParams);
         $monthLabels = [];
         $monthCash = [];
         $monthCredit = [];
@@ -160,11 +189,14 @@
                 ci.details
             FROM cashbook_purchases cp
             INNER JOIN cashbook_items ci ON ci.id = cp.item_id
-            WHERE cp.book_id = ?
+            WHERE cp.book_id = ? {$periodWhere} {$itemWhere}
             ORDER BY cp.created_at DESC, cp.id DESC
         ";
 
-        $res = prepared_statements($sql,'i',[$book->id]);
+        $historyTotalSql = "SELECT COALESCE(SUM(cp.total),0) AS amount, COALESCE(SUM(cp.quantity),0) AS quantity FROM cashbook_purchases cp WHERE cp.book_id = ? {$periodWhere} {$itemWhere}";
+        $historyTotalsResult = prepared_statements($historyTotalSql,$historyTypes,$historyParams);
+        $historyTotals = $historyTotalsResult ? $historyTotalsResult->fetch_assoc() : ['amount'=>0,'quantity'=>0];
+        $res = prepared_statements($sql,$historyTypes,$historyParams);
 
         $money = function($value) {
             return number_format((float)$value,0);
@@ -257,6 +289,23 @@
             </div>
         </div>
     </div>
+
+    <!-- Period selection and item statement -->
+    <div class="card shadow-sm border-0 mt-3 no-print">
+        <div class="card-body">
+            <form method="get" id="purchasePeriodForm" class="form-row align-items-end">
+                <input type="hidden" name="bsid" value="<?=htmlspecialchars((string)$bsid, ENT_QUOTES);?>">
+                <div class="col-md-3 mb-2"><label for="purchaseFrom">From date</label><input id="purchaseFrom" type="date" name="from" class="form-control" value="<?=htmlspecialchars($from,ENT_QUOTES);?>"></div>
+                <div class="col-md-3 mb-2"><label for="purchaseTo">To date</label><input id="purchaseTo" type="date" name="to" class="form-control" value="<?=htmlspecialchars($to,ENT_QUOTES);?>"></div>
+                <div class="col-md-3 mb-2"><label for="purchaseItem">Item purchase statement</label><select id="purchaseItem" name="item_id" class="form-control"><option value="0">All items</option><?php foreach ($itemNames as $itemId => $itemName): ?><option value="<?=$itemId;?>" <?=$selectedItem === $itemId ? 'selected' : '';?>><?=htmlspecialchars($itemName);?></option><?php endforeach; ?></select></div>
+                <div class="col-md-3 mb-2"><button class="btn btn-success" type="submit"><i class="fa fa-filter"></i> View Report</button> <a class="btn btn-outline-secondary" href="?<?=htmlspecialchars(http_build_query(['bsid'=>$bsid]));?>">Reset</a> <button type="button" class="btn btn-outline-primary" onclick="window.print()"><i class="fa fa-print"></i> Print</button></div>
+            </form>
+            <small class="text-muted">View Report opens a full-width period report without leaving this page. Existing page filters remain available through the URL.</small>
+        </div>
+    </div>
+    <?php if ($selectedItem): ?>
+    <div class="alert alert-info mt-3 mb-0"><strong>Item purchase statement:</strong> <?=htmlspecialchars($itemNames[$selectedItem]);?> &mdash; <?=htmlspecialchars($from ?: 'Beginning');?> to <?=htmlspecialchars($to ?: 'Latest');?>. The purchase history below is limited to this item.</div>
+    <?php endif; ?>
 
     <!-- Summary cards -->
     <div class="row mt-3">
@@ -404,12 +453,13 @@
                                 <th class="text-right">Cash</th>
                                 <th class="text-right">Credit</th>
                                 <th class="text-right">Total</th>
+                                <th class="text-center no-print">View</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if(empty($itemSummary)):?>
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted p-4">
+                                    <td colspan="8" class="text-center text-muted p-4">
                                         No purchase records found.
                                     </td>
                                 </tr>
@@ -433,6 +483,7 @@
                                         <td class="text-right font-weight-bold">
                                             <?=$money($item['total']);?>
                                         </td>
+                                        <td class="text-center no-print"><button type="button" class="btn btn-sm btn-outline-primary view-item-purchases" data-item-id="<?=(int)$item['id'];?>" data-item-name="<?=htmlspecialchars($item['name'], ENT_QUOTES);?>"><i class="fa fa-eye"></i> View</button></td>
                                     </tr>
                                 <?php endforeach;?>
                             <?php endif;?>
@@ -444,6 +495,7 @@
                                 <td class="text-right text-success"><?=$money($cashPurchases);?></td>
                                 <td class="text-right text-danger"><?=$money($creditPurchases);?></td>
                                 <td class="text-right"><?=$money($totalPurchases);?></td>
+                                <td class="no-print"></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -461,7 +513,7 @@
                         <i class="fa fa-history mr-2"></i>
                         PURCHASE HISTORY
                     </strong>
-                    <div class="small text-muted">Detailed purchase records</div>
+                    <div class="small text-muted"><?= $selectedItem ? 'Item purchase statement (filtered)' : 'Detailed purchase records for the selected period'; ?></div>
                 </div>
 
                 <input
@@ -511,7 +563,7 @@
                             <td><?=htmlspecialchars($r['units']);?></td>
                             <td class="text-right"><?=$money($r['unit_price']);?></td>
                             <td class="text-right font-weight-bold"><?=$money($r['total']);?></td>
-                            <td class="text-center">
+                            <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary view-item-purchases" data-item-id="<?=(int)$r['item_id'];?>" data-item-name="<?=htmlspecialchars($r['name'], ENT_QUOTES);?>"><i class="fa fa-eye"></i> View</button>
                                 <?php if(hasRole(['owner','partner','superadministrator'])):?>
                                     <span class="hover-display text-sms">
                                         <!-- Existing edit/delete controls intentionally remain disabled,
@@ -527,7 +579,7 @@
                 <tfoot>
                     <tr class="font-weight-bold bg-light">
                         <td colspan="6" class="text-right">TOTAL</td>
-                        <td class="text-right"><?=$money($totalPurchases);?></td>
+                        <td class="text-right"><?=$money($historyTotals['amount']);?></td>
                         <td></td>
                     </tr>
                 </tfoot>
@@ -537,7 +589,27 @@
 
 </div>
 
-<!-- Existing side modal -->
+
+
+<!-- Central report modal, independent of purchase entry side modal -->
+<div class="modal fade" id="purchaseReportModal" tabindex="-1" role="dialog" aria-labelledby="purchaseReportTitle" aria-hidden="true">
+  <div class="modal-dialog modal-xl" role="document" style="max-width:95vw">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title" id="purchaseReportTitle">Purchase Report</h5>
+        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+      </div>
+      <div class="modal-body" style="max-height:72vh;overflow:auto" id="purchaseReportBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-outline-primary" id="printPurchaseReport"><i class="fa fa-print"></i> Print</button>
+        <a href="#" class="btn btn-success" id="downloadPurchasePdf" target="_blank" rel="noopener"><i class="fa fa-file-pdf-o"></i> Download PDF</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Shared KashHub side modal: purchase entry and item statements -->
 <div class="p-0 bg-white side-modal-tall absolute border shadow" id="side-modal-cashin">
     <div class="side-modal-header bg-success">
         <h3 class="side-modal-title text-white"></h3>
@@ -551,6 +623,71 @@
 ?>
 
 <script>
+
+
+    /* Period report uses a wide central modal, not the purchase-entry side modal. */
+    $('#purchasePeriodForm').on('submit', function (event) {
+        event.preventDefault();
+        var from = $('#purchaseFrom').val(), to = $('#purchaseTo').val();
+        if (!from || !to || from > to) {
+            alert('Please select valid From and To dates.'); return;
+        }
+        var params = {purchase_report:'1', bsid:<?=json_encode((string)$bsid);?>,
+            from:from, to:to, item_id:$('#purchaseItem').val() || 0};
+        var url = 'pdf.php?' + $.param(params);
+        $('#purchaseReportTitle').text('Purchases: ' + from + ' to ' + to);
+        $('#purchaseReportBody').html('<div class="text-center p-5"><i class="fa fa-spinner fa-spin fa-2x text-success"></i><p>Loading purchase report...</p></div>');
+        $('#downloadPurchasePdf').attr('href',url+'&format=pdf');
+        $('#purchaseReportModal').modal('show');
+        $.ajax({url:url,method:'GET',success:function(html){
+            $('#purchaseReportBody').html(html);
+        },error:function(xhr){
+            $('#purchaseReportBody').text('Unable to load report ('+xhr.status+'): '+(xhr.responseText || 'Please try again.'));
+        }});
+    });
+    $('#printPurchaseReport').on('click', function () {
+        var content = $('#purchaseReportBody .purchase-statement-print');
+        if (!content.length) return;
+        var styles = $('#purchaseReportBody style').first().prop('outerHTML') || '';
+        var win = window.open('', '_blank', 'width=1100,height=800');
+        if (!win) { alert('Allow pop-ups to print this report.'); return; }
+        win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Purchase Report</title>'+styles+'<style>@page{size:A4 landscape;margin:12mm}</style></head><body>'+content.prop('outerHTML')+'</body></html>');
+        win.document.close(); win.focus(); win.print();
+    });
+
+    /* Item purchase statement uses the existing KashHub side modal. */
+    $(document).on('click', '.view-item-purchases', function () {
+        var itemId = Number($(this).data('item-id'));
+        if (!itemId) return;
+        var $modal = $('#side-modal-cashin');
+        $modal.show();
+        $modal.find('.side-modal-title').text('ITEM PURCHASE STATEMENT');
+        $modal.find('.side-modal-content').html('<div class="text-center p-4"><i class="fa fa-spinner fa-spin fa-2x text-success"></i><p>Loading statement...</p></div>');
+        $.ajax({
+            url: 'pdf.php',
+            method: 'GET',
+            data: {purchase_statement:'1', bsid: <?=json_encode((string)$bsid);?>, item_id:itemId, from:<?=json_encode($from);?>, to:<?=json_encode($to);?>},
+            success: function (html) {
+                var pdfUrl = 'pdf.php?' + $.param({purchase_statement:'1',format:'pdf',bsid:<?=json_encode((string)$bsid);?>,item_id:itemId,from:<?=json_encode($from);?>,to:<?=json_encode($to);?>});
+                $modal.find('.side-modal-content').html('<div class="p-3"><div class="text-right mb-2"><button type="button" class="btn btn-sm btn-outline-success print-item-statement"><i class="fa fa-print"></i> Print Statement</button> <a class="btn btn-sm btn-success" href="' + pdfUrl + '" target="_blank" rel="noopener"><i class="fa fa-file-pdf-o"></i> Download PDF</a></div>' + html + '</div>');
+            },
+            error: function (xhr) {
+                $modal.find('.side-modal-content').html('<div class="alert alert-danger m-3">Unable to load statement (' + xhr.status + '). Please try again.</div>');
+            }
+        });
+    });
+    $(document).on('click', '.print-item-statement', function () {
+        var statement = $('#side-modal-cashin .purchase-statement-print');
+        if (!statement.length) return;
+        var styles = $('#side-modal-cashin .side-modal-content style').first().prop('outerHTML') || '';
+        var win = window.open('', '_blank', 'width=1050,height=750');
+        if (!win) { alert('Please allow pop-ups to print the statement.'); return; }
+        win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Item Purchase Statement</title>' + styles + '<style>@page{size:A4 landscape;margin:12mm}body{margin:0;padding:8px}</style></head><body>' + statement.prop('outerHTML') + '</body></html>');
+        win.document.close();
+        win.focus();
+        win.print();
+    });
+
     /* ================================================================
        EXISTING PURCHASE MODAL FUNCTIONALITY
        ================================================================ */
@@ -558,7 +695,7 @@
         var title = $(this).data('title') || '';
         title = title.toUpperCase();
 
-        $('.side-modal-tall').show();
+        $('#side-modal-cashin').show();
         $('.side-modal-title').html(title);
 
         var section = $(this).data('section') || '';
@@ -710,11 +847,7 @@
                     responsive:true,
                     maintainAspectRatio:false,
                     scales:{
-                        yAxes:[{
-                            ticks:{
-                                beginAtZero:true
-                            }
-                        }]
+                        y:{beginAtZero:true}
                     }
                 }
             });
@@ -742,9 +875,7 @@
                 options:{
                     responsive:true,
                     maintainAspectRatio:false,
-                    legend:{
-                        position:'bottom'
-                    }
+                    plugins:{legend:{position:'bottom'}}
                 }
             });
         }
@@ -779,11 +910,7 @@
                     responsive:true,
                     maintainAspectRatio:false,
                     scales:{
-                        yAxes:[{
-                            ticks:{
-                                beginAtZero:true
-                            }
-                        }]
+                        y:{beginAtZero:true}
                     }
                 }
             });

@@ -1,11 +1,11 @@
 <?php
-    if (session_status() === PHP_SESSION_NONE) {
+    if (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_NONE) {
         session_start();
     }
     require_once(__DIR__ . '/functions.php');
     
     /** Safe, additive-only schema helper. Run through an explicit maintenance process. */
-    function create_Table($table, array $columns)
+    function create_Table($table, array $columns, $idDefinition = 'INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY')
     {
         global $server, $db_name;
 
@@ -25,7 +25,7 @@
         $check->close();
 
         if (!$exists) {
-            $definitions = ['`id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY'];
+            $definitions = ["`id` $idDefinition"];
             foreach ($columns as $name => $definition) {
                 $definitions[] = "`$name` $definition";
             }
@@ -326,7 +326,8 @@
             'email'=>'varchar(255) null',
             'reg_no'=>'varchar(255) null',
             'profile'=>'varchar(255) null',
-            'user_id'=>'int(11) null'
+            'user_id'=>'int(11) null',
+            'business_type_id' => 'INT NULL DEFAULT NULL'
         ];
         create_table($table,$columns);
     }
@@ -948,6 +949,151 @@ function cashbook_invoice_shares()
     create_Table($table, $columns);
 }
 
+
+    // ============================================================
+    // BUSINESS TYPES, MODULE CATALOG AND FEATURE REQUESTS
+    // Converted from schema.sql. Run through explicit CLI maintenance.
+    // ============================================================
+
+    /** Add a named index only when absent. Unique indexes need clean data first. */
+    function cashbookFeatureEnsureIndex($table, $index, $definition)
+    {
+        global $server, $db_name;
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $table) || !preg_match('/^[a-zA-Z0-9_]+$/', $index)) {
+            throw new InvalidArgumentException('Invalid index identifier');
+        }
+        $stmt = $server->prepare('SELECT COUNT(*) AS total FROM information_schema.statistics WHERE table_schema=? AND table_name=? AND index_name=?');
+        $stmt->bind_param('sss', $db_name, $table, $index);
+        $stmt->execute();
+        $exists = (int)$stmt->get_result()->fetch_assoc()['total'];
+        $stmt->close();
+        if (!$exists && !$server->query("ALTER TABLE `$table` ADD $definition")) {
+            throw new RuntimeException("Cannot create index $index on $table: " . $server->error);
+        }
+    }
+
+    function cashbook_business_types()
+    {
+        create_Table('cashbook_business_types', [
+            'type_key' => 'VARCHAR(60) NOT NULL',
+            'name' => 'VARCHAR(120) NOT NULL',
+            'description' => 'VARCHAR(255) NULL',
+            'active' => 'TINYINT(1) NOT NULL DEFAULT 1'
+        ]);
+        cashbookFeatureEnsureIndex('cashbook_business_types', 'uq_business_type_key',
+            'UNIQUE KEY `uq_business_type_key` (`type_key`)');
+    }
+
+    function cashbook_modules()
+    {
+        create_Table('cashbook_modules', [
+            'module_key' => 'VARCHAR(60) NOT NULL',
+            'name' => 'VARCHAR(120) NOT NULL',
+            'description' => 'VARCHAR(255) NULL',
+            'is_core' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'active' => 'TINYINT(1) NOT NULL DEFAULT 1'
+        ]);
+        cashbookFeatureEnsureIndex('cashbook_modules', 'uq_module_key',
+            'UNIQUE KEY `uq_module_key` (`module_key`)');
+    }
+
+    function cashbook_business_type_modules()
+    {
+        create_Table('cashbook_business_type_modules', [
+            'business_type_id' => 'INT NOT NULL',
+            'module_key' => 'VARCHAR(60) NOT NULL',
+            'enabled' => 'TINYINT(1) NOT NULL DEFAULT 1'
+        ]);
+        // Existing create_Table() always supplies an auto-increment id.
+        // A composite UNIQUE key preserves the source schema's pair uniqueness.
+        cashbookFeatureEnsureIndex('cashbook_business_type_modules', 'uq_business_type_module',
+            'UNIQUE KEY `uq_business_type_module` (`business_type_id`, `module_key`)');
+    }
+
+    function cashbook_business_module_overrides()
+    {
+        create_Table('cashbook_business_module_overrides', [
+            'business_id' => 'INT NOT NULL',
+            'module_key' => 'VARCHAR(60) NOT NULL',
+            'enabled' => 'TINYINT(1) NOT NULL',
+            'approved_by' => 'INT NOT NULL'
+        ]);
+        cashbookFeatureEnsureIndex('cashbook_business_module_overrides', 'uq_business_module_override',
+            'UNIQUE KEY `uq_business_module_override` (`business_id`, `module_key`)');
+    }
+
+    function cashbook_business_module_requests()
+    {
+        create_Table('cashbook_business_module_requests', [
+            'business_id' => 'INT NOT NULL',
+            'module_key' => 'VARCHAR(60) NOT NULL',
+            'reason' => 'TEXT NULL',
+            'status' => "ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending'",
+            'requested_by' => 'INT NOT NULL',
+            'reviewed_by' => 'INT NULL',
+            'review_note' => 'TEXT NULL',
+            'reviewed_at' => 'DATETIME NULL'
+        ]);
+        cashbookFeatureEnsureIndex('cashbook_business_module_requests', 'idx_business_status',
+            'INDEX `idx_business_status` (`business_id`, `status`)');
+    }
+
+    function cashbook_feature_audit()
+    {
+        // Match schema.sql BIGINT primary key for the audit trail.
+        create_Table('cashbook_feature_audit', [
+            'actor_id' => 'INT NOT NULL',
+            'business_id' => 'INT NOT NULL DEFAULT 0',
+            'action' => 'VARCHAR(80) NOT NULL',
+            'details' => 'TEXT NULL'
+        ], 'BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY');
+        cashbookFeatureEnsureIndex('cashbook_feature_audit', 'idx_feature_audit_business',
+            'INDEX `idx_feature_audit_business` (`business_id`, `created_at`)');
+    }
+
+    /** Seed only the catalog entries provided in schema.sql; never grant access here. */
+    function seedCashbookBusinessModules()
+    {
+        global $server;
+        $types = [
+            ['general', 'General Business'], ['retail', 'Retail Shop'],
+            ['distribution', 'Wholesale & Distribution'], ['restaurant', 'Restaurant'],
+            ['services', 'Professional Services'], ['hardware', 'Hardware Store']
+        ];
+        $stmt = $server->prepare('INSERT IGNORE INTO cashbook_business_types (type_key, name) VALUES (?, ?)');
+        foreach ($types as $row) {
+            $stmt->bind_param('ss', $row[0], $row[1]);
+            if (!$stmt->execute()) throw new RuntimeException('Business type seed failed: ' . $stmt->error);
+        }
+        $stmt->close();
+
+        $modules = [
+            ['cashbook', 'Cashbook', 1], ['reports', 'Reports', 1],
+            ['customers', 'Customers', 0], ['routes', 'Routes & Distribution', 0],
+            ['stock', 'Stock Management', 0], ['creditors', 'Creditors & Suppliers', 0],
+            ['invoices', 'Sales & Invoicing', 0]
+        ];
+        $stmt = $server->prepare('INSERT IGNORE INTO cashbook_modules (module_key, name, is_core) VALUES (?, ?, ?)');
+        foreach ($modules as $row) {
+            $stmt->bind_param('ssi', $row[0], $row[1], $row[2]);
+            if (!$stmt->execute()) throw new RuntimeException('Module seed failed: ' . $stmt->error);
+        }
+        $stmt->close();
+    }
+
+    function createCashbookBusinessFeatureTables()
+    {
+        cashbook_business_types();
+        cashbook_modules();
+        cashbook_business_type_modules();
+        cashbook_business_module_overrides();
+        cashbook_business_module_requests();
+        cashbook_feature_audit();
+        // Add nullable column to existing profile; preserve all existing profiles.
+        cashbook_business_profile();
+        seedCashbookBusinessModules();
+    }
+
     /** Run parent tables before child tables. */
     function createCashbookStocktakeTables()
     {
@@ -960,8 +1106,10 @@ function cashbook_invoice_shares()
         cashbook_role_user();
     }
 
-    // Schema maintenance must be explicitly enabled; never run DDL on login.
-    if (PHP_SAPI === 'cli' && getenv('KASHHUB_SCHEMA_MAINTENANCE') === '1') {
+    // Explicit CLI maintenance only: php db_tables.php --migrate
+    // No .env file or operating-system environment variable is required.
+    if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)
+        && in_array('--migrate', $argv ?? [], true)) {
         cashbook_invoice_shares();
         createCustomerTransfersTable();
         createCashbookStocktakeTables();
@@ -986,6 +1134,7 @@ function cashbook_invoice_shares()
         cashbook_paymodes();
         cashbook_customers();
         cashbook_business_profile();
+        createCashbookBusinessFeatureTables();
         cashbook_roles();
         createCashbookRbacTables();
         cashbook_stocks();
@@ -1001,6 +1150,11 @@ function cashbook_invoice_shares()
         cashbook_routes();
         cashbook_stocktake_excluded_items();
     }
+
+// CLI execution must never attempt browser redirects.
+if (PHP_SAPI === 'cli') {
+    return;
+}
 
 // redirect to the home page after checking table creation functions
 if(isVerified())

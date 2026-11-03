@@ -2819,23 +2819,35 @@
                             }
                     break;
                 case 'newInvoiceSave':
-                        $customer_id = request('customer_id');
-                        $user_id = auth()->id;
-                        $invoice_date = request('invoice_date');
-                        $book_id = request('book_id');
-
-                        // save data
-                        $stmt = "INSERT INTO cashbook_invoices SET customer_id = ?, book_id = ?, user_id = ?, invoice_date = ?";
-                        $invoice_id = prepared_statements($stmt,'iiis',[$customer_id,$book_id,$user_id,$invoice_date]);
+                    $customer_id = (int)request('customer_id');
+                    $user_id = (int)auth()->id;
+                    $invoice_date = (string)request('invoice_date', date('Y-m-d'));
+                    $book_id = (int)request('book_id');
+                    try {
+                        khRequirePermission('invoices.view', $book_id);
+                        $customerCheck = prepared_statements(
+                            'SELECT id FROM cashbook_customers WHERE id=? AND book_id=?',
+                            'ii', [$customer_id, $book_id]
+                        );
+                        if (!$customerCheck || !$customerCheck->num_rows) throw new RuntimeException('Invalid customer for this book.');
+                        if (!DateTime::createFromFormat('!Y-m-d', $invoice_date)) throw new RuntimeException('Invalid invoice date.');
+                        $server->begin_transaction();
+                        $invoice_id = prepared_statements(
+                            'INSERT INTO cashbook_invoices (customer_id,book_id,user_id,invoice_date) VALUES (?,?,?,?)',
+                            'iiis', [$customer_id,$book_id,$user_id,$invoice_date]
+                        );
                         $invoice_no = 'INV-'.date('Y').'-'.str_pad($invoice_id,6,'0',STR_PAD_LEFT);
-
-                        // update invoice number
-                        $update = "UPDATE cashbook_invoices SET invoice_no = ? WHERE id = ?";
-                        prepared_statements($update,'si',[$invoice_no,$invoice_id]);
-                        $_SESSION['success'] = "Invoice Created successfully";
+                        prepared_statements('UPDATE cashbook_invoices SET invoice_no=? WHERE id=? AND book_id=?',
+                            'sii', [$invoice_no,$invoice_id,$book_id]);
+                        $server->commit();
+                        $_SESSION['success'] = 'Invoice created. Add items to post the customer debit.';
+                    } catch (Throwable $e) {
+                        try { $server->rollback(); } catch (Throwable $ignored) {}
+                        error_log('Invoice creation: '.$e->getMessage());
+                        $_SESSION['error'] = 'Invoice creation failed: '.$e->getMessage();
+                    }
                     break;
-                            // save invoice items
-                        
+
                         case 'newInvoiceItemSave':
 
                             $invoice_id = (int)request('invoice_id');
@@ -2864,8 +2876,11 @@
                                 break;
                             }
 
-                            if(!is_array($items) || !count($items)){
-                                $_SESSION['error'] = "Please add at least one invoice item";
+                            // Editing an existing invoice does not require adding new rows.
+                            // Existing saved items are displayed as read-only rows and
+                            // therefore are not included in POST item_id[] / qty[] / rate[].
+                            if (!is_array($items) || !is_array($quantities) || !is_array($rates)) {
+                                $_SESSION['error'] = "Invalid invoice item data";
                                 break;
                             }
 
@@ -2959,6 +2974,16 @@
                                     2
                                 );
 
+                                // Reject a genuinely empty invoice, not a normal edit
+                                // with zero newly submitted rows.
+                                $itemCountResult = prepared_statements(
+                                    "SELECT COUNT(*) AS item_count FROM cashbook_invoice_items WHERE invoice_id=?",
+                                    'i', [$invoice_id]
+                                );
+                                if ((int)$itemCountResult->fetch_assoc()['item_count'] === 0) {
+                                    throw new RuntimeException('Please add at least one invoice item');
+                                }
+
                                 /*
                                 * Preserve existing payments.
                                 *
@@ -2967,7 +2992,11 @@
                                 */
 
                                 $paid = (float)($invoice->paid_amount ?? 0);
-                                $balance = round($invoiceTotal-$paid,2);
+                                $returned = (float)($invoice->returned_amount ?? 0);
+                                $balance = round($invoiceTotal-$paid-$returned,2);
+                                if ($balance < -0.005) {
+                                    throw new RuntimeException('Invoice total cannot be lower than payments and returns already recorded.');
+                                }
 
                                 $update = prepared_statements(
                                     "UPDATE cashbook_invoices
@@ -2981,13 +3010,10 @@
                                     throw new Exception("Failed to update invoice");
                                 }
 
-                                /*
-                                * Do not create another invoice transaction here.
-                                *
-                                * The existing invoice transaction and customer ledger
-                                * must be reconciled separately against the correct
-                                * invoice amount.
-                                */
+                                // Post only the net invoice difference as a referenced, non-cash ledger entry.
+                                if (!khPostInvoiceCustomerDebit($invoice_id, $book_id, $user_id)) {
+                                    throw new RuntimeException('Customer debit could not be posted.');
+                                }
 
                                 mysqli_commit($server);
 

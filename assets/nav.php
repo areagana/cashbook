@@ -1,4 +1,31 @@
 <?php
+/**
+ * KashHub Business Types v2 navigation integration.
+ * The module must be installed alongside the application before links appear.
+ * Existing RBAC checks are preserved and remain mandatory.
+ */
+if (!function_exists('khNavFeatureEnabled')) {
+    $featureBootstrap = __DIR__ . '/business_settings/bootstrap.php';
+    if (!is_file($featureBootstrap)) {
+        $featureBootstrap = dirname(__DIR__) . '/business_settings/bootstrap.php';
+    }
+    if (is_file($featureBootstrap)) {
+        require_once $featureBootstrap;
+    }
+
+    function khNavFeatureEnabled(string $module, int $businessId): bool
+    {
+        // Until the module is installed, preserve existing navigation.
+        return !function_exists('khFeatureEnabled') || khFeatureEnabled($module, $businessId);
+    }
+
+    function khNavFeatureOwner(int $businessId): bool
+    {
+        return $businessId > 0 && function_exists('khFeatureOwner') && khFeatureOwner($businessId);
+    }
+}
+?>
+<?php
     function sideBar()
     {
         global $book;
@@ -41,6 +68,8 @@
         if (!$book) {
             return;
         }
+
+        $navBusinessId = (int)($book->business_id ?? 0);
 
         /*
         |--------------------------------------------------------------------------
@@ -193,7 +222,7 @@
 
                 <!-- CUSTOMERS -->
 
-                <?php if (khCan('customers.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('customers', $navBusinessId) && khCan('customers.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a
@@ -210,7 +239,7 @@
 
                 <!-- CREDITORS -->
 
-                <?php if (khCan('creditors.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('creditors', $navBusinessId) && khCan('creditors.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a href="../creditors/?bsid=<?=$bsid;?>" class="sidebar-link">
@@ -222,7 +251,7 @@
                 <?php endif; ?>
 
                 <!-- STOCK: expandable navigation -->
-                <?php if (khCan('stock.view',(int)$book->id) || khCan('stocktake.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('stock', $navBusinessId) && khCan('stock.view',(int)$book->id)) || (khNavFeatureEnabled('stock', $navBusinessId) && khCan('stocktake.view',(int)$book->id))): ?>
                 <?php $stockMenuId = 'kh-stock-menu-1'; ?>
                 <li class="sidebar-item kh-stock-nav">
                     <button type="button" class="sidebar-link kh-stock-toggle" aria-expanded="false" aria-controls="<?=$stockMenuId;?>">
@@ -231,8 +260,8 @@
                         <i class="fa fa-chevron-down kh-stock-chevron" aria-hidden="true"></i>
                     </button>
                     <ul id="<?=$stockMenuId;?>" class="kh-stock-submenu" hidden>
-                        <?php if (khCan('stock.view',(int)$book->id)): ?><li><a href="../stock/?bkid=<?=$bsid;?>"><i class="fa fa-boxes"></i> Stock Overview</a></li><?php endif; ?>
-                        <?php if (khCan('stocktake.view',(int)$book->id)): ?><li><a href="../stock/stocktake/?bkid=<?=$bsid;?>"><i class="fa fa-clipboard-check"></i> Stock Taking</a></li><?php endif; ?>
+                        <?php if ((khNavFeatureEnabled('stock', $navBusinessId) && khCan('stock.view',(int)$book->id))): ?><li><a href="../stock/?bkid=<?=$bsid;?>"><i class="fa fa-boxes"></i> Stock Overview</a></li><?php endif; ?>
+                        <?php if ((khNavFeatureEnabled('stock', $navBusinessId) && khCan('stocktake.view',(int)$book->id))): ?><li><a href="../stock/stocktake/?bkid=<?=$bsid;?>"><i class="fa fa-clipboard-check"></i> Stock Taking</a></li><?php endif; ?>
                     </ul>
                 </li>
 
@@ -294,6 +323,16 @@
                     </li>
                 <?php endif; ?>
 
+                <!-- BUSINESS TYPE AND ADDITIONAL FEATURES: owner only -->
+                <?php if (khNavFeatureOwner($navBusinessId)): ?>
+                    <li class="sidebar-item">
+                        <a href="../business_settings/index.php" class="sidebar-link" title="Business type and feature requests">
+                            <i class="fa fa-sliders-h"></i>
+                            <span>Business Features</span>
+                        </a>
+                    </li>
+                <?php endif; ?>
+
                 <!-- CATEGORIES -->
 
                 <?php if (khCan('categories.view',(int)$book->id)): ?>
@@ -330,7 +369,7 @@
 
                 <!-- INVOICES -->
 
-                <?php if (khCan('invoices.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('invoices', $navBusinessId) && khCan('invoices.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a
@@ -364,7 +403,7 @@
 
                 <!-- ROUTES -->
 
-                <?php if (khCan('routes.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('routes', $navBusinessId) && khCan('routes.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a
@@ -381,7 +420,7 @@
 
                 <!-- ROUTE MANAGERS -->
 
-                <?php if (khCan('route_managers.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('routes', $navBusinessId) && khCan('route_managers.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a
@@ -469,6 +508,8 @@
         if (!$book) {
             return;
         }
+
+        $navBusinessId = (int)($book->business_id ?? 0);
 
         /*
         |--------------------------------------------------------------------------
@@ -636,7 +677,7 @@
 
                 <!-- CUSTOMERS -->
 
-                <?php if (khCan('customers.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('customers', $navBusinessId) && khCan('customers.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a
@@ -653,7 +694,7 @@
 
                 <!-- CREDITORS -->
 
-                <?php if (khCan('creditors.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('creditors', $navBusinessId) && khCan('creditors.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a
@@ -668,7 +709,7 @@
                 <?php endif; ?>
 
                 <!-- STOCK: expandable navigation -->
-                <?php if (khCan('stock.view',(int)$book->id) || khCan('stocktake.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('stock', $navBusinessId) && khCan('stock.view',(int)$book->id)) || (khNavFeatureEnabled('stock', $navBusinessId) && khCan('stocktake.view',(int)$book->id))): ?>
         <?php $stockMenuId = 'kh-stock-menu-2'; ?>
                 <li class="sidebar-item kh-stock-nav">
                     <button type="button" class="sidebar-link kh-stock-toggle" aria-expanded="false" aria-controls="<?=$stockMenuId;?>">
@@ -677,8 +718,8 @@
                         <i class="fa fa-chevron-down kh-stock-chevron" aria-hidden="true"></i>
                     </button>
                     <ul id="<?=$stockMenuId;?>" class="kh-stock-submenu" hidden>
-                        <?php if (khCan('stock.view',(int)$book->id)): ?><li><a href="../../stock/?bkid=<?=$bsid;?>"><i class="fa fa-boxes"></i> Stock Overview</a></li><?php endif; ?>
-                        <?php if (khCan('stocktake.view',(int)$book->id)): ?><li><a href="../../stock/stocktake/?bkid=<?=$bsid;?>"><i class="fa fa-clipboard-check"></i> Stock Taking</a></li><?php endif; ?>
+                        <?php if ((khNavFeatureEnabled('stock', $navBusinessId) && khCan('stock.view',(int)$book->id))): ?><li><a href="../../stock/?bkid=<?=$bsid;?>"><i class="fa fa-boxes"></i> Stock Overview</a></li><?php endif; ?>
+                        <?php if ((khNavFeatureEnabled('stock', $navBusinessId) && khCan('stocktake.view',(int)$book->id))): ?><li><a href="../../stock/stocktake/?bkid=<?=$bsid;?>"><i class="fa fa-clipboard-check"></i> Stock Taking</a></li><?php endif; ?>
                     </ul>
                 </li>
 
@@ -745,6 +786,16 @@
                     </li>
                 <?php endif; ?>
 
+                <!-- BUSINESS TYPE AND ADDITIONAL FEATURES: owner only -->
+                <?php if (khNavFeatureOwner($navBusinessId)): ?>
+                    <li class="sidebar-item">
+                        <a href="../../business_settings/index.php" class="sidebar-link" title="Business type and feature requests">
+                            <i class="fa fa-sliders-h"></i>
+                            <span>Business Features</span>
+                        </a>
+                    </li>
+                <?php endif; ?>
+
                 <!-- CATEGORIES -->
 
                 <?php if (khCan('categories.view',(int)$book->id)): ?>
@@ -774,7 +825,7 @@
                 <?php endif; ?>
 
                 <!-- INVOICES -->
-                <?php if (khCan('invoices.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('invoices', $navBusinessId) && khCan('invoices.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
                         <a href="../../invoices/?bsid=<?=$bsid;?>" class="sidebar-link">
                             <i class="fa fa-file-invoice"></i>
@@ -802,7 +853,7 @@
 
                 <!-- ROUTES -->
 
-                <?php if (khCan('routes.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('routes', $navBusinessId) && khCan('routes.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a
@@ -819,7 +870,7 @@
 
                 <!-- ROUTE MANAGERS -->
 
-                <?php if (khCan('route_managers.view',(int)$book->id)): ?>
+                <?php if ((khNavFeatureEnabled('routes', $navBusinessId) && khCan('route_managers.view',(int)$book->id))): ?>
                     <li class="sidebar-item">
 
                     <a
@@ -991,6 +1042,16 @@
                         <span>Settings</span>
                     </a>
                 </li>
+
+                <!-- PLATFORM BUSINESS TYPES AND MODULE ALLOCATIONS -->
+                <?php if (function_exists('khIsSuperAdmin') && khIsSuperAdmin()): ?>
+                    <li class="sidebar-item">
+                        <a href="../business_settings/admin.php" class="sidebar-link" title="Business types and module allocations">
+                            <i class="fa fa-layer-group"></i>
+                            <span>Business Types &amp; Modules</span>
+                        </a>
+                    </li>
+                <?php endif; ?>
 
                 <!-- SYSTEM ROLE MANAGEMENT -->
                 <?php if (canManageSystemRolesNav()): ?>

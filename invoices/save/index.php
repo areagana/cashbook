@@ -102,9 +102,6 @@
                         </div>
                     <?php
                     break;
-
-
-                
                 case 'AddInvoiceItem':
                         $book_id = (int)encryptor('decrypt',$_SESSION['book_id']);
                         $sqli = "SELECT id,name,units FROM cashbook_items WHERE book_id=? ORDER BY name ASC";
@@ -518,72 +515,209 @@
                         }
                     break;
                 case 'deleteInvoice':
-                    $id = request('id');
+                    // Delete an unpaid, unreturned invoice and all its non-cash
+                    // postings, then rebuild the customer's receivable balance.
+                    $invoiceId = (int)request('id');
+                    $bookId = (int)encryptor('decrypt', $_SESSION['book_id'] ?? '');
 
-                    // delete customer
-                    $stmt = "DELETE FROM cashbook_invoices WHERE id = ?";
-                    $res = prepared_statements($stmt,'i',[$id]);
+                    if ($invoiceId <= 0 || $bookId <= 0) {
+                        http_response_code(400);
+                        echo 'Invalid invoice or business book.';
+                        break;
+                    }
+                    if (!hasRole(['owner','superadministrator'])) {
+                        http_response_code(403);
+                        echo 'You do not have permission to delete invoices.';
+                        break;
+                    }
+                    if (function_exists('khCan') && !khCan('invoices.view', $bookId)) {
+                        http_response_code(403);
+                        echo 'Access denied for this book.';
+                        break;
+                    }
 
-                    // get transaction if
-                    $check = "SELECT ct.id as trans_id FROM cashbook_transactions
-                        INNER JOIN cashbook_invoice ci ON ci.invoice_no = ct.details 
-                        WHERE ci.id = ?";
-                    $tt = prepared_statements($check,'i',[$id]);
-                    $rr = $tt->fetch_assoc();
-                    $tid = $rr['trans_id'];
+                    try {
+                        $server->begin_transaction();
+                        $result = prepared_statements(
+                            'SELECT id,customer_id,book_id,paid_amount,returned_amount
+                             FROM cashbook_invoices WHERE id=? AND book_id=? FOR UPDATE',
+                            'ii', [$invoiceId,$bookId]
+                        );
+                        $invoice = $result ? $result->fetch_assoc() : null;
+                        if (!$invoice) throw new RuntimeException('Invoice not found in this book.');
+                        $customerId = (int)$invoice['customer_id'];
 
-                    if($res)
-                    {
-                        // track transaction edits
-                        trackTransactionEdits($tid,'invoice-deletion');
-                        // adjust customer ledger records
-                        echo "Success";
+                        if (abs((float)$invoice['paid_amount']) > 0.005 ||
+                            abs((float)$invoice['returned_amount']) > 0.005) {
+                            throw new DomainException('This invoice has payments or returns. Resolve them before deletion.');
+                        }
+
+                        // Do not trust cached invoice totals alone: check linked
+                        // transactions, ledger entries and return headers.
+                        $returns = prepared_statements(
+                            'SELECT id FROM cashbook_invoice_returns WHERE invoice_id=? LIMIT 1',
+                            'i', [$invoiceId]
+                        );
+                        if ($returns->num_rows) {
+                            throw new DomainException('Invoice returns exist. Resolve them before deletion.');
+                        }
+                        $ledger = prepared_statements(
+                            'SELECT id,type,customer_id,transaction_id FROM cashbook_customer_ledger
+                             WHERE invoice_id=? AND book_id=? FOR UPDATE',
+                            'ii', [$invoiceId,$bookId]
+                        );
+                        $transactionIds = [];
+                        while ($row = $ledger->fetch_assoc()) {
+                            if ((int)$row['customer_id'] !== $customerId ||
+                                !in_array($row['type'], ['invoice','invoice_edit'], true)) {
+                                throw new DomainException('Other customer ledger activity is linked to this invoice. Reconcile before deletion.');
+                            }
+                            if ((int)$row['transaction_id'] > 0) {
+                                $transactionIds[(int)$row['transaction_id']] = true;
+                            }
+                        }
+                        $transactions = prepared_statements(
+                            'SELECT id,type,customer_id FROM cashbook_transactions
+                             WHERE invoice_id=? AND book_id=? FOR UPDATE',
+                            'ii', [$invoiceId,$bookId]
+                        );
+                        while ($row = $transactions->fetch_assoc()) {
+                            if ((int)$row['customer_id'] !== $customerId ||
+                                !in_array($row['type'], ['invoice','invoice_edit'], true)) {
+                                throw new DomainException('A payment or other transaction is linked to this invoice. Reconcile before deletion.');
+                            }
+                            $transactionIds[(int)$row['id']] = true;
+                        }
+
+                        // Check for any other invoice-linked tables, such as
+                        // payment allocations or sharing records, before deleting.
+                        // Unknown dependencies are not silently discarded.
+                        $linkedTables = prepared_statements(
+                            "SELECT TABLE_NAME FROM information_schema.COLUMNS
+                             WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME='invoice_id'
+                             AND TABLE_NAME LIKE 'cashbook\\_%'"
+                        );
+                        $handled = ['cashbook_customer_ledger','cashbook_transactions',
+                                    'cashbook_invoice_items','cashbook_invoice_returns',
+                                    'cashbook_invoice_return_items'];
+                        while ($tableRow = $linkedTables->fetch_assoc()) {
+                            $table = $tableRow['TABLE_NAME'];
+                            if (in_array($table,$handled,true)) continue;
+                            if (!preg_match('/^[a-zA-Z0-9_]+$/',$table)) {
+                                throw new RuntimeException('Invalid invoice dependency metadata.');
+                            }
+                            $linked = prepared_statements(
+                                "SELECT 1 FROM `{$table}` WHERE invoice_id=? LIMIT 1",'i',[$invoiceId]
+                            );
+                            if ($linked->num_rows) {
+                                throw new DomainException('Invoice has linked records in '.$table.'. Resolve these before deletion.');
+                            }
+                        }
+
+                        // Remove ledger postings first, then their non-cash
+                        // transaction references. Never remove actual cash flows.
+                        prepared_statements(
+                            "DELETE FROM cashbook_customer_ledger
+                             WHERE invoice_id=? AND book_id=? AND type IN ('invoice','invoice_edit')",
+                            'ii', [$invoiceId,$bookId]
+                        );
+                        foreach (array_keys($transactionIds) as $transactionId) {
+                            prepared_statements(
+                                "DELETE FROM cashbook_transactions
+                                 WHERE id=? AND invoice_id=? AND book_id=?
+                                 AND type IN ('invoice','invoice_edit')",
+                                'iii', [$transactionId,$invoiceId,$bookId]
+                            );
+                        }
+                        prepared_statements('DELETE FROM cashbook_invoice_items WHERE invoice_id=?',
+                            'i',[$invoiceId]);
+                        prepared_statements('DELETE FROM cashbook_invoices WHERE id=? AND book_id=?',
+                            'ii',[$invoiceId,$bookId]);
+
+                        rebuildCustomerLedgerBalances($customerId,$bookId);
+                        $server->commit();
+                        echo 'Success';
+                    } catch (Throwable $error) {
+                        $server->rollback();
+                        error_log('Invoice deletion failed: '.$error->getMessage());
+                        http_response_code($error instanceof DomainException ? 409 : 400);
+                        echo 'Invoice deletion failed: '.$error->getMessage();
                     }
                     break;
                 case 'removeInvoiceItem':
-                        $id = request('id');
+                    // Remove an invoice item and synchronize the receivable atomically.
+                    $itemId = (int)request('id');
+                    $bookId = (int)encryptor('decrypt', $_SESSION['book_id'] ?? '');
+                    if ($itemId <= 0 || $bookId <= 0) {
+                        http_response_code(400);
+                        echo 'Invalid invoice item or book.';
+                        break;
+                    }
+                    if (!hasRole(['owner','partner','superadministrator'])) {
+                        http_response_code(403);
+                        echo 'You do not have permission to remove invoice items.';
+                        break;
+                    }
+                    try {
+                        $server->begin_transaction();
+                        $itemResult = prepared_statements(
+                            'SELECT ii.id,ii.invoice_id,ii.quantity,ii.total FROM cashbook_invoice_items ii
+                             INNER JOIN cashbook_invoices i ON i.id=ii.invoice_id
+                             WHERE ii.id=? AND i.book_id=? FOR UPDATE',
+                            'ii', [$itemId,$bookId]
+                        );
+                        $item = $itemResult ? $itemResult->fetch_assoc() : null;
+                        if (!$item) throw new RuntimeException('Invoice item not found in this book.');
+                        $invoiceId = (int)$item['invoice_id'];
+                        $invoiceResult = prepared_statements(
+                            'SELECT id,customer_id,total,paid_amount,returned_amount,balance
+                             FROM cashbook_invoices WHERE id=? AND book_id=? FOR UPDATE',
+                            'ii', [$invoiceId,$bookId]
+                        );
+                        $invoice = $invoiceResult ? $invoiceResult->fetch_assoc() : null;
+                        if (!$invoice) throw new RuntimeException('Invoice not found.');
 
-                        // fetch item amount to adjust the invoice details
-                        $sql = "SELECT * FROM cashbook_invoice_items WHERE id = ?";
-                        $res = prepared_statements($sql,'i',[$id]);
-                        $row = $res->fetch_assoc();
-                        // print_r($row);
-
-                        if($row) 
-                        {
-                            $invoice_id = $row['invoice_id'];
-                            $invoice = invoiceFind($invoice_id);
-                            $amount = $row['total'];
-                            $customer_id = $invoice->customer_id;
-                            $book_id = $invoice->book_id;
-
-                            // Delete item
-                            if(removeInvoiceItem($id))
-                            {
-                                $stmt = "UPDATE cashbook_invoices i
-                                SET i.total = (
-                                    SELECT COALESCE(SUM(ii.total), 0)
-                                    FROM cashbook_invoice_items ii
-                                    WHERE ii.invoice_id = i.id
-                                )
-                                WHERE i.id = ?";
-                                prepared_statements($stmt, 'i', [$invoice_id]);
-
-                                // update customer ledger to capture the changes
-                                $query = "UPDATE cashbook_customer_ledger SET debit_amount = ?, invoice_amount = ? WHERE invoice_id = ?";
-                                prepared_statements($query,'iii',[$amount,$amount,$invoice_id]);
-
-                                $type = 'invoice_edit';
-                                $current_balance = getCustomerBalance($customer_id);
-                                $balance = $current_balance - $amount;
-
-                                // insert a new transaction updating customer balance for ledger,re-credit their account
-                                $insert = "INSERT INTO cashbook_customer_ledger SET customer_id = ?,credit_amount = ?, invoice_id = ?,book_id = ?, type = ?, details = ?,balance = ?,user_id = ?";
-                                prepared_statements($insert,'iiiissii',[$customer_id,$amount,$invoice_id,$book_id,$type,$invoice->invoice_no,$balance,$user_id]);
-                            }else{
-                                echo "Failed to remove item";
-                            }                            
+                        // Returns are linked to individual invoice items; preserve their audit trail.
+                        $returns = prepared_statements(
+                            'SELECT 1 FROM cashbook_invoice_return_items WHERE invoice_item_id=? LIMIT 1',
+                            'i', [$itemId]
+                        );
+                        if ($returns && $returns->num_rows) {
+                            throw new RuntimeException('This item has recorded returns. Reverse or resolve those returns before removing it.');
                         }
+
+                        prepared_statements(
+                            'DELETE FROM cashbook_invoice_items WHERE id=? AND invoice_id=?',
+                            'ii', [$itemId,$invoiceId]
+                        );
+                        $totalResult = prepared_statements(
+                            'SELECT COALESCE(SUM(total),0) AS amount FROM cashbook_invoice_items WHERE invoice_id=?',
+                            'i', [$invoiceId]
+                        );
+                        $newTotal = round((float)$totalResult->fetch_assoc()['amount'],2);
+                        $paid = round((float)$invoice['paid_amount'],2);
+                        $returned = round((float)$invoice['returned_amount'],2);
+                        $newBalance = round($newTotal-$paid-$returned,2);
+                        if ($newBalance < -0.005) {
+                            throw new RuntimeException('Cannot reduce invoice below its recorded payments and returns.');
+                        }
+                        prepared_statements(
+                            'UPDATE cashbook_invoices SET total=?,balance=? WHERE id=? AND book_id=?',
+                            'ddii', [$newTotal,max(0,$newBalance),$invoiceId,$bookId]
+                        );
+
+                        // Append a referenced invoice adjustment; preserve the original debit.
+                        if (!khPostInvoiceCustomerDebit($invoiceId,$bookId,(int)$user_id)) {
+                            throw new RuntimeException('Could not update the customer invoice debit.');
+                        }
+                        $server->commit();
+                        echo 'Success';
+                    } catch (Throwable $error) {
+                        $server->rollback();
+                        error_log('Invoice item removal: '.$error->getMessage());
+                        http_response_code(400);
+                        echo 'Unable to remove item: '.$error->getMessage();
+                    }
                     break;
             }
         }

@@ -1,5 +1,7 @@
 <?php
-    session_start();
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
     require(__dir__.'/db_connect.php');
     date_default_timezone_set('Africa/Kampala');
     if(isset($_GET['logout']))
@@ -1860,6 +1862,120 @@ function hasRole($roles, $permission = null, $bookId = null, $businessId = null)
         if(!$saved) return false;
 
         return (bool)saveCustomerBalance($customer_id,$newBalance,$date);
+    }
+
+    /**
+     * Post or revise one invoice receivable in the customer ledger.
+     * Caller MUST hold the invoice row lock and own the DB transaction.
+     * No cashbook_transactions entry is created: invoices are not cash receipts.
+     */
+    /**
+     * Append-only invoice receivable posting.
+     * Call inside the caller's existing database transaction after updating invoice totals.
+     * Original invoice debit remains unchanged; edits create separately referenced deltas.
+     * This routine never records cash movement.
+     */
+    function khPostInvoiceCustomerDebit($invoiceId, $bookId, $userId)
+    {
+        $invoiceId=(int)$invoiceId;
+        $bookId=(int)$bookId;
+        $userId=(int)$userId;
+        $res=prepared_statements(
+            'SELECT id,customer_id,invoice_no,total,invoice_date FROM cashbook_invoices WHERE id=? AND book_id=? FOR UPDATE',
+            'ii',[$invoiceId,$bookId]
+        );
+        $invoice=$res ? $res->fetch_assoc() : null;
+        if (!$invoice) throw new RuntimeException('Invoice not found for posting.');
+        $customerId=(int)$invoice['customer_id'];
+        $customer=prepared_statements('SELECT id FROM cashbook_customers WHERE id=? AND book_id=? LIMIT 1',
+            'ii',[$customerId,$bookId]);
+        if (!$customer || !$customer->num_rows) throw new RuntimeException('Invoice customer does not belong to this book.');
+
+        $target=round((float)$invoice['total'],2);
+        if ($target < 0) throw new RuntimeException('Invoice amount cannot be negative.');
+        $rows=prepared_statements(
+            "SELECT id,customer_id,type,transaction_id,debit_amount,credit_amount FROM cashbook_customer_ledger
+             WHERE invoice_id=? AND book_id=? AND type IN ('invoice','invoice_edit') ORDER BY id FOR UPDATE",
+            'ii',[$invoiceId,$bookId]
+        );
+        $posted=0.0;
+        $original=null;
+        $entries=[];
+        while ($row=$rows->fetch_assoc()) {
+            if ((int)$row['customer_id']!==$customerId) {
+                throw new RuntimeException('Invoice ledger customer mismatch; reconcile before editing.');
+            }
+            if ($row['type']==='invoice') {
+                if ($original!==null) throw new RuntimeException('Duplicate original invoice debits; reconcile before editing.');
+                $original=$row;
+            }
+            $posted+=(float)$row['debit_amount']-(float)$row['credit_amount'];
+            $entries[]=$row;
+        }
+        $posted=round($posted,2);
+        $difference=round($target-$posted,2);
+        $date=(string)$invoice['invoice_date'];
+        if (strlen($date)===10) $date.=' 00:00:00';
+        $description=(string)$invoice['invoice_no'];
+
+        // An invoice without items is a draft, not a receivable.
+        if ($original===null && $target<=0) return true;
+
+        if ($original===null) {
+            // A separate non-cash transaction is the permanent audit reference.
+            $transactionId=(int)prepared_statements(
+                "INSERT INTO cashbook_transactions
+                 (customer_id,book_id,invoice_id,user_id,type,details,credit_amount,debit_amount,created_at)
+                 VALUES (?,?,?,?,'invoice',?,0,0,?)",
+                'iiiiss',[$customerId,$bookId,$invoiceId,$userId,$description,$date]
+            );
+            if ($transactionId<=0) throw new RuntimeException('Could not create invoice reference.');
+            prepared_statements(
+                "INSERT INTO cashbook_customer_ledger
+                 (customer_id,book_id,type,debit_amount,credit_amount,invoice_amount,invoice_id,details,user_id,created_at,transaction_id)
+                 VALUES (?,?,'invoice',?,0,?,?,?,?,?,?)",
+                'iiddisisi',[$customerId,$bookId,$target,$target,$invoiceId,$description,$userId,$date,$transactionId]
+            );
+        } else {
+            // Recover missing original reference without changing the historical debit.
+            if ((int)$original['transaction_id']<=0) {
+                $existing=prepared_statements(
+                    "SELECT id FROM cashbook_transactions WHERE invoice_id=? AND book_id=? AND type='invoice' FOR UPDATE",
+                    'ii',[$invoiceId,$bookId]
+                );
+                if ($existing->num_rows>1) throw new RuntimeException('Multiple invoice references require reconciliation.');
+                $old=$existing->fetch_assoc();
+                $transactionId=$old ? (int)$old['id'] : (int)prepared_statements(
+                    "INSERT INTO cashbook_transactions
+                     (customer_id,book_id,invoice_id,user_id,type,details,credit_amount,debit_amount,created_at)
+                     VALUES (?,?,?,?,'invoice',?,0,0,?)",
+                    'iiiiss',[$customerId,$bookId,$invoiceId,$userId,$description,$date]
+                );
+                prepared_statements('UPDATE cashbook_customer_ledger SET transaction_id=? WHERE id=? AND book_id=?',
+                    'iii',[$transactionId,(int)$original['id'],$bookId]);
+            }
+            if (abs($difference)>=0.005) {
+                $debit=max(0,$difference);
+                $credit=max(0,-$difference);
+                $detail='Invoice adjustment - '.$description.' ('.($difference>0?'increase':'items removed/reduction').')';
+                $now=date('Y-m-d H:i:s');
+                $transactionId=(int)prepared_statements(
+                    "INSERT INTO cashbook_transactions
+                     (customer_id,book_id,invoice_id,user_id,type,details,credit_amount,debit_amount,created_at)
+                     VALUES (?,?,?,?,'invoice_edit',?,0,0,?)",
+                    'iiiiss',[$customerId,$bookId,$invoiceId,$userId,$detail,$now]
+                );
+                if ($transactionId<=0) throw new RuntimeException('Could not create invoice adjustment reference.');
+                prepared_statements(
+                    "INSERT INTO cashbook_customer_ledger
+                     (customer_id,book_id,type,debit_amount,credit_amount,invoice_amount,invoice_id,details,user_id,created_at,transaction_id)
+                     VALUES (?,?,'invoice_edit',?,?,?,?,?,?,?,?)",
+                    'iidddisisi',[$customerId,$bookId,$debit,$credit,$target,$invoiceId,$detail,$userId,$now,$transactionId]
+                );
+            }
+        }
+        rebuildCustomerLedgerBalances($customerId,$bookId);
+        return true;
     }
 
     // update customer balances table
